@@ -1,0 +1,93 @@
+# XcodeGen Project Specification for Moments
+# Run: xcodegen generate
+
+name: Moments
+options:
+  bundleIdPrefix: com.moments
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  defaultConfig: Debug
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    ENABLE_PREVIEWS: "YES"
+
+packages:
+  MomentsEngine:
+    path: ./MomentsEngine
+
+targets:
+  Moments:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Moments/Sources
+        type: group
+      - path: Moments/Resources
+        type: group
+    resources:
+      - path: Moments/Resources/Assets.xcassets
+      - path: Moments/Resources/es-AR.lproj
+      - path: Moments/Resources/en.lproj
+    info:
+      path: Moments/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Moments
+        UILaunchScreen:
+          UIColorName: AccentColor
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.moments.app
+        INFOPLIST_FILE: Moments/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        DEVELOPMENT_ASSET_PATHS: '"Moments/Preview Content"'
+    dependencies:
+      - package: MomentsEngine
+    entitlements:
+      path: Moments/Moments.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.personal-information.photos-library: true
+
+  MomentsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: MomentsTests
+        type: group
+    dependencies:
+      - target: Moments
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.moments.app.tests
+
+schemes:
+  Moments:
+    build:
+      targets:
+        Moments: all
+        MomentsTests: [test]
+    run:
+      config: Debug
+      environmentVariables:
+        - variable: IDEPreferLogStreaming
+          value: "YES"
+    test:
+      config: Debug
+      targets:
+        - MomentsTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

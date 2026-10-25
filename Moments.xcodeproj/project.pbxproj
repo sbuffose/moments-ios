@@ -1,0 +1,548 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		/* Sources */
+		11111111111111111111111 /* MomentsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111111; };
+		11111111111111111111112 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111112; };
+		11111111111111111111113 /* PersistedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111113; };
+		11111111111111111111114 /* PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111114; };
+		11111111111111111111115 /* PhotoAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111115; };
+		11111111111111111111116 /* GeocodingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111116; };
+		11111111111111111111117 /* CleanupViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111117; };
+		11111111111111111111118 /* TimelineViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111118; };
+		11111111111111111111119 /* PlacesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111119; };
+		1111111111111111111111A /* PeopleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2111111111111111111111A; };
+		1111111111111111111111B /* CleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2111111111111111111111B; };
+		1111111111111111111111C /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2111111111111111111111C; };
+		1111111111111111111111D /* PlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2111111111111111111111D; };
+		1111111111111111111111E /* PeopleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2111111111111111111111E; };
+		1111111111111111111111F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2111111111111111111111F; };
+		11111111111111111111120 /* AsyncPhotoThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21111111111111111111120; };
+		/* Resources */
+		31111111111111111111111 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 41111111111111111111111; };
+		31111111111111111111112 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 41111111111111111111112; };
+		/* Package */
+		51111111111111111111111 /* MomentsEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 61111111111111111111111; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		01111111111111111111111 /* Moments.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Moments.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		21111111111111111111111 /* MomentsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsApp.swift; sourceTree = "<group>"; };
+		21111111111111111111112 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		21111111111111111111113 /* PersistedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistedModels.swift; sourceTree = "<group>"; };
+		21111111111111111111114 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
+		21111111111111111111115 /* PhotoAnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAnalysisService.swift; sourceTree = "<group>"; };
+		21111111111111111111116 /* GeocodingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeocodingService.swift; sourceTree = "<group>"; };
+		21111111111111111111117 /* CleanupViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupViewModel.swift; sourceTree = "<group>"; };
+		21111111111111111111118 /* TimelineViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineViewModel.swift; sourceTree = "<group>"; };
+		21111111111111111111119 /* PlacesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesViewModel.swift; sourceTree = "<group>"; };
+		2111111111111111111111A /* PeopleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleViewModel.swift; sourceTree = "<group>"; };
+		2111111111111111111111B /* CleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupView.swift; sourceTree = "<group>"; };
+		2111111111111111111111C /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
+		2111111111111111111111D /* PlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesView.swift; sourceTree = "<group>"; };
+		2111111111111111111111E /* PeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleView.swift; sourceTree = "<group>"; };
+		2111111111111111111111F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		21111111111111111111120 /* AsyncPhotoThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncPhotoThumbnail.swift; sourceTree = "<group>"; };
+		41111111111111111111111 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		41111111111111111111112 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		41111111111111111111113 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		71111111111111111111111 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				51111111111111111111111 /* MomentsEngine in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		81111111111111111111111 = {
+			isa = PBXGroup;
+			children = (
+				91111111111111111111111 /* Moments */,
+				A1111111111111111111111 /* MomentsEngine */,
+				01111111111111111111111 /* Moments.app */,
+			);
+			sourceTree = "<group>";
+		};
+		91111111111111111111111 /* Moments */ = {
+			isa = PBXGroup;
+			children = (
+				B1111111111111111111111 /* Sources */,
+				C1111111111111111111111 /* Resources */,
+			);
+			path = Moments;
+			sourceTree = "<group>";
+		};
+		A1111111111111111111111 /* MomentsEngine */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = MomentsEngine;
+			path = MomentsEngine;
+			sourceTree = "<group>";
+		};
+		B1111111111111111111111 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B2111111111111111111111 /* App */,
+				B3111111111111111111111 /* Models */,
+				B4111111111111111111111 /* Services */,
+				B5111111111111111111111 /* ViewModels */,
+				B6111111111111111111111 /* Views */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		B2111111111111111111111 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				21111111111111111111111 /* MomentsApp.swift */,
+				21111111111111111111112 /* ContentView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B3111111111111111111111 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				21111111111111111111113 /* PersistedModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		B4111111111111111111111 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				21111111111111111111114 /* PhotoLibraryService.swift */,
+				21111111111111111111115 /* PhotoAnalysisService.swift */,
+				21111111111111111111116 /* GeocodingService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		B5111111111111111111111 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				21111111111111111111117 /* CleanupViewModel.swift */,
+				21111111111111111111118 /* TimelineViewModel.swift */,
+				21111111111111111111119 /* PlacesViewModel.swift */,
+				2111111111111111111111A /* PeopleViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		B6111111111111111111111 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				B7111111111111111111111 /* Cleanup */,
+				B8111111111111111111111 /* Timeline */,
+				B9111111111111111111111 /* Places */,
+				BA111111111111111111111 /* People */,
+				BB111111111111111111111 /* Settings */,
+				BC111111111111111111111 /* Shared */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		B7111111111111111111111 /* Cleanup */ = {
+			isa = PBXGroup;
+			children = (
+				2111111111111111111111B /* CleanupView.swift */,
+			);
+			path = Cleanup;
+			sourceTree = "<group>";
+		};
+		B8111111111111111111111 /* Timeline */ = {
+			isa = PBXGroup;
+			children = (
+				2111111111111111111111C /* TimelineView.swift */,
+			);
+			path = Timeline;
+			sourceTree = "<group>";
+		};
+		B9111111111111111111111 /* Places */ = {
+			isa = PBXGroup;
+			children = (
+				2111111111111111111111D /* PlacesView.swift */,
+			);
+			path = Places;
+			sourceTree = "<group>";
+		};
+		BA111111111111111111111 /* People */ = {
+			isa = PBXGroup;
+			children = (
+				2111111111111111111111E /* PeopleView.swift */,
+			);
+			path = People;
+			sourceTree = "<group>";
+		};
+		BB111111111111111111111 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				2111111111111111111111F /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		BC111111111111111111111 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				21111111111111111111120 /* AsyncPhotoThumbnail.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		C1111111111111111111111 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				41111111111111111111111 /* Assets.xcassets */,
+				41111111111111111111112 /* Localizable.strings */,
+				41111111111111111111113 /* Info.plist */,
+				C2111111111111111111111 /* es-AR.lproj */,
+				C3111111111111111111111 /* en.lproj */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		C2111111111111111111111 /* es-AR.lproj */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = "es-AR.lproj";
+			sourceTree = "<group>";
+		};
+		C3111111111111111111111 /* en.lproj */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = "en.lproj";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D1111111111111111111111 /* Moments */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1111111111111111111111 /* Build configuration list for PBXNativeTarget "Moments" */;
+			buildPhases = (
+				D2111111111111111111111 /* Sources */,
+				71111111111111111111111 /* Frameworks */,
+				D3111111111111111111111 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Moments;
+			packageProductDependencies = (
+				61111111111111111111111 /* MomentsEngine */,
+			);
+			productName = Moments;
+			productReference = 01111111111111111111111 /* Moments.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F1111111111111111111111 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					D1111111111111111111111 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = F2111111111111111111111 /* Build configuration list for PBXProject "Moments" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "es-AR";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				"es-AR",
+				en,
+				Base,
+			);
+			mainGroup = 81111111111111111111111;
+			packageReferences = (
+				F3111111111111111111111 /* XCLocalSwiftPackageReference "MomentsEngine" */,
+			);
+			productRefGroup = 81111111111111111111111;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D1111111111111111111111 /* Moments */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D3111111111111111111111 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				31111111111111111111111 /* Assets.xcassets in Resources */,
+				31111111111111111111112 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D2111111111111111111111 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				11111111111111111111111 /* MomentsApp.swift in Sources */,
+				11111111111111111111112 /* ContentView.swift in Sources */,
+				11111111111111111111113 /* PersistedModels.swift in Sources */,
+				11111111111111111111114 /* PhotoLibraryService.swift in Sources */,
+				11111111111111111111115 /* PhotoAnalysisService.swift in Sources */,
+				11111111111111111111116 /* GeocodingService.swift in Sources */,
+				11111111111111111111117 /* CleanupViewModel.swift in Sources */,
+				11111111111111111111118 /* TimelineViewModel.swift in Sources */,
+				11111111111111111111119 /* PlacesViewModel.swift in Sources */,
+				1111111111111111111111A /* PeopleViewModel.swift in Sources */,
+				1111111111111111111111B /* CleanupView.swift in Sources */,
+				1111111111111111111111C /* TimelineView.swift in Sources */,
+				1111111111111111111111D /* PlacesView.swift in Sources */,
+				1111111111111111111111E /* PeopleView.swift in Sources */,
+				1111111111111111111111F /* SettingsView.swift in Sources */,
+				11111111111111111111120 /* AsyncPhotoThumbnail.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		G1111111111111111111111 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		G2111111111111111111111 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		G3111111111111111111111 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Moments/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Moments/Resources/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Moments;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.moments.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		G4111111111111111111111 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Moments/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Moments/Resources/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Moments;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.moments.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E1111111111111111111111 /* Build configuration list for PBXNativeTarget "Moments" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				G3111111111111111111111 /* Debug */,
+				G4111111111111111111111 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F2111111111111111111111 /* Build configuration list for PBXProject "Moments" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				G1111111111111111111111 /* Debug */,
+				G2111111111111111111111 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F3111111111111111111111 /* XCLocalSwiftPackageReference "MomentsEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = MomentsEngine;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		61111111111111111111111 /* MomentsEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MomentsEngine;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = F1111111111111111111111 /* Project object */;
+}

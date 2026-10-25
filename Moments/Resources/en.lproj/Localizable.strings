@@ -1,0 +1,122 @@
+/* Moments - English Localization */
+
+/* Tabs */
+"tab_timeline" = "Timeline";
+"tab_cleanup" = "Cleanup";
+"tab_places" = "Places";
+"tab_people" = "People";
+"tab_settings" = "Settings";
+
+/* Onboarding */
+"onboarding_title" = "Moments";
+"onboarding_subtitle" = "Your photo library, intelligently and privately organized.";
+"onboarding_feature_cleanup" = "Clean up duplicate and blurry photos";
+"onboarding_feature_timeline" = "Organize your memories into moments";
+"onboarding_feature_places" = "Discover the places you've visited";
+"onboarding_feature_people" = "Find photos by people";
+"onboarding_allow_access" = "Allow Photo Access";
+"onboarding_privacy_note" = "All analysis happens on your device. Your photos never leave your iPhone.";
+
+/* Scanning */
+"scanning_ready" = "Ready to scan";
+"scanning_in_progress" = "Scanning your library...";
+"scanning_description" = "We'll analyze your photo library to organize your memories.";
+"scanning_photos_count %lld" = "%lld photos indexed";
+"scanning_start_button" = "Start Scan";
+
+/* Cleanup */
+"cleanup_title" = "Cleanup";
+"cleanup_analyzing" = "Analyzing photos...";
+"cleanup_empty_title" = "All Clean";
+"cleanup_empty_description" = "We didn't find any photos you might want to delete.";
+"cleanup_categories_header" = "Categories";
+"cleanup_summary_title" = "Space you can free up";
+"cleanup_summary_space %@" = "Approximately %@";
+"cleanup_summary_items %lld" = "%lld items to review";
+
+"cleanup_category_screenshots" = "Screenshots";
+"cleanup_category_screen_recordings" = "Screen Recordings";
+"cleanup_category_blurry" = "Blurry Photos";
+"cleanup_category_overexposed" = "Overexposed Photos";
+"cleanup_category_underexposed" = "Underexposed Photos";
+"cleanup_category_duplicates" = "Duplicates";
+"cleanup_category_near_duplicates" = "Near Duplicates";
+"cleanup_category_bursts" = "Bursts";
+"cleanup_category_accidental" = "Accidental Shots";
+"cleanup_category_documents" = "Documents";
+"cleanup_category_large_videos" = "Large Videos";
+
+"cleanup_select_all" = "Select All";
+"cleanup_delete" = "Delete";
+"cleanup_selected %lld" = "%lld selected";
+"cleanup_delete_confirmation_title" = "Delete photos?";
+"cleanup_delete_confirmation_message %@" = "This will free up approximately %@. Photos will be moved to Recently Deleted.";
+"cleanup_delete_confirm %lld" = "Delete %lld photos";
+"cleanup_cancel" = "Cancel";
+"cleanup_error_title" = "Error";
+
+/* Swipe Review */
+"swipe_progress %lld %lld" = "%lld of %lld";
+"swipe_complete_title" = "Review Complete";
+"swipe_complete_description %lld" = "You selected %lld photos for deletion";
+
+/* Timeline */
+"timeline_title" = "Timeline";
+"timeline_loading" = "Loading moments...";
+"timeline_empty_title" = "No Moments";
+"timeline_empty_description" = "Your photos will appear organized here after scanning.";
+"timeline_on_this_day" = "On This Day";
+"timeline_trips" = "Trips";
+"timeline_photos_count %lld" = "%lld photos";
+
+/* Places */
+"places_title" = "Places";
+"places_loading" = "Loading places...";
+"places_empty_title" = "No Places";
+"places_empty_description" = "Photos with location will appear here.";
+
+/* People */
+"people_title" = "People";
+"people_loading" = "Loading people...";
+"people_empty_title" = "No People";
+"people_empty_description" = "People in your photos will appear here after analysis.";
+"people_search_prompt" = "Search people";
+"people_upcoming_birthdays" = "Upcoming Birthdays";
+"people_all" = "All People";
+
+/* Settings */
+"settings_title" = "Settings";
+"settings_library_section" = "Library";
+"settings_library_status" = "Library Status";
+"settings_show_hidden" = "Show Hidden Photos";
+"settings_rescan_library" = "Re-scan Library";
+"settings_rescan_confirmation_title" = "Re-scan library?";
+"settings_rescan_confirmation_message" = "This will analyze all photos again.";
+"settings_rescan_confirm" = "Re-scan";
+
+"settings_analysis_section" = "Analysis";
+"settings_analysis_quality" = "Analysis Quality";
+"settings_quality_fast" = "Fast";
+"settings_quality_balanced" = "Balanced";
+"settings_quality_detailed" = "Detailed";
+"settings_analysis_footer" = "Higher quality requires more time and battery.";
+
+"settings_storage_section" = "Storage";
+"settings_cache_size" = "Cache Size";
+"settings_clear_cache" = "Clear Cache";
+"settings_clear_cache_title" = "Clear cache?";
+"settings_clear_confirm" = "Clear";
+"settings_cancel" = "Cancel";
+
+"settings_about_section" = "About";
+"settings_version" = "Version";
+"settings_privacy_policy" = "Privacy Policy";
+"settings_terms" = "Terms of Use";
+
+/* Visit Frequency */
+"visit_frequency_daily" = "Daily";
+"visit_frequency_weekly" = "Weekly";
+"visit_frequency_monthly" = "Monthly";
+"visit_frequency_quarterly" = "Quarterly";
+"visit_frequency_yearly" = "Yearly";
+"visit_frequency_rare" = "Rare";
