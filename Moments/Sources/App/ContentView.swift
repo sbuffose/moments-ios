@@ -777,7 +777,7 @@ struct RepasoDelDiaView: View {
                 photo.cleanupCategoryRaw != "none" &&
                 photo.cleanupCategoryRaw != nil
             },
-            sortBy: [SortDescriptor(\.creationDate, order: .descending)]
+            sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
         )
         
         lowValuePhotos = (try? modelContext.fetch(descriptor)) ?? []
