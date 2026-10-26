@@ -39,6 +39,7 @@ targets:
       - path: Moments/Resources/es-AR.lproj
       - path: Moments/Resources/en.lproj
     info:
+      path: Moments/Resources/Info.plist
       properties:
         CFBundleDevelopmentRegion: es-AR
         CFBundleDisplayName: Moments
@@ -79,7 +80,7 @@ targets:
         DEVELOPMENT_ASSET_PATHS: '"Moments/Preview Content"'
         DEVELOPMENT_TEAM: R56Y2GZ2M9
         CODE_SIGN_STYLE: Automatic
-        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Moments/Resources/Info.plist
     dependencies:
       - package: MomentsEngine
     entitlements:
