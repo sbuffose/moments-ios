@@ -33,48 +33,46 @@ class PhotoLibraryService: ObservableObject {
         return status == .authorized || status == .limited
     }
     
-    // MARK: - Library Scanning (Resumable)
+    // MARK: - Library Scanning (Idempotent & Incremental)
     
     func scanLibrary(progressHandler: @escaping @Sendable (Double, Int) async -> Void) async {
         // Load or create analysis state for resumable indexing
         let analysisState = loadOrCreateAnalysisState()
         
-        // Check if we're resuming an interrupted scan
-        let isResuming = analysisState.indexingInProgress && analysisState.lastIndexedPhotoDate != nil
+        // Get existing photo IDs to avoid duplicates (idempotency)
+        let existingIds = fetchExistingPhotoIds()
+        let existingCount = existingIds.count
         
+        // Fetch all assets from PhotoKit
         let fetchOptions = PHFetchOptions()
         fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         fetchOptions.includeHiddenAssets = false
         fetchOptions.includeAssetSourceTypes = [.typeUserLibrary, .typeCloudShared, .typeiTunesSynced]
         
-        // If resuming, only fetch photos newer than the last indexed one
-        if isResuming, let lastDate = analysisState.lastIndexedPhotoDate {
-            fetchOptions.predicate = NSPredicate(format: "creationDate > %@", lastDate as NSDate)
+        // For incremental updates: only fetch photos newer than last scan
+        // This uses lastScanDate for completed scans (not lastIndexedPhotoDate which is for interrupted scans)
+        if let lastScan = analysisState.lastScanDate, !analysisState.indexingInProgress {
+            fetchOptions.predicate = NSPredicate(format: "modificationDate > %@", lastScan as NSDate)
         }
         
         let allAssets = PHAsset.fetchAssets(with: fetchOptions)
-        let totalCount = allAssets.count + analysisState.indexedCount
         
+        // If no new assets and we have a completed scan, report existing count
         guard allAssets.count > 0 else {
-            // Already fully indexed
             analysisState.indexingInProgress = false
             try? modelContext.save()
-            await progressHandler(1.0, analysisState.indexedCount)
+            await progressHandler(1.0, existingCount)
             return
         }
         
         // Mark indexing as in progress
         analysisState.indexingInProgress = true
-        analysisState.totalLibraryCount = totalCount
         try? modelContext.save()
         
-        let existingIds = fetchExistingPhotoIds()
-        
         let batchSize = 100
-        var processedCount = analysisState.indexedCount
+        var newlyInsertedCount = 0
+        var processedInThisScan = 0
         var photosToInsert: [PersistedPhoto] = []
-        var lastProcessedDate: Date?
-        var lastProcessedId: String?
         
         // Collect all assets first
         var assets: [PHAsset] = []
@@ -82,49 +80,49 @@ class PhotoLibraryService: ObservableObject {
             assets.append(asset)
         }
         
+        let totalToProcess = assets.count
+        
         // Process in batches on main actor
         for asset in assets {
+            // IDEMPOTENCY: Only insert if not already in database
             if !existingIds.contains(asset.localIdentifier) {
                 let photo = createPersistedPhoto(from: asset)
                 photosToInsert.append(photo)
+                newlyInsertedCount += 1
             }
             
-            lastProcessedDate = asset.creationDate
-            lastProcessedId = asset.localIdentifier
-            processedCount += 1
+            processedInThisScan += 1
             
-            if processedCount % batchSize == 0 {
+            // Batch insert every batchSize items
+            if processedInThisScan % batchSize == 0 {
                 for photo in photosToInsert {
                     modelContext.insert(photo)
                 }
                 photosToInsert.removeAll()
-                
-                // Update resumable state
-                analysisState.lastIndexedPhotoDate = lastProcessedDate
-                analysisState.lastIndexedPhotoId = lastProcessedId
-                analysisState.indexedCount = processedCount
-                
                 try? modelContext.save()
                 
-                let progress = Double(processedCount) / Double(totalCount)
-                await progressHandler(progress, processedCount)
+                // Progress based on photos processed in this scan
+                let progress = Double(processedInThisScan) / Double(totalToProcess)
+                // Report TOTAL photos in database (existing + newly inserted)
+                let totalInDatabase = existingCount + newlyInsertedCount
+                await progressHandler(progress, totalInDatabase)
             }
         }
         
-        // Insert remaining
+        // Insert remaining photos
         for photo in photosToInsert {
             modelContext.insert(photo)
         }
         
-        // Mark indexing complete
+        // Update analysis state with correct count
+        let finalCount = existingCount + newlyInsertedCount
         analysisState.indexingInProgress = false
-        analysisState.lastIndexedPhotoDate = lastProcessedDate
-        analysisState.lastIndexedPhotoId = lastProcessedId
-        analysisState.indexedCount = processedCount
+        analysisState.indexedCount = finalCount
+        analysisState.totalLibraryCount = finalCount
         analysisState.lastScanDate = Date()
         
         try? modelContext.save()
-        await progressHandler(1.0, processedCount)
+        await progressHandler(1.0, finalCount)
     }
     
     private func loadOrCreateAnalysisState() -> AnalysisState {
