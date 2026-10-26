@@ -280,6 +280,23 @@ jobs:
           
           echo "✓ Test photos seeded and permissions granted"
 
+      - name: Configure Simulator for Spanish
+        run: |
+          echo "Setting simulator to Spanish (es-AR)..."
+          
+          # Set simulator language and locale to Spanish Argentina
+          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLanguages -array "es-AR" "es" "en"
+          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLocale -string "es_AR"
+          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleTextDirection -bool NO
+          
+          # Reboot simulator for settings to take effect
+          xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
+          sleep 2
+          xcrun simctl boot "$DEVICE_ID"
+          sleep 5
+          
+          echo "✓ Simulator configured for Spanish (es-AR)"
+
       - name: Run UI Tests
         id: ui_tests
         continue-on-error: true
@@ -287,13 +304,16 @@ jobs:
           # Create screenshots directory
           mkdir -p "$RUNNER_TEMP/screenshots"
           
-          echo "Running UI tests..."
+          # Pre-grant photo permissions
+          xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
+          xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
+          
+          echo "Running UI tests with Spanish locale..."
           xcodebuild test \
             -project Moments.xcodeproj \
             -scheme Moments \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -only-testing:MomentsUITests/MomentsUITests/testCaptureKeyScreenshots \
-            -only-testing:MomentsUITests/MomentsUITests/testTabBarNavigation \
+            -only-testing:MomentsUITests \
             -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \

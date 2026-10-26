@@ -41,7 +41,10 @@ targets:
     info:
       path: Moments/Resources/Info.plist
       properties:
-        CFBundleDevelopmentRegion: es-AR
+        CFBundleDevelopmentRegion: es
+        CFBundleLocalizations:
+          - es
+          - en
         CFBundleDisplayName: Moments
         CFBundleExecutable: $(EXECUTABLE_NAME)
         CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)

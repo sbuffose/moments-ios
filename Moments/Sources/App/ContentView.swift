@@ -5,11 +5,17 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
-    @State private var showOnboarding = false
+    @State private var shouldSkipOnboarding: Bool = false
     
     var body: some View {
         Group {
-            if !appState.isLibraryAuthorized {
+            if shouldSkipOnboarding {
+                if !appState.hasCompletedInitialScan {
+                    ScanningView()
+                } else {
+                    MainTabView()
+                }
+            } else if !appState.isLibraryAuthorized {
                 OnboardingView()
             } else if !appState.hasCompletedInitialScan {
                 ScanningView()
@@ -17,16 +23,20 @@ struct ContentView: View {
                 MainTabView()
             }
         }
+        .preferredColorScheme(.dark)
         .onAppear {
-            checkFirstLaunch()
+            checkLaunchArguments()
         }
     }
     
-    private func checkFirstLaunch() {
-        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
-        if !hasLaunchedBefore {
-            showOnboarding = true
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+    private func checkLaunchArguments() {
+        if CommandLine.arguments.contains("-skipOnboarding") {
+            shouldSkipOnboarding = true
+            appState.isLibraryAuthorized = true
+            appState.hasCompletedInitialScan = true
+        }
+        if CommandLine.arguments.contains("-resetState") {
+            UserDefaults.standard.removeObject(forKey: "hasLaunchedBefore")
         }
     }
 }
@@ -35,38 +45,33 @@ struct ContentView: View {
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         TabView(selection: $appState.selectedTab) {
-            // Home feed with proactive cards
             HomeView()
                 .tabItem {
-                    Label("Inicio", systemImage: AppState.AppTab.home.icon)
+                    Label(String(localized: "tab_home"), systemImage: AppState.AppTab.home.icon)
                 }
                 .tag(AppState.AppTab.home)
                 .accessibilityIdentifier("home_tab")
             
-            // Conversational assistant
             AssistantView()
                 .tabItem {
-                    Label("Asistente", systemImage: AppState.AppTab.assistant.icon)
+                    Label(String(localized: "tab_assistant"), systemImage: AppState.AppTab.assistant.icon)
                 }
                 .tag(AppState.AppTab.assistant)
                 .accessibilityIdentifier("assistant_tab")
             
-            // Moments/Timeline
             MomentsListView()
                 .tabItem {
-                    Label("Momentos", systemImage: AppState.AppTab.moments.icon)
+                    Label(String(localized: "tab_moments"), systemImage: AppState.AppTab.moments.icon)
                 }
                 .tag(AppState.AppTab.moments)
                 .accessibilityIdentifier("moments_tab")
             
-            // Settings
             SettingsView()
                 .tabItem {
-                    Label("Ajustes", systemImage: AppState.AppTab.settings.icon)
+                    Label(String(localized: "tab_settings"), systemImage: AppState.AppTab.settings.icon)
                 }
                 .tag(AppState.AppTab.settings)
                 .accessibilityIdentifier("settings_tab")
@@ -76,28 +81,33 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - Moments List View (Timeline + People + Places combined)
+// MARK: - Moments List View
 
 struct MomentsListView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selectedSection: MomentsSection = .timeline
     
     enum MomentsSection: String, CaseIterable {
-        case timeline = "Línea"
-        case people = "Personas"
-        case places = "Lugares"
-        case dates = "Fechas"
+        case timeline, people, places, dates
+        
+        var localizedName: String {
+            switch self {
+            case .timeline: return String(localized: "tab_timeline")
+            case .people: return String(localized: "tab_people")
+            case .places: return String(localized: "tab_places")
+            case .dates: return String(localized: "tab_fechas")
+            }
+        }
     }
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Section picker
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: MomentsSpacing.xs) {
                         ForEach(MomentsSection.allCases, id: \.self) { section in
                             MomentsChip(
-                                label: section.rawValue,
+                                label: section.localizedName,
                                 isSelected: selectedSection == section,
                                 action: {
                                     withAnimation(MomentsAnimation.spring) {
@@ -111,7 +121,6 @@ struct MomentsListView: View {
                     .padding(.vertical, MomentsSpacing.sm)
                 }
                 
-                // Content
                 Group {
                     switch selectedSection {
                     case .timeline:
@@ -125,13 +134,13 @@ struct MomentsListView: View {
                     }
                 }
             }
-            .navigationTitle(Text("Momentos"))
+            .navigationTitle(Text(String(localized: "tab_moments")))
             .background(MomentsColors.bgPrimary)
         }
     }
 }
 
-// MARK: - Onboarding View (Multi-screen)
+// MARK: - Onboarding View (Dark Premium)
 
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
@@ -139,115 +148,127 @@ struct OnboardingView: View {
     @State private var isRequesting = false
     
     var body: some View {
-        VStack(spacing: 0) {
-            TabView(selection: $currentPage) {
-                // Screen 1: Save Space
-                OnboardingPageView(
-                    imageName: "externaldrive.badge.minus",
-                    imageColor: .blue,
-                    title: "onboarding_page1_title",
-                    subtitle: "onboarding_page1_subtitle",
-                    highlights: [
-                        ("trash.slash", "onboarding_page1_highlight1"),
-                        ("photo.stack", "onboarding_page1_highlight2"),
-                        ("sparkles", "onboarding_page1_highlight3")
-                    ]
-                )
-                .tag(0)
-                
-                // Screen 2: Relive Moments
-                OnboardingPageView(
-                    imageName: "heart.text.square",
-                    imageColor: .pink,
-                    title: "onboarding_page2_title",
-                    subtitle: "onboarding_page2_subtitle",
-                    highlights: [
-                        ("clock.arrow.circlepath", "onboarding_page2_highlight1"),
-                        ("gift", "onboarding_page2_highlight2"),
-                        ("airplane", "onboarding_page2_highlight3")
-                    ]
-                )
-                .tag(1)
-                
-                // Screen 3: Privacy
-                OnboardingPageView(
-                    imageName: "lock.iphone",
-                    imageColor: .green,
-                    title: "onboarding_page3_title",
-                    subtitle: "onboarding_page3_subtitle",
-                    highlights: [
-                        ("iphone", "onboarding_page3_highlight1"),
-                        ("network.slash", "onboarding_page3_highlight2"),
-                        ("hand.raised.fill", "onboarding_page3_highlight3")
-                    ]
-                )
-                .tag(2)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
+        ZStack {
+            MomentsColors.bgPrimary.ignoresSafeArea()
             
-            // Bottom section
-            VStack(spacing: 16) {
-                if currentPage < 2 {
-                    Button {
-                        withAnimation {
-                            currentPage += 1
-                        }
-                    } label: {
-                        Text("Continuar")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.accentColor)
-                            .cornerRadius(14)
-                    }
-                    .accessibilityIdentifier("onboarding_continue_button")
+            VStack(spacing: 0) {
+                TabView(selection: $currentPage) {
+                    OnboardingPageView(
+                        iconName: "externaldrive.badge.minus",
+                        iconGradient: [Color.blue, Color.purple],
+                        titleKey: "onboarding_page1_title",
+                        subtitleKey: "onboarding_page1_subtitle",
+                        highlights: [
+                            ("trash.slash", "onboarding_page1_highlight1"),
+                            ("photo.stack", "onboarding_page1_highlight2"),
+                            ("sparkles", "onboarding_page1_highlight3")
+                        ]
+                    )
+                    .tag(0)
                     
-                    Button {
-                        withAnimation {
-                            currentPage = 2
-                        }
-                    } label: {
-                        Text("Saltar")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityIdentifier("onboarding_skip_button")
-                } else {
-                    Button {
-                        requestAccess()
-                    } label: {
-                        if isRequesting {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                        } else {
-                            HStack {
-                                Image(systemName: "photo.on.rectangle.angled")
-                                Text("Comenzar")
-                            }
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.accentColor)
-                            .cornerRadius(14)
-                        }
-                    }
-                    .accessibilityIdentifier("onboarding_start_button")
-                    .disabled(isRequesting)
+                    OnboardingPageView(
+                        iconName: "heart.text.square",
+                        iconGradient: [Color.pink, Color.orange],
+                        titleKey: "onboarding_page2_title",
+                        subtitleKey: "onboarding_page2_subtitle",
+                        highlights: [
+                            ("clock.arrow.circlepath", "onboarding_page2_highlight1"),
+                            ("gift", "onboarding_page2_highlight2"),
+                            ("airplane", "onboarding_page2_highlight3")
+                        ]
+                    )
+                    .tag(1)
                     
-                    Text("onboarding_privacy_footer")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                    OnboardingPageView(
+                        iconName: "lock.iphone",
+                        iconGradient: [Color.green, Color.teal],
+                        titleKey: "onboarding_page3_title",
+                        subtitleKey: "onboarding_page3_subtitle",
+                        highlights: [
+                            ("iphone", "onboarding_page3_highlight1"),
+                            ("network.slash", "onboarding_page3_highlight2"),
+                            ("hand.raised.fill", "onboarding_page3_highlight3")
+                        ]
+                    )
+                    .tag(2)
                 }
+                .tabViewStyle(.page(indexDisplayMode: .always))
+                .indexViewStyle(.page(backgroundDisplayMode: .always))
+                
+                VStack(spacing: MomentsSpacing.md) {
+                    if currentPage < 2 {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentPage += 1
+                            }
+                        } label: {
+                            Text(String(localized: "onboarding_continue"))
+                                .font(MomentsTypography.buttonLarge)
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, MomentsSpacing.md)
+                                .background(
+                                    LinearGradient(
+                                        colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(MomentsCorners.large)
+                        }
+                        .accessibilityIdentifier("onboarding_continue_button")
+                        
+                        Button {
+                            withAnimation {
+                                currentPage = 2
+                            }
+                        } label: {
+                            Text(String(localized: "onboarding_skip"))
+                                .font(MomentsTypography.labelMedium)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                        }
+                        .accessibilityIdentifier("onboarding_skip_button")
+                    } else {
+                        Button {
+                            requestAccess()
+                        } label: {
+                            if isRequesting {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, MomentsSpacing.md)
+                            } else {
+                                HStack(spacing: MomentsSpacing.sm) {
+                                    Image(systemName: "photo.on.rectangle.angled")
+                                    Text(String(localized: "onboarding_allow_access"))
+                                }
+                                .font(MomentsTypography.buttonLarge)
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, MomentsSpacing.md)
+                            }
+                        }
+                        .background(
+                            LinearGradient(
+                                colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(MomentsCorners.large)
+                        .accessibilityIdentifier("onboarding_start_button")
+                        .disabled(isRequesting)
+                        
+                        Text(String(localized: "onboarding_privacy_footer"))
+                            .font(MomentsTypography.labelSmall)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                .padding(.bottom, MomentsSpacing.xl)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 32)
         }
     }
     
@@ -261,54 +282,73 @@ struct OnboardingView: View {
 }
 
 struct OnboardingPageView: View {
-    let imageName: String
-    let imageColor: Color
-    let title: LocalizedStringKey
-    let subtitle: LocalizedStringKey
-    let highlights: [(icon: String, text: LocalizedStringKey)]
+    let iconName: String
+    let iconGradient: [Color]
+    let titleKey: String
+    let subtitleKey: String
+    let highlights: [(icon: String, text: String)]
     
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: MomentsSpacing.xl) {
             Spacer()
             
             ZStack {
                 Circle()
-                    .fill(imageColor.opacity(0.15))
-                    .frame(width: 140, height: 140)
+                    .fill(
+                        LinearGradient(
+                            colors: iconGradient.map { $0.opacity(0.2) },
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 160, height: 160)
                 
-                Image(systemName: imageName)
-                    .font(.system(size: 64))
-                    .foregroundStyle(imageColor)
+                Image(systemName: iconName)
+                    .font(.system(size: 72, weight: .light))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: iconGradient,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
             
-            VStack(spacing: 12) {
-                Text(title)
-                    .font(.title)
-                    .fontWeight(.bold)
+            VStack(spacing: MomentsSpacing.sm) {
+                Text(String(localized: String.LocalizationValue(titleKey)))
+                    .font(MomentsTypography.titleLarge)
+                    .foregroundStyle(MomentsColors.textPrimary)
                     .multilineTextAlignment(.center)
                 
-                Text(subtitle)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                Text(String(localized: String.LocalizationValue(subtitleKey)))
+                    .font(MomentsTypography.bodyMedium)
+                    .foregroundStyle(MomentsColors.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, MomentsSpacing.lg)
             }
             
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: MomentsSpacing.md) {
                 ForEach(highlights, id: \.icon) { highlight in
-                    HStack(spacing: 16) {
+                    HStack(spacing: MomentsSpacing.md) {
                         Image(systemName: highlight.icon)
                             .font(.title3)
-                            .foregroundStyle(imageColor)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: iconGradient,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                             .frame(width: 32)
                         
-                        Text(highlight.text)
-                            .font(.subheadline)
+                        Text(String(localized: String.LocalizationValue(highlight.text)))
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.textPrimary)
                     }
                 }
             }
-            .padding(.horizontal, 48)
-            .padding(.top, 16)
+            .padding(.horizontal, MomentsSpacing.xl)
+            .padding(.top, MomentsSpacing.md)
             
             Spacer()
             Spacer()
@@ -316,60 +356,84 @@ struct OnboardingPageView: View {
     }
 }
 
-// MARK: - Scanning View
+// MARK: - Scanning View (Dark Premium)
 
 struct ScanningView: View {
     @EnvironmentObject var appState: AppState
     
     var body: some View {
-        VStack(spacing: 32) {
-            Spacer()
+        ZStack {
+            MomentsColors.bgPrimary.ignoresSafeArea()
             
-            VStack(spacing: 16) {
-                if appState.isScanning {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(1.5)
-                } else {
-                    Image(systemName: "photo.badge.plus")
-                        .font(.system(size: 60))
-                        .foregroundStyle(.tint)
-                }
-            }
-            
-            VStack(spacing: 8) {
-                Text(appState.isScanning ? "scanning_in_progress" : "scanning_ready")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+            VStack(spacing: MomentsSpacing.xl) {
+                Spacer()
                 
-                if appState.isScanning {
-                    Text("scanning_photos_count \(appState.totalPhotosIndexed)")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
+                ZStack {
+                    Circle()
+                        .fill(MomentsColors.accent.opacity(0.15))
+                        .frame(width: 160, height: 160)
                     
-                    ProgressView(value: appState.scanProgress)
-                        .progressViewStyle(.linear)
-                        .padding(.horizontal, 40)
-                } else {
-                    Text("scanning_description")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                    if appState.isScanning {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(2)
+                            .tint(MomentsColors.accent)
+                    } else {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 72, weight: .light))
+                            .foregroundStyle(MomentsColors.accent)
+                    }
                 }
-            }
-            
-            Spacer()
-            
-            if !appState.isScanning {
-                Button {
-                    appState.startScan()
-                } label: {
-                    Text("scanning_start_button")
+                
+                VStack(spacing: MomentsSpacing.sm) {
+                    Text(appState.isScanning 
+                         ? String(localized: "scanning_in_progress") 
+                         : String(localized: "scanning_ready"))
+                        .font(MomentsTypography.titleMedium)
+                        .foregroundStyle(MomentsColors.textPrimary)
+                    
+                    if appState.isScanning {
+                        Text(String(localized: "scanning_photos_count \(appState.totalPhotosIndexed)"))
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                        
+                        ProgressView(value: appState.scanProgress)
+                            .progressViewStyle(.linear)
+                            .tint(MomentsColors.accent)
+                            .padding(.horizontal, MomentsSpacing.xl)
+                    } else {
+                        Text(String(localized: "scanning_description"))
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, MomentsSpacing.lg)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .padding(.bottom, 32)
+                
+                Spacer()
+                
+                if !appState.isScanning {
+                    Button {
+                        appState.startScan()
+                    } label: {
+                        Text(String(localized: "scanning_start_button"))
+                            .font(MomentsTypography.buttonLarge)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, MomentsSpacing.md)
+                            .background(
+                                LinearGradient(
+                                    colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(MomentsCorners.large)
+                    }
+                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    .padding(.bottom, MomentsSpacing.xl)
+                    .accessibilityIdentifier("start_scan_button")
+                }
             }
         }
     }
