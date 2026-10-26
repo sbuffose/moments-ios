@@ -55,7 +55,7 @@ class CalendarService: ObservableObject {
         } else {
             hasAccess = authorizationStatus == .authorized
         }
-        guard hasAccess else {
+        if !hasAccess {
             let granted = await requestAuthorization()
             if !granted { return false }
         }
