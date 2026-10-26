@@ -337,7 +337,11 @@ extension BackgroundTaskManager {
         // iOS 26+ allows BGContinuedProcessingTask with progress UI
         // This shows a system UI when the app is backgrounded during processing
         
-        let request = BGContinuedProcessingTaskRequest(identifier: scanTaskIdentifier)
+        let request = BGContinuedProcessingTaskRequest(
+            identifier: scanTaskIdentifier,
+            title: "Analizando fotos",
+            subtitle: "Moments está organizando tu biblioteca"
+        )
         
         do {
             try BGTaskScheduler.shared.submit(request)
