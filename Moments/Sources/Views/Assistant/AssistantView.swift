@@ -58,6 +58,7 @@ struct AssistantView: View {
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
+        .accessibilityIdentifier("assistant.root")
     }
     
     // MARK: - Input Bar
@@ -276,6 +277,7 @@ struct MessageView: View {
             .momentsSecondaryButton()
         }
         .momentsCard()
+        .accessibilityIdentifier("assistant.answerCard")
     }
 }
 

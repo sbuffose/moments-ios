@@ -109,10 +109,27 @@ class AppState: ObservableObject {
     @Published var scanProgress: Double = 0
     @Published var totalPhotosIndexed = 0
     @Published var hasCompletedInitialScan = false
+    @Published var hasCompletedOnboarding = false
     @Published var selectedTab: AppTab = .home
     
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
+    
+    private let onboardingCompletedKey = "com.moments.hasCompletedOnboarding"
+    
+    init() {
+        self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingCompletedKey)
+    }
+    
+    func completeOnboarding() {
+        hasCompletedOnboarding = true
+        UserDefaults.standard.set(true, forKey: onboardingCompletedKey)
+    }
+    
+    func resetOnboarding() {
+        hasCompletedOnboarding = false
+        UserDefaults.standard.removeObject(forKey: onboardingCompletedKey)
+    }
     
     enum AppTab: String, CaseIterable, Sendable {
         case home = "home"

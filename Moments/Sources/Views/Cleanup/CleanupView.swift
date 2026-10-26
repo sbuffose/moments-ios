@@ -76,6 +76,7 @@ struct CleanupView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
+        .accessibilityIdentifier("cleanup.root")
     }
     
     // MARK: - Space Card
@@ -653,6 +654,7 @@ struct CleanupReviewView: View {
         }
         .navigationTitle(Text("cleanup_review_title"))
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("review.root")
         .toolbar {
             if viewModel.selectedCount > 0 {
                 ToolbarItem(placement: .bottomBar) {

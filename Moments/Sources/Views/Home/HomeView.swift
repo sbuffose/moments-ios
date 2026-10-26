@@ -52,6 +52,7 @@ struct HomeView: View {
                 }
             }
         }
+        .accessibilityIdentifier("home.root")
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
