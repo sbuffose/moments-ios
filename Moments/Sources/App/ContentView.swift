@@ -111,10 +111,17 @@ struct FirstRunExplanationSheet: View {
                             )
                             
                             ExplanationRow(
-                                icon: "clock",
+                                icon: "arrow.triangle.2.circlepath",
                                 iconColor: .orange,
-                                title: "Puede tardar unos minutos",
-                                description: "Depende del tamaño de tu biblioteca. Podés usar la app mientras tanto."
+                                title: "Continúa en segundo plano",
+                                description: "El análisis sigue aunque cierres la app. Es más rápido con el teléfono cargando."
+                            )
+                            
+                            ExplanationRow(
+                                icon: "bell.badge",
+                                iconColor: .purple,
+                                title: "Te avisamos cuando termine",
+                                description: "Recibirás una notificación cuando tu biblioteca esté lista."
                             )
                             
                             ExplanationRow(

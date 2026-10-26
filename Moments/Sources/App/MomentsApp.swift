@@ -5,12 +5,14 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 import BackgroundTasks
+import Photos
 
 @main
 struct MomentsApp: App {
     let container: ModelContainer
     
     @StateObject private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
     
     init() {
         let schema = Schema([
@@ -42,6 +44,8 @@ struct MomentsApp: App {
         } else {
             container = try! ModelContainer(for: schema)
         }
+        
+        BackgroundTaskManager.shared.registerBackgroundTasks()
     }
     
     private static func createContainer(schema: Schema, inMemory: Bool) -> ModelContainer? {
@@ -96,6 +100,31 @@ struct MomentsApp: App {
                 .onAppear {
                     appState.initialize(modelContext: container.mainContext)
                 }
+                .onChange(of: scenePhase) { oldPhase, newPhase in
+                    handleScenePhaseChange(from: oldPhase, to: newPhase)
+                }
+        }
+    }
+    
+    private func handleScenePhaseChange(from oldPhase: ScenePhase, to newPhase: ScenePhase) {
+        switch newPhase {
+        case .background:
+            if appState.isIndexing || appState.isAnalyzing {
+                BackgroundTaskManager.shared.beginBackgroundTaskForAppExit()
+                
+                if #available(iOS 26.0, *) {
+                    BackgroundTaskManager.shared.submitContinuedProcessingTask()
+                } else {
+                    BackgroundTaskManager.shared.scheduleScanTaskIfNeeded()
+                    BackgroundTaskManager.shared.scheduleAnalysisTaskIfNeeded()
+                }
+            }
+        case .active:
+            BackgroundTaskManager.shared.endBackgroundTask()
+        case .inactive:
+            break
+        @unknown default:
+            break
         }
     }
 }
@@ -188,13 +217,25 @@ class AppState: ObservableObject {
         photoLibraryService = PhotoLibraryService(modelContext: modelContext)
         analysisService = PhotoAnalysisService(modelContext: modelContext)
         
+        if let photoService = photoLibraryService, let analysisService = analysisService {
+            BackgroundTaskManager.shared.configure(
+                photoLibraryService: photoService,
+                analysisService: analysisService
+            )
+        }
+        
         Task {
             await checkAuthorizationStatus()
             await checkNotificationStatus()
             
             // If already onboarded, start background processing
             if hasCompletedOnboarding && isLibraryAuthorized {
-                startBackgroundIndexingAndAnalysis()
+                // Check if there's pending work from a previous interrupted scan
+                if BackgroundTaskManager.shared.hasPendingWork {
+                    resumeBackgroundProcessing()
+                } else {
+                    startBackgroundIndexingAndAnalysis()
+                }
             }
             
             // Schedule daily review if enabled
@@ -253,18 +294,68 @@ class AppState: ObservableObject {
         isIndexing = true
         indexingProgress = 0
         
-        // Start indexing in background - this does NOT block the UI
+        // Start tracking in BackgroundTaskManager
+        let fetchOptions = PHFetchOptions()
+        let totalPhotos = PHAsset.fetchAssets(with: fetchOptions).count
+        BackgroundTaskManager.shared.startScan(totalPhotos: totalPhotos)
+        
+        // Start indexing in background with checkpointing
         indexingTask = Task { @MainActor in
-            await photoService.scanLibrary { progress, indexed in
-                Task { @MainActor in
-                    self.indexingProgress = progress
-                    self.totalPhotosIndexed = indexed
+            await photoService.scanLibraryWithCheckpointing(
+                checkpointHandler: { assetId in
+                    BackgroundTaskManager.shared.markIndexed(assetId: assetId)
+                },
+                isAlreadyIndexed: { assetId in
+                    BackgroundTaskManager.shared.isAlreadyIndexed(assetId)
+                },
+                progressHandler: { progress, indexed in
+                    Task { @MainActor in
+                        self.indexingProgress = progress
+                        self.totalPhotosIndexed = indexed
+                    }
                 }
-            }
+            )
             
             self.isIndexing = false
             // Immediately start analysis after indexing
             self.startBackgroundAnalysis()
+        }
+    }
+    
+    func resumeBackgroundProcessing() {
+        guard let photoService = photoLibraryService else { return }
+        
+        indexingTask?.cancel()
+        analysisTask?.cancel()
+        
+        let progress = BackgroundTaskManager.shared.getCheckpointProgress()
+        
+        if progress.indexed < progress.total {
+            isIndexing = true
+            indexingProgress = Double(progress.indexed) / Double(max(progress.total, 1))
+            totalPhotosIndexed = progress.indexed
+            
+            indexingTask = Task { @MainActor in
+                await photoService.scanLibraryWithCheckpointing(
+                    checkpointHandler: { assetId in
+                        BackgroundTaskManager.shared.markIndexed(assetId: assetId)
+                    },
+                    isAlreadyIndexed: { assetId in
+                        BackgroundTaskManager.shared.isAlreadyIndexed(assetId)
+                    },
+                    progressHandler: { progress, indexed in
+                        Task { @MainActor in
+                            self.indexingProgress = progress
+                            self.totalPhotosIndexed = indexed
+                        }
+                    }
+                )
+                
+                self.isIndexing = false
+                self.startBackgroundAnalysis()
+            }
+        } else {
+            startBackgroundAnalysis()
         }
     }
     
@@ -281,15 +372,21 @@ class AppState: ObservableObject {
         analysisTask = Task { @MainActor in
             self.isAnalyzing = true
             
-            await analysisService.analyzePhotosInBackground { analyzed, total, progress in
+            let success = await analysisService.analyzeUnprocessedPhotosInBackground { progress in
                 Task { @MainActor in
-                    self.totalPhotosAnalyzed = analyzed
-                    self.totalPhotosToAnalyze = total
                     self.analysisProgress = progress
+                    // Estimate counts based on progress
+                    let checkpointProgress = BackgroundTaskManager.shared.getCheckpointProgress()
+                    self.totalPhotosAnalyzed = checkpointProgress.analyzed
+                    self.totalPhotosToAnalyze = checkpointProgress.indexed
                 }
             }
             
             self.isAnalyzing = false
+            
+            if success {
+                BackgroundTaskManager.shared.completeScan()
+            }
             
             // Calculate estimated savings and send notification
             await self.calculateEstimatedSavings()
