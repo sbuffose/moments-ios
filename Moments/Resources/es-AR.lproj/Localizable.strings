@@ -269,3 +269,118 @@
 /* Cataloging Downloaded */
 "cataloging_downloaded_count %lld" = "Tenés %lld imágenes descargadas";
 "cataloging_review_cleanup" = "¿Las revisás para limpiar?";
+
+/* Cataloging - Important Dates */
+"cataloging_confirm_birthday" = "Confirmar cumple";
+"cataloging_confirm_wedding" = "Confirmar boda";
+"cataloging_confirm_child" = "Confirmar";
+"cataloging_confirm_anniversary" = "Confirmar";
+"cataloging_birthday_question %@ %@" = "¿El %@ es el cumpleaños de %@?";
+"cataloging_wedding_question %@ %@" = "¿Esto fue el casamiento de %@? (%@)";
+"cataloging_child_question %@" = "¿%@ es hijo/a de alguien que conocés?";
+"cataloging_detected_years %lld" = "Detectado en %lld años diferentes";
+"cataloging_detected_photos %lld" = "Detectado en %lld fotos";
+"cataloging_growing_over_years" = "Aparece creciendo a lo largo de los años";
+"cataloging_event_question %@" = "¿Hay un evento importante el %@?";
+"cataloging_unknown_person" = "esta persona";
+"cataloging_this_child" = "este/a niño/a";
+"cataloging_whose_birthday" = "¿De quién es el cumpleaños?";
+"cataloging_optional_birth_year" = "Año de nacimiento (opcional)";
+"cataloging_birth_year" = "Año";
+"cataloging_couple_names" = "Nombres de la pareja";
+"cataloging_person1_name" = "Nombre de la primera persona";
+"cataloging_person2_name" = "Nombre de la segunda persona";
+"cataloging_wedding_year" = "Año de la boda";
+"cataloging_wedding_year_header" = "¿En qué año se casaron?";
+"cataloging_child_name" = "Nombre del niño/a";
+"cataloging_child_name_placeholder" = "Nombre";
+"cataloging_whose_child" = "¿De quién es hijo/a?";
+"cataloging_parent_name_placeholder" = "Nombre del padre/madre";
+"cataloging_child_birth_year" = "Año de nacimiento";
+"cataloging_child_explanation" = "Detectamos que esta persona aparece creciendo en fotos con los mismos adultos.";
+
+/* Fechas Tab */
+"tab_fechas" = "Fechas";
+
+/* Fechas View */
+"fechas_title" = "Fechas";
+"fechas_loading" = "Cargando fechas...";
+"fechas_empty_title" = "Sin fechas importantes";
+"fechas_empty_description" = "Analizá tus fotos o importá cumpleaños de Contactos para ver fechas importantes.";
+"fechas_scan_photos" = "Analizar fotos";
+"fechas_import_contacts" = "Importar de Contactos";
+"fechas_refresh" = "Actualizar";
+"fechas_settings" = "Configuración";
+"fechas_upcoming_header" = "Próximos 30 días";
+"fechas_upcoming_footer" = "Tocá una fecha para ver fotos de años anteriores.";
+"fechas_unconfirmed_header" = "Por confirmar";
+"fechas_unconfirmed_footer" = "Estas fechas fueron detectadas en tus fotos.";
+"fechas_not_this" = "No es esto";
+"fechas_confirm" = "Confirmar";
+
+/* Notification Settings */
+"fechas_settings_title" = "Notificaciones";
+"fechas_notifications_enabled" = "Activar notificaciones";
+"fechas_notifications_footer" = "Recibí recordatorios antes de cada fecha importante.";
+"fechas_lead_days %lld" = "Avisar %lld días antes";
+"fechas_notify_on_day" = "Notificar el mismo día";
+"fechas_timing_header" = "Cuándo avisar";
+"fechas_event_types_header" = "Tipos de eventos";
+"fechas_notify_birthdays" = "Cumpleaños";
+"fechas_notify_anniversaries" = "Aniversarios";
+"fechas_notify_child_birthdays" = "Cumpleaños de hijos";
+"fechas_done" = "Listo";
+"fechas_cancel" = "Cancelar";
+
+/* Contacts Import */
+"fechas_contacts_title" = "Importar de Contactos";
+"fechas_contacts_permission_title" = "Acceso a Contactos";
+"fechas_contacts_permission_description" = "Para importar cumpleaños, necesitamos acceso a tus contactos. Todo se procesa en tu dispositivo.";
+"fechas_allow_contacts" = "Permitir acceso";
+"fechas_import_ready_title" = "Listo para importar";
+"fechas_import_ready_description" = "Importaremos los cumpleaños de tus contactos y los vincularemos con las personas en tus fotos.";
+"fechas_import_now" = "Importar ahora";
+"fechas_importing" = "Importando...";
+"fechas_import_complete_title" = "Importación completada";
+"fechas_import_count %lld" = "Se importaron %lld cumpleaños";
+
+/* Memory Reel */
+"memory_reel_title" = "Recuerdos";
+"memory_reel_loading" = "Cargando fotos...";
+"memory_reel_no_photos" = "Sin fotos";
+"memory_reel_no_photos_description" = "No encontramos fotos de esta fecha en años anteriores.";
+"memory_reel_memories_title" = "Fotos de años anteriores";
+"memory_reel_add_calendar" = "Agregar al calendario";
+"memory_reel_in_calendar" = "Ya está en el calendario";
+"memory_reel_notifications_on" = "Notificaciones activadas";
+"memory_reel_turn_off" = "Desactivar";
+"memory_reel_enable_notifications" = "Activar notificaciones";
+"memory_reel_added_to_calendar" = "Agregado al calendario";
+
+/* Important Date Types */
+"important_date_type_birthday" = "Cumpleaños";
+"important_date_type_wedding" = "Boda";
+"important_date_type_anniversary" = "Aniversario";
+"important_date_type_childBirthday" = "Cumpleaños (hijo/a)";
+"important_date_type_other" = "Otro";
+
+/* Important Date Sources */
+"important_date_source_photos" = "Detectado en fotos";
+"important_date_source_contacts" = "Importado de Contactos";
+"important_date_source_user" = "Agregado manualmente";
+
+/* Important Date Display */
+"important_date_unknown_person" = "Persona";
+"important_date_unknown_couple" = "Pareja";
+"important_date_unknown_child" = "Niño/a";
+"important_date_event" = "Evento";
+
+/* Relationship Types */
+"relationship_type_partner" = "Pareja";
+"relationship_type_spouse" = "Esposo/a";
+"relationship_type_child" = "Hijo/a";
+"relationship_type_parent" = "Padre/Madre";
+"relationship_type_sibling" = "Hermano/a";
+"relationship_type_friend" = "Amigo/a";
+"relationship_type_colleague" = "Colega";
+"relationship_type_other" = "Otro";

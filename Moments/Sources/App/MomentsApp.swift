@@ -20,6 +20,8 @@ struct MomentsApp: App {
             PersistedFaceDetection.self,
             PersistedRecurringEvent.self,
             PersistedCatalogingCard.self,
+            PersistedImportantDate.self,
+            PersistedNotificationSettings.self,
             AnalysisState.self
         ])
         
@@ -111,16 +113,16 @@ class AppState: ObservableObject {
     enum AppTab: String, CaseIterable, Sendable {
         case cleanup = "cleanup"
         case search = "search"
+        case fechas = "fechas"
         case timeline = "timeline"
-        case places = "places"
         case people = "people"
         
         var icon: String {
             switch self {
             case .cleanup: return "sparkles"
             case .search: return "magnifyingglass"
+            case .fechas: return "gift"
             case .timeline: return "calendar"
-            case .places: return "map"
             case .people: return "person.2"
             }
         }

@@ -51,17 +51,17 @@ struct MainTabView: View {
                 }
                 .tag(AppState.AppTab.search)
             
+            FechasView()
+                .tabItem {
+                    Label(String(localized: "tab_fechas"), systemImage: AppState.AppTab.fechas.icon)
+                }
+                .tag(AppState.AppTab.fechas)
+            
             TimelineView()
                 .tabItem {
                     Label(String(localized: "tab_timeline"), systemImage: AppState.AppTab.timeline.icon)
                 }
                 .tag(AppState.AppTab.timeline)
-            
-            PlacesView()
-                .tabItem {
-                    Label(String(localized: "tab_places"), systemImage: AppState.AppTab.places.icon)
-                }
-                .tag(AppState.AppTab.places)
             
             PeopleView()
                 .tabItem {

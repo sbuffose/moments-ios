@@ -147,6 +147,71 @@ enum CatalogingCardType: String, Codable, Sendable {
     case messagingAppPhotos = "messagingAppPhotos"
     case recurringDate = "recurringDate"
     case downloadedContent = "downloadedContent"
+    case confirmBirthday = "confirmBirthday"
+    case confirmWedding = "confirmWedding"
+    case confirmChildRelation = "confirmChildRelation"
+    case confirmAnniversary = "confirmAnniversary"
+}
+
+// MARK: - Important Date Types
+
+enum ImportantDateType: String, Codable, CaseIterable, Sendable {
+    case birthday = "birthday"
+    case wedding = "wedding"
+    case anniversary = "anniversary"
+    case childBirthday = "childBirthday"
+    case other = "other"
+    
+    var localizedKey: String {
+        "important_date_type_\(rawValue)"
+    }
+    
+    var iconName: String {
+        switch self {
+        case .birthday: return "gift.fill"
+        case .wedding: return "heart.fill"
+        case .anniversary: return "heart.circle.fill"
+        case .childBirthday: return "figure.and.child.holdinghands"
+        case .other: return "calendar"
+        }
+    }
+    
+    var notificationEmoji: String {
+        switch self {
+        case .birthday: return "🎂"
+        case .wedding: return "💒"
+        case .anniversary: return "💑"
+        case .childBirthday: return "🎈"
+        case .other: return "📅"
+        }
+    }
+}
+
+enum ImportantDateSource: String, Codable, CaseIterable, Sendable {
+    case photos = "photos"
+    case contacts = "contacts"
+    case user = "user"
+    
+    var localizedKey: String {
+        "important_date_source_\(rawValue)"
+    }
+}
+
+// MARK: - Relationship Type
+
+enum RelationshipType: String, Codable, CaseIterable, Sendable {
+    case partner = "partner"
+    case spouse = "spouse"
+    case child = "child"
+    case parent = "parent"
+    case sibling = "sibling"
+    case friend = "friend"
+    case colleague = "colleague"
+    case other = "other"
+    
+    var localizedKey: String {
+        "relationship_type_\(rawValue)"
+    }
 }
 
 // MARK: - Foto Persistida
@@ -466,7 +531,14 @@ final class PersistedPerson {
     var faceCount: Int
     var birthdayMonth: Int?
     var birthdayDay: Int?
+    var birthYear: Int?
     var isFavorite: Bool
+    
+    // Relationships
+    var partnerId: String?
+    var childIds: String?
+    var parentIds: String?
+    var contactIdentifier: String?
     
     init(
         id: String = UUID().uuidString,
@@ -477,7 +549,11 @@ final class PersistedPerson {
         faceCount: Int = 0,
         birthdayMonth: Int? = nil,
         birthdayDay: Int? = nil,
-        isFavorite: Bool = false
+        birthYear: Int? = nil,
+        isFavorite: Bool = false,
+        partnerId: String? = nil,
+        childIds: [String] = [],
+        parentIds: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -487,7 +563,11 @@ final class PersistedPerson {
         self.faceCount = faceCount
         self.birthdayMonth = birthdayMonth
         self.birthdayDay = birthdayDay
+        self.birthYear = birthYear
         self.isFavorite = isFavorite
+        self.partnerId = partnerId
+        self.childIds = (try? JSONEncoder().encode(childIds).base64EncodedString()) ?? "[]"
+        self.parentIds = (try? JSONEncoder().encode(parentIds).base64EncodedString()) ?? "[]"
     }
     
     var photoIdArray: [String] {
@@ -496,7 +576,40 @@ final class PersistedPerson {
         return ids
     }
     
+    var childIdArray: [String] {
+        guard let data = Data(base64Encoded: childIds ?? ""),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return ids
+    }
+    
+    var parentIdArray: [String] {
+        guard let data = Data(base64Encoded: parentIds ?? ""),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return ids
+    }
+    
     var isNamed: Bool { name != nil && !name!.isEmpty }
+    
+    var hasBirthday: Bool { birthdayMonth != nil && birthdayDay != nil }
+    
+    var birthdayDate: DateComponents? {
+        guard let month = birthdayMonth, let day = birthdayDay else { return nil }
+        return DateComponents(month: month, day: day)
+    }
+    
+    var currentAge: Int? {
+        guard let year = birthYear else { return nil }
+        let currentYear = Calendar.current.component(.year, from: Date())
+        return currentYear - year
+    }
+    
+    func setChildIds(_ ids: [String]) {
+        childIds = (try? JSONEncoder().encode(ids).base64EncodedString()) ?? "[]"
+    }
+    
+    func setParentIds(_ ids: [String]) {
+        parentIds = (try? JSONEncoder().encode(ids).base64EncodedString()) ?? "[]"
+    }
 }
 
 // MARK: - Detección de Rostro Persistida
@@ -575,7 +688,7 @@ final class PersistedCatalogingCard {
     }
 }
 
-// MARK: - Evento Recurrente Persistido
+// MARK: - Evento Recurrente Persistido (legacy)
 
 @Model
 final class PersistedRecurringEvent {
@@ -612,6 +725,172 @@ final class PersistedRecurringEvent {
         self.confidence = confidence
         self.yearsDetected = yearsDetected
         self.isUserConfirmed = false
+    }
+}
+
+// MARK: - Important Date (birthdays, anniversaries, etc.)
+
+@Model
+final class PersistedImportantDate {
+    @Attribute(.unique) var id: String
+    var dateTypeRaw: String
+    var sourceRaw: String
+    var month: Int
+    var day: Int
+    var year: Int?
+    var personId: String?
+    var secondPersonId: String?
+    var personName: String?
+    var secondPersonName: String?
+    var childOfPersonId: String?
+    var confidence: Double
+    var yearsDetected: Int
+    var photoIdsJson: String?
+    var isUserConfirmed: Bool
+    var isDismissed: Bool
+    var notificationEnabled: Bool
+    var notificationLeadDays: Int
+    var calendarEventId: String?
+    var detectedLabels: String?
+    var detectedOcrText: String?
+    var createdAt: Date
+    var lastUpdatedAt: Date
+    
+    init(
+        id: String = UUID().uuidString,
+        dateType: ImportantDateType = .birthday,
+        source: ImportantDateSource = .photos,
+        month: Int,
+        day: Int,
+        year: Int? = nil,
+        personId: String? = nil,
+        secondPersonId: String? = nil,
+        personName: String? = nil,
+        secondPersonName: String? = nil,
+        childOfPersonId: String? = nil,
+        confidence: Double = 0.0,
+        yearsDetected: Int = 0,
+        photoIds: [String] = [],
+        notificationLeadDays: Int = 3
+    ) {
+        self.id = id
+        self.dateTypeRaw = dateType.rawValue
+        self.sourceRaw = source.rawValue
+        self.month = month
+        self.day = day
+        self.year = year
+        self.personId = personId
+        self.secondPersonId = secondPersonId
+        self.personName = personName
+        self.secondPersonName = secondPersonName
+        self.childOfPersonId = childOfPersonId
+        self.confidence = confidence
+        self.yearsDetected = yearsDetected
+        self.photoIdsJson = (try? JSONEncoder().encode(photoIds).base64EncodedString()) ?? "[]"
+        self.isUserConfirmed = false
+        self.isDismissed = false
+        self.notificationEnabled = false
+        self.notificationLeadDays = notificationLeadDays
+        self.createdAt = Date()
+        self.lastUpdatedAt = Date()
+    }
+    
+    var dateType: ImportantDateType {
+        get { ImportantDateType(rawValue: dateTypeRaw) ?? .birthday }
+        set { dateTypeRaw = newValue.rawValue }
+    }
+    
+    var source: ImportantDateSource {
+        get { ImportantDateSource(rawValue: sourceRaw) ?? .photos }
+        set { sourceRaw = newValue.rawValue }
+    }
+    
+    var photoIdArray: [String] {
+        guard let data = Data(base64Encoded: photoIdsJson ?? ""),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return ids
+    }
+    
+    func setPhotoIds(_ ids: [String]) {
+        photoIdsJson = (try? JSONEncoder().encode(ids).base64EncodedString()) ?? "[]"
+    }
+    
+    var displayDate: String {
+        String(format: "%02d/%02d", day, month)
+    }
+    
+    var displayName: String {
+        switch dateType {
+        case .birthday:
+            return personName ?? String(localized: "important_date_unknown_person")
+        case .wedding, .anniversary:
+            if let name1 = personName, let name2 = secondPersonName {
+                return "\(name1) y \(name2)"
+            }
+            return personName ?? String(localized: "important_date_unknown_couple")
+        case .childBirthday:
+            return personName ?? String(localized: "important_date_unknown_child")
+        case .other:
+            return personName ?? String(localized: "important_date_event")
+        }
+    }
+    
+    var anniversaryYear: Int? {
+        guard let eventYear = year else { return nil }
+        let currentYear = Calendar.current.component(.year, from: Date())
+        return currentYear - eventYear
+    }
+    
+    var nextOccurrence: Date? {
+        let calendar = Calendar.current
+        let now = Date()
+        let currentYear = calendar.component(.year, from: now)
+        
+        var components = DateComponents()
+        components.month = month
+        components.day = day
+        components.year = currentYear
+        
+        guard let thisYear = calendar.date(from: components) else { return nil }
+        
+        if thisYear >= now {
+            return thisYear
+        } else {
+            components.year = currentYear + 1
+            return calendar.date(from: components)
+        }
+    }
+    
+    var daysUntilNext: Int? {
+        guard let next = nextOccurrence else { return nil }
+        let calendar = Calendar.current
+        let now = calendar.startOfDay(for: Date())
+        let nextDay = calendar.startOfDay(for: next)
+        return calendar.dateComponents([.day], from: now, to: nextDay).day
+    }
+}
+
+// MARK: - Notification Settings
+
+@Model
+final class PersistedNotificationSettings {
+    @Attribute(.unique) var id: String
+    var notificationsEnabled: Bool
+    var defaultLeadDays: Int
+    var notifyOnDay: Bool
+    var notifyBirthdays: Bool
+    var notifyAnniversaries: Bool
+    var notifyChildBirthdays: Bool
+    var lastPermissionRequest: Date?
+    
+    init(id: String = "main") {
+        self.id = id
+        self.notificationsEnabled = false
+        self.defaultLeadDays = 3
+        self.notifyOnDay = true
+        self.notifyBirthdays = true
+        self.notifyAnniversaries = true
+        self.notifyChildBirthdays = true
     }
 }
 

@@ -71,6 +71,10 @@ targets:
         NSPhotoLibraryAddUsageDescription: "Moments puede guardar fotos editadas en tu biblioteca."
         NSLocationWhenInUseUsageDescription: "Moments usa tu ubicación actual para identificar tu ubicación habitual y detectar viajes en tus fotos."
         NSFaceIDUsageDescription: "Moments puede usar Face ID para proteger el acceso a fotos privadas."
+        NSContactsUsageDescription: "Moments puede importar cumpleaños de tus contactos para recordarte fechas importantes. Todo se procesa localmente."
+        NSCalendarsUsageDescription: "Moments puede agregar fechas importantes a tu calendario para que no las olvides."
+        NSCalendarsWriteOnlyAccessUsageDescription: "Moments puede agregar fechas importantes a tu calendario para que no las olvides."
+        NSUserNotificationsUsageDescription: "Moments puede enviarte recordatorios antes de los cumpleaños y aniversarios de tus amigos."
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

@@ -182,14 +182,63 @@ class CatalogingService: ObservableObject {
     private func generateRecurringDateCards() async -> [CatalogingCard] {
         guard let context = modelContext else { return [] }
         
-        // Find recurring patterns
-        let descriptor = FetchDescriptor<PersistedPhoto>(
+        var cards: [CatalogingCard] = []
+        
+        let importantDateDescriptor = FetchDescriptor<PersistedImportantDate>(
+            predicate: #Predicate { !$0.isUserConfirmed && !$0.isDismissed }
+        )
+        
+        let unconfirmedDates = (try? context.fetch(importantDateDescriptor)) ?? []
+        
+        for date in unconfirmedDates.prefix(5) {
+            let cardType: CatalogingCardType
+            let title: String
+            let subtitle: String
+            
+            switch date.dateType {
+            case .birthday:
+                cardType = .confirmBirthday
+                let name = date.personName ?? String(localized: "cataloging_unknown_person")
+                title = String(localized: "cataloging_birthday_question \(date.displayDate) \(name)")
+                subtitle = String(localized: "cataloging_detected_years \(date.yearsDetected)")
+                
+            case .wedding, .anniversary:
+                cardType = .confirmWedding
+                let names = date.displayName
+                let displayYear = date.year ?? 0
+                title = String(localized: "cataloging_wedding_question \(names) \(date.displayDate)/\(displayYear)")
+                subtitle = String(localized: "cataloging_detected_photos \(date.photoIdArray.count)")
+                
+            case .childBirthday:
+                cardType = .confirmChildRelation
+                let name = date.personName ?? String(localized: "cataloging_this_child")
+                title = String(localized: "cataloging_child_question \(name)")
+                subtitle = String(localized: "cataloging_growing_over_years")
+                
+            case .other:
+                cardType = .recurringDate
+                title = String(localized: "cataloging_event_question \(date.displayDate)")
+                subtitle = String(localized: "cataloging_detected_years \(date.yearsDetected)")
+            }
+            
+            cards.append(CatalogingCard(
+                id: "important_date_\(date.id)",
+                type: cardType,
+                title: title,
+                subtitle: subtitle,
+                photoCount: date.photoIdArray.count,
+                impactScore: Int(date.confidence * 100) + date.yearsDetected * 10,
+                targetId: date.id,
+                previewPhotoIds: Array(date.photoIdArray.prefix(4))
+            ))
+        }
+        
+        let photoDescriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate { $0.analysisCompleted && $0.creationDate != nil }
         )
         
-        let photos = (try? context.fetch(descriptor)) ?? []
+        let photos = (try? context.fetch(photoDescriptor)) ?? []
         
-        // Group by day of year
         var dayOfYearGroups: [Int: [(photo: PersistedPhoto, year: Int)]] = [:]
         let calendar = Calendar.current
         
@@ -200,40 +249,40 @@ class CatalogingService: ObservableObject {
             dayOfYearGroups[dayOfYear, default: []].append((photo, year))
         }
         
-        // Find days that appear in multiple years with people
         var recurringDates: [(day: Int, month: Int, yearsCount: Int, photoCount: Int, personId: String?)] = []
         
-        for (dayOfYear, entries) in dayOfYearGroups {
+        for (_, entries) in dayOfYearGroups {
             let uniqueYears = Set(entries.map { $0.year })
             
-            // At least 3 different years with photos on this day
             if uniqueYears.count >= 3 {
                 let totalPhotos = entries.count
-                
-                // Check if photos have faces
-                let photosWithFaces = entries.filter { ($0.photo.facesDetected ?? 0) > 0 }
-                
-                // Try to find a common person
                 var personId: String?
-                // This would need face clustering analysis - simplified for now
                 
                 if let firstDate = entries.first?.photo.creationDate {
                     let month = calendar.component(.month, from: firstDate)
                     let day = calendar.component(.day, from: firstDate)
                     
-                    recurringDates.append((day: day, month: month, yearsCount: uniqueYears.count, 
-                                          photoCount: totalPhotos, personId: personId))
+                    let existingCard = cards.first { card in
+                        if card.type == .confirmBirthday || card.type == .confirmWedding {
+                            return card.targetId != nil
+                        }
+                        return false
+                    }
+                    
+                    if existingCard == nil {
+                        recurringDates.append((day: day, month: month, yearsCount: uniqueYears.count, 
+                                              photoCount: totalPhotos, personId: personId))
+                    }
                 }
             }
         }
         
-        // Sort by years count (most recurring first)
         recurringDates.sort { $0.yearsCount > $1.yearsCount }
         
-        return recurringDates.prefix(3).map { recurring in
+        for recurring in recurringDates.prefix(3) where cards.count < 8 {
             let dateString = String(format: "%02d/%02d", recurring.day, recurring.month)
             
-            return CatalogingCard(
+            cards.append(CatalogingCard(
                 id: "date_\(recurring.month)_\(recurring.day)",
                 type: .recurringDate,
                 title: String(localized: "cataloging_every_date \(dateString) \(recurring.yearsCount)"),
@@ -242,8 +291,10 @@ class CatalogingService: ObservableObject {
                 impactScore: recurring.yearsCount * 10 + recurring.photoCount,
                 targetId: "\(recurring.month)_\(recurring.day)",
                 previewPhotoIds: []
-            )
+            ))
         }
+        
+        return cards
     }
     
     // MARK: - Downloaded Content Cards

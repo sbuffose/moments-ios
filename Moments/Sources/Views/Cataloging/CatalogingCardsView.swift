@@ -202,6 +202,10 @@ struct CatalogingCardView: View {
         case .messagingAppPhotos: return "message.circle"
         case .recurringDate: return "calendar.badge.clock"
         case .downloadedContent: return "arrow.down.circle"
+        case .confirmBirthday: return "gift"
+        case .confirmWedding: return "heart.circle"
+        case .confirmChildRelation: return "figure.and.child.holdinghands"
+        case .confirmAnniversary: return "heart.circle.fill"
         }
     }
     
@@ -212,6 +216,10 @@ struct CatalogingCardView: View {
         case .messagingAppPhotos: return "cataloging_review"
         case .recurringDate: return "cataloging_confirm_date"
         case .downloadedContent: return "cataloging_review"
+        case .confirmBirthday: return "cataloging_confirm_birthday"
+        case .confirmWedding: return "cataloging_confirm_wedding"
+        case .confirmChildRelation: return "cataloging_confirm_child"
+        case .confirmAnniversary: return "cataloging_confirm_anniversary"
         }
     }
 }
@@ -255,13 +263,20 @@ struct LabelingSheetView: View {
     @ObservedObject var catalogingService: CatalogingService
     @ObservedObject var placeClusteringService: PlaceClusteringService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     
     @State private var personName = ""
+    @State private var secondPersonName = ""
     @State private var birthdayMonth: Int?
     @State private var birthdayDay: Int?
+    @State private var eventYear: Int?
     @State private var selectedPlaceType: PlaceClusterType = .unknown
     @State private var customPlaceName = ""
     @State private var selectedEventType = "birthday"
+    @State private var childName = ""
+    @State private var parentName = ""
+    
+    @StateObject private var importantDatesService = ImportantDatesService.shared
     
     var body: some View {
         NavigationStack {
@@ -278,6 +293,15 @@ struct LabelingSheetView: View {
                     
                 case .recurringDate:
                     dateLabelingSection
+                    
+                case .confirmBirthday:
+                    birthdayConfirmationSection
+                    
+                case .confirmWedding, .confirmAnniversary:
+                    weddingConfirmationSection
+                    
+                case .confirmChildRelation:
+                    childConfirmationSection
                 }
             }
             .navigationTitle(card.localizedTitle)
@@ -296,6 +320,9 @@ struct LabelingSheetView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            importantDatesService.initialize(modelContext: modelContext)
         }
     }
     
@@ -401,6 +428,113 @@ struct LabelingSheetView: View {
         }
     }
     
+    // MARK: - Birthday Confirmation
+    
+    private var birthdayConfirmationSection: some View {
+        Group {
+            Section {
+                Text(card.title)
+                    .font(.headline)
+            }
+            
+            Section {
+                TextField("cataloging_person_name_placeholder", text: $personName)
+                    .textInputAutocapitalization(.words)
+            } header: {
+                Text("cataloging_whose_birthday")
+            }
+            
+            Section {
+                Picker("cataloging_birth_year", selection: Binding(
+                    get: { eventYear ?? Calendar.current.component(.year, from: Date()) - 30 },
+                    set: { eventYear = $0 }
+                )) {
+                    ForEach((1920...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { year in
+                        Text("\(year)").tag(year)
+                    }
+                }
+            } header: {
+                Text("cataloging_optional_birth_year")
+            }
+        }
+    }
+    
+    // MARK: - Wedding Confirmation
+    
+    private var weddingConfirmationSection: some View {
+        Group {
+            Section {
+                Text(card.title)
+                    .font(.headline)
+            }
+            
+            Section {
+                TextField("cataloging_person1_name", text: $personName)
+                    .textInputAutocapitalization(.words)
+                
+                TextField("cataloging_person2_name", text: $secondPersonName)
+                    .textInputAutocapitalization(.words)
+            } header: {
+                Text("cataloging_couple_names")
+            }
+            
+            Section {
+                Picker("cataloging_wedding_year", selection: Binding(
+                    get: { eventYear ?? Calendar.current.component(.year, from: Date()) },
+                    set: { eventYear = $0 }
+                )) {
+                    ForEach((1950...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { year in
+                        Text("\(year)").tag(year)
+                    }
+                }
+            } header: {
+                Text("cataloging_wedding_year_header")
+            }
+        }
+    }
+    
+    // MARK: - Child Confirmation
+    
+    private var childConfirmationSection: some View {
+        Group {
+            Section {
+                Text(card.title)
+                    .font(.headline)
+                
+                Text("cataloging_child_explanation")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Section {
+                TextField("cataloging_child_name_placeholder", text: $childName)
+                    .textInputAutocapitalization(.words)
+            } header: {
+                Text("cataloging_child_name")
+            }
+            
+            Section {
+                TextField("cataloging_parent_name_placeholder", text: $parentName)
+                    .textInputAutocapitalization(.words)
+            } header: {
+                Text("cataloging_whose_child")
+            }
+            
+            Section {
+                Picker("cataloging_birth_year", selection: Binding(
+                    get: { eventYear ?? Calendar.current.component(.year, from: Date()) - 5 },
+                    set: { eventYear = $0 }
+                )) {
+                    ForEach((2000...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { year in
+                        Text("\(year)").tag(year)
+                    }
+                }
+            } header: {
+                Text("cataloging_child_birth_year")
+            }
+        }
+    }
+    
     // MARK: - Save
     
     private func saveLabel() {
@@ -426,6 +560,43 @@ struct LabelingSheetView: View {
                    let day = Int(parts[1]) {
                     catalogingService.confirmRecurringDate(month: month, day: day, eventType: selectedEventType)
                 }
+            }
+            
+        case .confirmBirthday:
+            if let targetId = card.targetId {
+                importantDatesService.confirmDate(
+                    targetId,
+                    asType: .birthday,
+                    personName: personName.isEmpty ? nil : personName,
+                    secondPersonName: nil,
+                    year: eventYear
+                )
+            }
+            
+        case .confirmWedding, .confirmAnniversary:
+            if let targetId = card.targetId {
+                importantDatesService.confirmDate(
+                    targetId,
+                    asType: card.type == .confirmWedding ? .wedding : .anniversary,
+                    personName: personName.isEmpty ? nil : personName,
+                    secondPersonName: secondPersonName.isEmpty ? nil : secondPersonName,
+                    year: eventYear
+                )
+                
+                if !personName.isEmpty && !secondPersonName.isEmpty {
+                    // Could set partnership relationship here if we had person IDs
+                }
+            }
+            
+        case .confirmChildRelation:
+            if let targetId = card.targetId {
+                importantDatesService.confirmDate(
+                    targetId,
+                    asType: .childBirthday,
+                    personName: childName.isEmpty ? nil : childName,
+                    secondPersonName: nil,
+                    year: eventYear
+                )
             }
             
         case .messagingAppPhotos, .downloadedContent:
