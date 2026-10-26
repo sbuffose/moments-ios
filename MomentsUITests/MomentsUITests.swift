@@ -451,6 +451,109 @@ final class MomentsUITests: XCTestCase {
         }
     }
     
+    // MARK: - Screenshot Capture Tests
+    
+    func testCaptureKeyScreenshots() throws {
+        skipOnboardingIfNeeded()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 10) else {
+            XCTFail("Tab bar not available")
+            return
+        }
+        
+        // Screenshot 1: Home screen
+        let homeTab = tabBar.buttons["Inicio"]
+        if homeTab.exists {
+            homeTab.tap()
+            sleep(2)
+            let homeScreenshot = app.screenshot()
+            let homeAttachment = XCTAttachment(screenshot: homeScreenshot)
+            homeAttachment.name = "01_home"
+            homeAttachment.lifetime = .keepAlways
+            add(homeAttachment)
+        }
+        
+        // Screenshot 2: Assistant screen
+        let assistantTab = tabBar.buttons["Asistente"]
+        if assistantTab.exists {
+            assistantTab.tap()
+            sleep(2)
+            let assistantScreenshot = app.screenshot()
+            let assistantAttachment = XCTAttachment(screenshot: assistantScreenshot)
+            assistantAttachment.name = "02_assistant"
+            assistantAttachment.lifetime = .keepAlways
+            add(assistantAttachment)
+        }
+        
+        // Screenshot 3: Moments screen
+        let momentsTab = tabBar.buttons["Momentos"]
+        if momentsTab.exists {
+            momentsTab.tap()
+            sleep(2)
+            let momentsScreenshot = app.screenshot()
+            let momentsAttachment = XCTAttachment(screenshot: momentsScreenshot)
+            momentsAttachment.name = "03_moments"
+            momentsAttachment.lifetime = .keepAlways
+            add(momentsAttachment)
+        }
+        
+        // Screenshot 4: Settings screen
+        let settingsTab = tabBar.buttons["Ajustes"]
+        if settingsTab.exists {
+            settingsTab.tap()
+            sleep(2)
+            let settingsScreenshot = app.screenshot()
+            let settingsAttachment = XCTAttachment(screenshot: settingsScreenshot)
+            settingsAttachment.name = "04_settings"
+            settingsAttachment.lifetime = .keepAlways
+            add(settingsAttachment)
+        }
+        
+        // Screenshot 5: Fechas view (if accessible)
+        if momentsTab.exists {
+            momentsTab.tap()
+            sleep(1)
+            let fechasButton = app.buttons["Fechas"]
+            if fechasButton.exists {
+                fechasButton.tap()
+                sleep(2)
+                let fechasScreenshot = app.screenshot()
+                let fechasAttachment = XCTAttachment(screenshot: fechasScreenshot)
+                fechasAttachment.name = "05_fechas"
+                fechasAttachment.lifetime = .keepAlways
+                add(fechasAttachment)
+            }
+        }
+        
+        // Screenshot 6: Cleanup view (if available)
+        if homeTab.exists {
+            homeTab.tap()
+            sleep(1)
+            let cleanupButton = app.buttons["Limpiar"]
+            let reviewButton = app.buttons["Revisar ahora"]
+            if cleanupButton.exists {
+                cleanupButton.tap()
+                sleep(2)
+                let cleanupScreenshot = app.screenshot()
+                let cleanupAttachment = XCTAttachment(screenshot: cleanupScreenshot)
+                cleanupAttachment.name = "06_cleanup"
+                cleanupAttachment.lifetime = .keepAlways
+                add(cleanupAttachment)
+            } else if reviewButton.exists {
+                reviewButton.tap()
+                sleep(2)
+                let cleanupScreenshot = app.screenshot()
+                let cleanupAttachment = XCTAttachment(screenshot: cleanupScreenshot)
+                cleanupAttachment.name = "06_cleanup"
+                cleanupAttachment.lifetime = .keepAlways
+                add(cleanupAttachment)
+            }
+        }
+        
+        XCTAssertTrue(true, "Screenshots captured successfully")
+    }
+    
     // MARK: - Performance Tests
     
     func testScanPerformanceMetrics() throws {

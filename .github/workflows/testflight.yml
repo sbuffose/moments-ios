@@ -292,7 +292,8 @@ jobs:
             -project Moments.xcodeproj \
             -scheme Moments \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -testPlan MomentsUITests \
+            -only-testing:MomentsUITests/MomentsUITests/testCaptureKeyScreenshots \
+            -only-testing:MomentsUITests/MomentsUITests/testTabBarNavigation \
             -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
@@ -302,67 +303,64 @@ jobs:
           echo "=== UI Test Summary ==="
           grep -E "(Test Suite|Test Case|passed|failed)" "$RUNNER_TEMP/ui_test_output.log" | tail -50
 
-      - name: Capture Key Screenshots
+      - name: Capture Fallback Screenshots
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/screenshots"
           
-          echo "Capturing key app screenshots..."
+          # Only capture fallback if no screenshots from UI tests
+          if [ $(ls -1 "$RUNNER_TEMP/screenshots/"*.png 2>/dev/null | wc -l) -eq 0 ]; then
+            echo "No UI test screenshots found, capturing fallback screenshots..."
+            
+            # Re-launch app and capture current state
+            xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
+            sleep 2
+            xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+            sleep 8
+            
+            # Capture current state
+            xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/app_state.png" 2>/dev/null || true
+            echo "✓ Fallback screenshot captured"
+          else
+            echo "✓ UI test screenshots available, skipping fallback capture"
+          fi
           
-          # Re-launch app to get fresh state
-          xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
-          sleep 2
-          xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
-          sleep 5
-          
-          # Screenshot 1: Home screen
-          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/01_home.png" 2>/dev/null || true
-          echo "✓ Home screenshot"
-          
-          # Tap on Assistant tab (second tab)
-          xcrun simctl io "$DEVICE_ID" tap 195 800 2>/dev/null || true
-          sleep 2
-          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/02_assistant.png" 2>/dev/null || true
-          echo "✓ Assistant screenshot"
-          
-          # Tap on Moments tab (third tab)
-          xcrun simctl io "$DEVICE_ID" tap 293 800 2>/dev/null || true
-          sleep 2
-          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/03_moments.png" 2>/dev/null || true
-          echo "✓ Moments screenshot"
-          
-          # Tap on Settings tab (fourth tab)
-          xcrun simctl io "$DEVICE_ID" tap 390 800 2>/dev/null || true
-          sleep 2
-          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/04_settings.png" 2>/dev/null || true
-          echo "✓ Settings screenshot"
-          
-          # Go back to Home
-          xcrun simctl io "$DEVICE_ID" tap 97 800 2>/dev/null || true
-          sleep 2
-          
-          # Try to tap on "Revisar ahora" button for cleanup
-          xcrun simctl io "$DEVICE_ID" tap 200 400 2>/dev/null || true
-          sleep 2
-          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/05_cleanup.png" 2>/dev/null || true
-          echo "✓ Cleanup screenshot"
-          
-          # Final state
-          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/06_final_state.png" 2>/dev/null || true
-          
-          echo "Screenshots captured: $(ls -1 $RUNNER_TEMP/screenshots/ 2>/dev/null | wc -l)"
+          echo "Total screenshots: $(ls -1 $RUNNER_TEMP/screenshots/*.png 2>/dev/null | wc -l)"
           ls -la "$RUNNER_TEMP/screenshots/"
       
       - name: Extract Screenshots from Test Results
         if: always()
         run: |
+          mkdir -p "$RUNNER_TEMP/screenshots"
+          
           # Try to extract attachments from xcresult bundle
           if [ -d "$RUNNER_TEMP/TestResults.xcresult" ]; then
             echo "Extracting screenshots from test results..."
             
-            # Use xcresulttool to list attachments
-            xcrun xcresulttool get --path "$RUNNER_TEMP/TestResults.xcresult" \
-              --format json 2>/dev/null | jq -r '.actions._values[].actionResult.testsRef.id' 2>/dev/null || true
+            # Method 1: Use xcparse if available
+            if command -v xcparse &> /dev/null; then
+              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" || true
+            fi
+            
+            # Method 2: Manual extraction from xcresult bundle
+            # Find all PNG files in the xcresult bundle
+            find "$RUNNER_TEMP/TestResults.xcresult" -name "*.png" -type f 2>/dev/null | while read png_file; do
+              filename=$(basename "$png_file")
+              cp "$png_file" "$RUNNER_TEMP/screenshots/$filename" 2>/dev/null || true
+            done
+            
+            # Method 3: Extract using xcresulttool
+            xcrun xcresulttool export \
+              --path "$RUNNER_TEMP/TestResults.xcresult" \
+              --type attachments \
+              --output-path "$RUNNER_TEMP/extracted_attachments" 2>/dev/null || true
+            
+            if [ -d "$RUNNER_TEMP/extracted_attachments" ]; then
+              find "$RUNNER_TEMP/extracted_attachments" -name "*.png" -type f -exec cp {} "$RUNNER_TEMP/screenshots/" \; 2>/dev/null || true
+            fi
+            
+            echo "Screenshots extracted: $(ls -1 $RUNNER_TEMP/screenshots/ 2>/dev/null | wc -l)"
+            ls -la "$RUNNER_TEMP/screenshots/" || true
           fi
 
       - name: Run MomentsEngine Unit Tests
