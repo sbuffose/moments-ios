@@ -16,11 +16,18 @@ struct ContentView: View {
     var body: some View {
         Group {
             if isTestingMode {
-                MainTabView()
-                    .onAppear {
-                        appState.isLibraryAuthorized = true
-                        appState.hasCompletedInitialScan = true
-                    }
+                if !appState.hasCompletedInitialScan {
+                    ScanningView()
+                        .onAppear {
+                            appState.isLibraryAuthorized = true
+                            appState.hasCompletedOnboarding = true
+                            if !appState.isScanning {
+                                appState.startScan()
+                            }
+                        }
+                } else {
+                    MainTabView()
+                }
             } else if !appState.hasCompletedOnboarding {
                 OnboardingView()
             } else if !appState.hasCompletedInitialScan {

@@ -33,10 +33,16 @@ struct HomeView: View {
                         ForEach(viewModel.feedCards) { card in
                             FeedCardView(card: card, viewModel: viewModel)
                         }
+                        
+                        // Empty state when no content
+                        if viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty {
+                            emptyStateView
+                        }
                     }
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
                     .padding(.vertical, MomentsSpacing.md)
                 }
+                .accessibilityIdentifier("home.scrollView")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -141,8 +147,38 @@ struct HomeView: View {
                 }
             }
             .momentsAccentButton()
+            .accessibilityIdentifier("home.reviewButton")
         }
+        .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
+    }
+    
+    // MARK: - Empty State
+    
+    private var emptyStateView: some View {
+        VStack(spacing: MomentsSpacing.lg) {
+            Spacer()
+            
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 64))
+                .foregroundStyle(MomentsColors.textTertiary)
+            
+            VStack(spacing: MomentsSpacing.xs) {
+                Text("Tu biblioteca está impecable")
+                    .font(MomentsTypography.headlineMedium)
+                    .foregroundStyle(MomentsColors.textPrimary)
+                
+                Text("No encontramos fotos para limpiar. ¡Bien hecho!")
+                    .font(MomentsTypography.bodyMedium)
+                    .foregroundStyle(MomentsColors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, MomentsSpacing.xl)
+        .accessibilityIdentifier("home.emptyState")
     }
 }
 
