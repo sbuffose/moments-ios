@@ -49,7 +49,13 @@ class CalendarService: ObservableObject {
     // MARK: - Add Event
     
     func addToCalendar(importantDate: PersistedImportantDate) async -> Bool {
-        guard authorizationStatus == .authorized || authorizationStatus == .fullAccess else {
+        let hasAccess: Bool
+        if #available(iOS 17.0, *) {
+            hasAccess = authorizationStatus == .fullAccess || authorizationStatus == .writeOnly
+        } else {
+            hasAccess = authorizationStatus == .authorized
+        }
+        guard hasAccess else {
             let granted = await requestAuthorization()
             if !granted { return false }
         }
@@ -191,12 +197,3 @@ class CalendarService: ObservableObject {
     }
 }
 
-// EKAuthorizationStatus extension for iOS 17+ compatibility
-extension EKAuthorizationStatus {
-    static var fullAccess: EKAuthorizationStatus {
-        if #available(iOS 17.0, *) {
-            return .fullAccess
-        }
-        return .authorized
-    }
-}

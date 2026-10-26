@@ -34,6 +34,14 @@ class CatalogingService: ObservableObject {
                 return String(localized: "cataloging_recurring_date_title")
             case .downloadedContent:
                 return String(localized: "cataloging_downloaded_title")
+            case .confirmBirthday:
+                return String(localized: "cataloging_confirm_birthday")
+            case .confirmWedding:
+                return String(localized: "cataloging_confirm_wedding")
+            case .confirmChildRelation:
+                return String(localized: "cataloging_confirm_child")
+            case .confirmAnniversary:
+                return String(localized: "cataloging_confirm_anniversary")
             }
         }
     }

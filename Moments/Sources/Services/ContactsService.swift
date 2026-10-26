@@ -139,10 +139,11 @@ class ContactsService: ObservableObject {
         guard let context = modelContext else { return }
         
         for birthday in birthdays {
+            let birthdayName: String? = birthday.name
             let existingDescriptor = FetchDescriptor<PersistedImportantDate>(
                 predicate: #Predicate<PersistedImportantDate> {
                     $0.sourceRaw == "contacts" &&
-                    $0.personName == birthday.name
+                    $0.personName == birthdayName
                 }
             )
             

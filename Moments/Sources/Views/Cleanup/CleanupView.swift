@@ -225,7 +225,7 @@ struct CleanupView: View {
                         icon: "airplane",
                         iconColor: .blue,
                         title: "home_latest_trip",
-                        subtitle: trip.tripDestination ?? trip.locationName ?? "home_trip_photos \(trip.photoIdArray.count)",
+                        subtitle: LocalizedStringKey(trip.tripDestination ?? trip.locationName ?? String(localized: "home_trip_photos") + " \(trip.photoIdArray.count)"),
                         previewPhotos: []
                     )
                 }

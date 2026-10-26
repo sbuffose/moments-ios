@@ -387,7 +387,7 @@ class AssistantViewModel: ObservableObject {
         if let cat = category {
             let matchingCategory = cleanupViewModel.categories.first { $0.category == cat }
             photos = matchingCategory?.photos ?? []
-            title = String(localized: LocalizedStringKey(cat.localizedKey))
+            title = NSLocalizedString(cat.localizedKey, comment: "")
         } else {
             photos = cleanupViewModel.categories.flatMap { $0.photos }
         }
@@ -638,7 +638,7 @@ class AssistantViewModel: ObservableObject {
                     text: "Encontré algunas fotos que podrías limpiar:",
                     isUser: false,
                     card: .cleanup(
-                        title: String(localized: LocalizedStringKey(cat.localizedKey)),
+                        title: NSLocalizedString(cat.localizedKey, comment: ""),
                         count: cat.count,
                         size: size,
                         photos: Array(cat.photos.prefix(8)),

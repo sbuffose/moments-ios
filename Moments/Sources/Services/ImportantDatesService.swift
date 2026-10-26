@@ -370,12 +370,15 @@ class ImportantDatesService: ObservableObject {
         let personMap = Dictionary(uniqueKeysWithValues: persons.map { ($0.id, $0) })
         
         for candidate in candidates {
+            let candidatePersonId: String? = candidate.personId
+            let candidateMonth = candidate.month
+            let candidateDay = candidate.day
             let existing = try? context.fetch(
                 FetchDescriptor<PersistedImportantDate>(
                     predicate: #Predicate<PersistedImportantDate> {
-                        $0.personId == candidate.personId &&
-                        $0.month == candidate.month &&
-                        $0.day == candidate.day
+                        $0.personId == candidatePersonId &&
+                        $0.month == candidateMonth &&
+                        $0.day == candidateDay
                     }
                 )
             ).first
