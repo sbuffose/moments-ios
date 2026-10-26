@@ -315,14 +315,3 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 }
-
-extension XCUIElement {
-    func clearAndTypeText(_ text: String) {
-        self.tap()
-        if let stringValue = self.value as? String, !stringValue.isEmpty {
-            let deleteString = String(repeating: XCUIKeyboardKey.delete.rawValue, count: stringValue.count)
-            self.typeText(deleteString)
-        }
-        self.typeText(text)
-    }
-}
