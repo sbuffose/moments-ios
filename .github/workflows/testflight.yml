@@ -232,9 +232,9 @@ jobs:
             exit 1
           fi
 
-      - name: Generate and Seed Test Photos (2000+)
+      - name: Generate and Seed Test Photos (3000+)
         run: |
-          echo "Generating 2000+ test photos for large library testing..."
+          echo "Generating 3000+ test photos for large library testing..."
           mkdir -p "$RUNNER_TEMP/test_photos"
           
           # Create a valid 100x100 JPEG template for fast duplication
@@ -248,32 +248,32 @@ jobs:
             printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x64\x00\x64\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$TEMPLATE"
           fi
           
-          # Generate 100 screenshots (PNG)
-          echo "Creating 100 screenshots..."
-          for i in $(seq 1 100); do
+          # Generate 200 screenshots (PNG)
+          echo "Creating 200 screenshots..."
+          for i in $(seq 1 200); do
             cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png" 2>/dev/null || \
             printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png"
           done
           
-          # Generate 1900+ regular photos
-          echo "Creating 1900 photos..."
-          for i in $(seq 1 1900); do
+          # Generate 2700+ regular photos
+          echo "Creating 2700 photos..."
+          for i in $(seq 1 2700); do
             cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/photo_$(printf '%04d' $i).jpg" 2>/dev/null || true
           done
           
-          # Create some burst photos (simulate burst with same prefix)
-          echo "Creating 50 burst photos..."
-          for i in $(seq 1 50); do
-            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/burst_A_$(printf '%02d' $i).jpg" 2>/dev/null || true
+          # Create burst photos (simulate burst with same prefix)
+          echo "Creating 100 burst photos..."
+          for i in $(seq 1 100); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/burst_A_$(printf '%03d' $i).jpg" 2>/dev/null || true
           done
           
           TOTAL=$(ls -1 "$RUNNER_TEMP/test_photos/" 2>/dev/null | wc -l | tr -d ' ')
           echo "Created $TOTAL test photos"
           
           # Add photos to simulator in batches to avoid timeout
-          echo "Adding photos to simulator..."
+          echo "Adding photos to simulator in batches..."
           cd "$RUNNER_TEMP/test_photos"
-          ls *.jpg *.png 2>/dev/null | xargs -n 100 xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
+          ls *.jpg *.png 2>/dev/null | xargs -n 200 xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
           
           # Grant photo library permission
           echo "Granting photo permissions..."

@@ -1230,3 +1230,138 @@ final class DeletionRecord {
         self.requestedAt = Date()
     }
 }
+
+// MARK: - Photo Tag (user-defined tags)
+
+@Model
+final class PhotoTag {
+    @Attribute(.unique) var id: String
+    var name: String
+    var colorHex: String
+    var photoIds: String
+    var createdAt: Date
+    var usageCount: Int
+    var isSystemTag: Bool
+    
+    init(
+        id: String = UUID().uuidString,
+        name: String,
+        colorHex: String = "#3478F6",
+        photoIds: [String] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.colorHex = colorHex
+        self.photoIds = (try? JSONEncoder().encode(photoIds).base64EncodedString()) ?? "[]"
+        self.createdAt = Date()
+        self.usageCount = 0
+        self.isSystemTag = false
+    }
+    
+    var photoIdArray: [String] {
+        guard let data = Data(base64Encoded: photoIds),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return ids
+    }
+    
+    func addPhoto(_ photoId: String) {
+        var ids = photoIdArray
+        if !ids.contains(photoId) {
+            ids.append(photoId)
+            photoIds = (try? JSONEncoder().encode(ids).base64EncodedString()) ?? "[]"
+            usageCount = ids.count
+        }
+    }
+    
+    func removePhoto(_ photoId: String) {
+        var ids = photoIdArray
+        ids.removeAll { $0 == photoId }
+        photoIds = (try? JSONEncoder().encode(ids).base64EncodedString()) ?? "[]"
+        usageCount = ids.count
+    }
+}
+
+// MARK: - Photo Reminder (follow-up notifications)
+
+@Model
+final class PhotoReminder {
+    @Attribute(.unique) var id: String
+    var photoId: String
+    var localIdentifier: String
+    var reminderDate: Date
+    var note: String?
+    var isCompleted: Bool
+    var notificationId: String?
+    var createdAt: Date
+    var completedAt: Date?
+    
+    init(
+        id: String = UUID().uuidString,
+        photoId: String,
+        localIdentifier: String,
+        reminderDate: Date,
+        note: String? = nil
+    ) {
+        self.id = id
+        self.photoId = photoId
+        self.localIdentifier = localIdentifier
+        self.reminderDate = reminderDate
+        self.note = note
+        self.isCompleted = false
+        self.createdAt = Date()
+    }
+    
+    var isPastDue: Bool {
+        !isCompleted && reminderDate < Date()
+    }
+    
+    var displayTime: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es-AR")
+        
+        let calendar = Calendar.current
+        if calendar.isDateInToday(reminderDate) {
+            return "Hoy"
+        } else if calendar.isDateInTomorrow(reminderDate) {
+            return "Mañana"
+        } else {
+            formatter.dateFormat = "d 'de' MMMM"
+            return formatter.string(from: reminderDate)
+        }
+    }
+}
+
+// MARK: - Daily Review Settings
+
+@Model
+final class DailyReviewSettings {
+    @Attribute(.unique) var id: String
+    var isEnabled: Bool
+    var reviewHour: Int
+    var reviewMinute: Int
+    var lastReviewDate: Date?
+    var notificationId: String?
+    var includeLowValuePhotos: Bool
+    var includeScreenshots: Bool
+    var includeBlurry: Bool
+    var includeDuplicates: Bool
+    var includeReceipts: Bool
+    var includeMemes: Bool
+    
+    init(id: String = "main") {
+        self.id = id
+        self.isEnabled = false
+        self.reviewHour = 21
+        self.reviewMinute = 0
+        self.includeLowValuePhotos = true
+        self.includeScreenshots = true
+        self.includeBlurry = true
+        self.includeDuplicates = true
+        self.includeReceipts = true
+        self.includeMemes = true
+    }
+    
+    var reviewTimeString: String {
+        String(format: "%02d:%02d", reviewHour, reviewMinute)
+    }
+}

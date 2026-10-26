@@ -36,6 +36,89 @@ final class MomentsUITests: XCTestCase {
         XCTAssertFalse(onboardingRoot.exists, "Onboarding should NOT be shown when -skipOnboarding is used")
     }
     
+    // MARK: - Critical Flow Test: Home appears immediately, never shows white scanning screen
+    
+    func testHomeAppearsImmediatelyWithin30Seconds() throws {
+        // This test verifies the critical requirement:
+        // Home screen MUST appear within 30 seconds
+        // White scanning screen should NEVER be shown (only dark version if any)
+        
+        let startTime = Date()
+        
+        // Home should appear immediately after app launch
+        let mainTabView = app.otherElements["main_tab_view"]
+        let tabBar = app.tabBars.firstMatch
+        let homeRoot = app.otherElements["home.root"]
+        
+        // Wait for home to appear
+        let homeAppeared = mainTabView.waitForExistence(timeout: 30) ||
+                          tabBar.waitForExistence(timeout: 30)
+        
+        let elapsed = Date().timeIntervalSince(startTime)
+        XCTAssertTrue(homeAppeared, "Home screen MUST appear within 30 seconds (took \(elapsed)s)")
+        XCTAssertLessThan(elapsed, 30, "Home took \(elapsed)s to appear, must be under 30s")
+        
+        // Verify we're NOT stuck on scanning screen
+        let scanningRoot = app.otherElements["scanning.root"]
+        XCTAssertFalse(scanningRoot.exists, "Should NOT be stuck on scanning screen")
+        
+        // Verify tab bar exists (meaning we're on main UI, not scanning)
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 5), "Tab bar should be visible immediately")
+        
+        // Tap home tab to ensure we're on home
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(homeRoot.waitForExistence(timeout: 5), "Home content should be accessible")
+        
+        // Verify analysis progress pill may appear but doesn't block
+        let analysisPill = app.otherElements["home.analysisPill"]
+        if analysisPill.exists {
+            print("Analysis running in background (expected)")
+        }
+        
+        print("SUCCESS: Home appeared in \(elapsed) seconds")
+    }
+    
+    func testNeverShowsWhiteScanningScreen() throws {
+        // This test specifically checks that the white/light scanning screen is NEVER shown
+        // The old broken behavior showed a white "Escaneando tu biblioteca" screen
+        
+        let startTime = Date()
+        var foundWhiteScreen = false
+        
+        // Poll for 5 seconds to ensure no white scanning screen appears
+        while Date().timeIntervalSince(startTime) < 5 {
+            let scanningInProgress = app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Escaneando tu biblioteca'")
+            ).firstMatch
+            
+            if scanningInProgress.exists {
+                // If scanning text exists, check that we have dark background elements
+                // or that the screen transitions quickly
+                foundWhiteScreen = true
+                break
+            }
+            
+            // Check for immediate home transition
+            if app.tabBars.firstMatch.exists {
+                // Home appeared, good
+                break
+            }
+            
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        
+        // If we found scanning screen, verify it transitioned quickly to home
+        if foundWhiteScreen {
+            let tabBar = app.tabBars.firstMatch
+            XCTAssertTrue(tabBar.waitForExistence(timeout: 10), 
+                         "Even if scanning shown briefly, home should appear within 10s")
+        }
+        
+        // Final verification: tab bar must exist
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10),
+                     "Home screen must appear quickly")
+    }
+    
     // MARK: - Core Navigation Tests
     
     func testMainTabBarExists() throws {

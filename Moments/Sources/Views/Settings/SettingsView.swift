@@ -61,10 +61,33 @@ struct SettingsView: View {
                     } label: {
                         Label("Papelera pendiente", systemImage: "trash")
                     }
+                    
+                    NavigationLink {
+                        TagsListView()
+                    } label: {
+                        Label("Etiquetas", systemImage: "tag")
+                    }
                 } header: {
                     Text("Tus datos")
                 } footer: {
                     Text("Los datos que Moments aprende de vos se guardan localmente y podés editarlos.")
+                }
+                
+                // Notifications Section
+                Section {
+                    NavigationLink {
+                        DailyReviewSettingsView()
+                    } label: {
+                        Label("Repaso del día", systemImage: "moon.stars")
+                    }
+                    
+                    NavigationLink {
+                        NotificationSettingsView()
+                    } label: {
+                        Label("Notificaciones", systemImage: "bell")
+                    }
+                } header: {
+                    Text("Recordatorios")
                 }
                 
                 // Storage Section
