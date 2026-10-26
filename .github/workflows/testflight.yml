@@ -126,7 +126,7 @@ jobs:
             -archivePath "$RUNNER_TEMP/Moments.xcarchive" \
             -destination "generic/platform=iOS" \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
@@ -144,6 +144,8 @@ jobs:
               <string>$TEAM_ID</string>
               <key>signingStyle</key>
               <string>manual</string>
+              <key>signingCertificate</key>
+              <string>iPhone Distribution</string>
               <key>provisioningProfiles</key>
               <dict>
                   <key>$BUNDLE_ID</key>
@@ -151,8 +153,6 @@ jobs:
               </dict>
               <key>uploadSymbols</key>
               <true/>
-              <key>destination</key>
-              <string>upload</string>
           </dict>
           </plist>
           EOF
