@@ -2,6 +2,7 @@
 // Vista principal con navegación por tabs
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState

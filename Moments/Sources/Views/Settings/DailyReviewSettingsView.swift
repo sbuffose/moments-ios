@@ -133,7 +133,7 @@ struct DailyReviewSettingsView: View {
     }
 }
 
-struct NotificationSettingsView: View {
+struct GeneralNotificationSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var appState: AppState
     

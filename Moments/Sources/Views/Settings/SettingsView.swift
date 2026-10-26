@@ -82,7 +82,7 @@ struct SettingsView: View {
                     }
                     
                     NavigationLink {
-                        NotificationSettingsView()
+                        GeneralNotificationSettingsView()
                     } label: {
                         Label("Notificaciones", systemImage: "bell")
                     }
