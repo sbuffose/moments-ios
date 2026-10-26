@@ -3,6 +3,8 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
+import BackgroundTasks
 
 @main
 struct MomentsApp: App {
@@ -26,7 +28,10 @@ struct MomentsApp: App {
             RememberListItem.self,
             PendingTrashItem.self,
             SimilarGroup.self,
-            DeletionRecord.self
+            DeletionRecord.self,
+            PhotoTag.self,
+            PhotoReminder.self,
+            DailyReviewSettings.self
         ])
         
         if let persistentContainer = MomentsApp.createContainer(schema: schema, inMemory: false) {
@@ -107,36 +112,42 @@ class AppState: ObservableObject {
     @Published var totalPhotosIndexed = 0
     @Published var totalPhotosAnalyzed = 0
     @Published var totalPhotosToAnalyze = 0
-    @Published var hasCompletedInitialIndexing = false
     @Published var hasCompletedOnboarding = false
     @Published var selectedTab: AppTab = .home
+    @Published var showProcessingSheet = false
+    @Published var notificationsAuthorized = false
+    @Published var estimatedSpaceSavings: Int64 = 0
     
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
     private var analysisTask: Task<Void, Never>?
+    private var indexingTask: Task<Void, Never>?
+    private var modelContext: ModelContext?
     
     private let onboardingCompletedKey = "com.moments.hasCompletedOnboarding"
-    private let indexingCompletedKey = "com.moments.hasCompletedInitialIndexing"
+    private let notificationPromptShownKey = "com.moments.notificationPromptShown"
+    private let analysisCompleteNotificationSentKey = "com.moments.analysisCompleteNotificationSent"
     
-    var hasCompletedInitialScan: Bool {
-        hasCompletedInitialIndexing
-    }
+    // Legacy compatibility - always returns true after onboarding
+    var hasCompletedInitialIndexing: Bool { hasCompletedOnboarding }
+    var hasCompletedInitialScan: Bool { hasCompletedOnboarding }
     
     init() {
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingCompletedKey)
-        self.hasCompletedInitialIndexing = UserDefaults.standard.bool(forKey: indexingCompletedKey)
     }
     
     func completeOnboarding() {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: onboardingCompletedKey)
+        // Start background processing immediately
+        startBackgroundIndexingAndAnalysis()
     }
     
     func resetOnboarding() {
         hasCompletedOnboarding = false
-        hasCompletedInitialIndexing = false
         UserDefaults.standard.removeObject(forKey: onboardingCompletedKey)
-        UserDefaults.standard.removeObject(forKey: indexingCompletedKey)
+        UserDefaults.standard.removeObject(forKey: notificationPromptShownKey)
+        UserDefaults.standard.removeObject(forKey: analysisCompleteNotificationSentKey)
     }
     
     enum AppTab: String, CaseIterable, Sendable {
@@ -160,41 +171,77 @@ class AppState: ObservableObject {
     }
     
     func initialize(modelContext: ModelContext) {
+        self.modelContext = modelContext
         photoLibraryService = PhotoLibraryService(modelContext: modelContext)
         analysisService = PhotoAnalysisService(modelContext: modelContext)
         
         Task {
             await checkAuthorizationStatus()
+            await checkNotificationStatus()
             
-            if hasCompletedInitialIndexing && isLibraryAuthorized {
-                startBackgroundAnalysis()
+            // If already onboarded, start background processing
+            if hasCompletedOnboarding && isLibraryAuthorized {
+                startBackgroundIndexingAndAnalysis()
             }
+            
+            // Schedule daily review if enabled
+            scheduleDailyReviewIfNeeded()
         }
     }
     
     func checkAuthorizationStatus() async {
         guard let service = photoLibraryService else { return }
         let status = await service.checkAuthorizationStatus()
-        
         self.isLibraryAuthorized = (status == .authorized || status == .limited)
     }
     
     func requestAuthorization() async -> Bool {
         guard let service = photoLibraryService else { return false }
         let granted = await service.requestAuthorization()
-        
         self.isLibraryAuthorized = granted
-        
         return granted
     }
     
-    func startScan() {
+    // MARK: - Notification Permission
+    
+    func checkNotificationStatus() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        self.notificationsAuthorized = settings.authorizationStatus == .authorized
+    }
+    
+    func requestNotificationPermission() async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        do {
+            let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
+            self.notificationsAuthorized = granted
+            UserDefaults.standard.set(true, forKey: notificationPromptShownKey)
+            return granted
+        } catch {
+            return false
+        }
+    }
+    
+    var shouldShowNotificationPrompt: Bool {
+        !UserDefaults.standard.bool(forKey: notificationPromptShownKey) &&
+        (isIndexing || isAnalyzing) &&
+        !notificationsAuthorized
+    }
+    
+    // MARK: - Background Processing (Non-blocking)
+    
+    func startBackgroundIndexingAndAnalysis() {
         guard let photoService = photoLibraryService else { return }
+        
+        // Cancel any existing tasks
+        indexingTask?.cancel()
+        analysisTask?.cancel()
         
         isIndexing = true
         indexingProgress = 0
         
-        Task { @MainActor in
+        // Start indexing in background - this does NOT block the UI
+        indexingTask = Task { @MainActor in
             await photoService.scanLibrary { progress, indexed in
                 Task { @MainActor in
                     self.indexingProgress = progress
@@ -203,11 +250,14 @@ class AppState: ObservableObject {
             }
             
             self.isIndexing = false
-            self.hasCompletedInitialIndexing = true
-            UserDefaults.standard.set(true, forKey: self.indexingCompletedKey)
-            
+            // Immediately start analysis after indexing
             self.startBackgroundAnalysis()
         }
+    }
+    
+    // Legacy alias for startScan - now non-blocking
+    func startScan() {
+        startBackgroundIndexingAndAnalysis()
     }
     
     func startBackgroundAnalysis() {
@@ -227,11 +277,144 @@ class AppState: ObservableObject {
             }
             
             self.isAnalyzing = false
+            
+            // Calculate estimated savings and send notification
+            await self.calculateEstimatedSavings()
+            await self.sendAnalysisCompleteNotification()
         }
     }
     
     func pauseAnalysis() {
         analysisTask?.cancel()
+        indexingTask?.cancel()
         isAnalyzing = false
+        isIndexing = false
+    }
+    
+    // MARK: - Notifications
+    
+    private func calculateEstimatedSavings() async {
+        guard let context = modelContext else { return }
+        
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { photo in
+                photo.cleanupCategoryRaw != "none" && photo.cleanupCategoryRaw != nil
+            }
+        )
+        
+        if let photos = try? context.fetch(descriptor) {
+            let totalBytes = photos.compactMap { $0.estimatedFileSize }.reduce(0, +)
+            self.estimatedSpaceSavings = totalBytes
+        }
+    }
+    
+    private func sendAnalysisCompleteNotification() async {
+        guard notificationsAuthorized else { return }
+        guard !UserDefaults.standard.bool(forKey: analysisCompleteNotificationSentKey) else { return }
+        
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        
+        let gbSavings = Double(estimatedSpaceSavings) / 1_000_000_000.0
+        let formattedSavings: String
+        if gbSavings >= 1.0 {
+            formattedSavings = String(format: "%.1f GB", gbSavings)
+        } else {
+            let mbSavings = Double(estimatedSpaceSavings) / 1_000_000.0
+            formattedSavings = String(format: "%.0f MB", mbSavings)
+        }
+        
+        content.title = "¡Listo!"
+        content.body = "Encontramos \(formattedSavings) para liberar"
+        content.sound = .default
+        
+        let request = UNNotificationRequest(
+            identifier: "analysis-complete",
+            content: content,
+            trigger: nil // Deliver immediately
+        )
+        
+        try? await center.add(request)
+        UserDefaults.standard.set(true, forKey: analysisCompleteNotificationSentKey)
+    }
+    
+    // MARK: - Daily Review
+    
+    func scheduleDailyReviewIfNeeded() {
+        guard let context = modelContext else { return }
+        
+        let descriptor = FetchDescriptor<DailyReviewSettings>(
+            predicate: #Predicate { $0.id == "main" }
+        )
+        
+        guard let settings = try? context.fetch(descriptor).first,
+              settings.isEnabled else { return }
+        
+        scheduleDailyReviewNotification(hour: settings.reviewHour, minute: settings.reviewMinute)
+    }
+    
+    func scheduleDailyReviewNotification(hour: Int, minute: Int) {
+        guard notificationsAuthorized else { return }
+        
+        let center = UNUserNotificationCenter.current()
+        
+        // Remove existing daily review notifications
+        center.removePendingNotificationRequests(withIdentifiers: ["daily-review"])
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Repaso del día"
+        content.body = "Revisá las fotos de hoy y organizá tu biblioteca"
+        content.sound = .default
+        
+        var dateComponents = DateComponents()
+        dateComponents.hour = hour
+        dateComponents.minute = minute
+        
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+        let request = UNNotificationRequest(
+            identifier: "daily-review",
+            content: content,
+            trigger: trigger
+        )
+        
+        Task {
+            try? await center.add(request)
+        }
+    }
+    
+    func cancelDailyReviewNotification() {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["daily-review"])
+    }
+    
+    // MARK: - Photo Reminders
+    
+    func schedulePhotoReminder(_ reminder: PhotoReminder) async {
+        guard notificationsAuthorized else { return }
+        
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = "Recordatorio de foto"
+        content.body = reminder.note ?? "Tenés una foto pendiente de revisar"
+        content.sound = .default
+        content.userInfo = ["photoId": reminder.photoId, "reminderId": reminder.id]
+        
+        let trigger = UNCalendarNotificationTrigger(
+            dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: reminder.reminderDate),
+            repeats: false
+        )
+        
+        let request = UNNotificationRequest(
+            identifier: "reminder-\(reminder.id)",
+            content: content,
+            trigger: trigger
+        )
+        
+        try? await center.add(request)
+    }
+    
+    func cancelPhotoReminder(_ reminder: PhotoReminder) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["reminder-\(reminder.id)"])
     }
 }

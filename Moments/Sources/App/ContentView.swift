@@ -2,6 +2,7 @@
 // Vista principal con navegación por tabs
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
@@ -16,28 +17,183 @@ struct ContentView: View {
     var body: some View {
         Group {
             if isTestingMode {
-                if !appState.hasCompletedInitialIndexing {
-                    ScanningView()
-                        .onAppear {
-                            appState.isLibraryAuthorized = true
-                            appState.hasCompletedOnboarding = true
-                            if !appState.isIndexing {
-                                appState.startScan()
-                            }
+                // Testing mode: skip onboarding, go directly to home
+                MainTabView()
+                    .onAppear {
+                        appState.isLibraryAuthorized = true
+                        appState.hasCompletedOnboarding = true
+                        // Start background processing (non-blocking)
+                        if !appState.isIndexing && !appState.isAnalyzing {
+                            appState.startBackgroundIndexingAndAnalysis()
                         }
-                } else {
-                    MainTabView()
-                }
+                    }
             } else if !appState.hasCompletedOnboarding {
                 OnboardingView()
-            } else if !appState.hasCompletedInitialIndexing {
-                ScanningView()
             } else {
+                // After onboarding, ALWAYS show home immediately
+                // Background processing runs in the background, never blocks UI
                 MainTabView()
+                    .onAppear {
+                        // Ensure background processing is running
+                        if appState.isLibraryAuthorized && !appState.isIndexing && !appState.isAnalyzing {
+                            appState.startBackgroundIndexingAndAnalysis()
+                        }
+                    }
             }
         }
         .preferredColorScheme(.dark)
         .accessibilityIdentifier(isTestingMode ? "app.testing_mode" : "app.root")
+        .sheet(isPresented: $appState.showProcessingSheet) {
+            ProcessingStatusSheet()
+        }
+    }
+}
+
+// MARK: - Processing Status Sheet (friendly "long processing" screen)
+
+struct ProcessingStatusSheet: View {
+    @EnvironmentObject var appState: AppState
+    @State private var showNotificationPrompt = false
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MomentsColors.bgPrimary.ignoresSafeArea()
+                
+                VStack(spacing: MomentsSpacing.xl) {
+                    Spacer()
+                    
+                    // Friendly icon
+                    ZStack {
+                        Circle()
+                            .fill(MomentsColors.accent.opacity(0.15))
+                            .frame(width: 140, height: 140)
+                        
+                        if appState.isIndexing || appState.isAnalyzing {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .scaleEffect(2)
+                                .tint(MomentsColors.accent)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 64, weight: .light))
+                                .foregroundStyle(MomentsColors.accent)
+                        }
+                    }
+                    
+                    VStack(spacing: MomentsSpacing.sm) {
+                        if appState.isIndexing {
+                            Text("Organizando tu biblioteca...")
+                                .font(MomentsTypography.titleMedium)
+                                .foregroundStyle(MomentsColors.textPrimary)
+                            
+                            Text("\(appState.totalPhotosIndexed) fotos encontradas")
+                                .font(MomentsTypography.bodyMedium)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                        } else if appState.isAnalyzing {
+                            Text("Analizando tus fotos...")
+                                .font(MomentsTypography.titleMedium)
+                                .foregroundStyle(MomentsColors.textPrimary)
+                            
+                            Text("Esto puede tardar unos minutos")
+                                .font(MomentsTypography.bodyMedium)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                            
+                            Text("\(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)")
+                                .font(MomentsTypography.bodyMedium)
+                                .foregroundStyle(MomentsColors.textTertiary)
+                        } else {
+                            Text("¡Listo!")
+                                .font(MomentsTypography.titleMedium)
+                                .foregroundStyle(MomentsColors.textPrimary)
+                            
+                            if appState.estimatedSpaceSavings > 0 {
+                                let gbSavings = Double(appState.estimatedSpaceSavings) / 1_000_000_000.0
+                                Text("Encontramos \(String(format: "%.1f GB", gbSavings)) para liberar")
+                                    .font(MomentsTypography.bodyMedium)
+                                    .foregroundStyle(MomentsColors.textSecondary)
+                            }
+                        }
+                    }
+                    
+                    // Progress bar
+                    if appState.isIndexing || appState.isAnalyzing {
+                        let progress = appState.isIndexing ? appState.indexingProgress : appState.analysisProgress
+                        ProgressView(value: progress)
+                            .progressViewStyle(.linear)
+                            .tint(MomentsColors.accent)
+                            .padding(.horizontal, MomentsSpacing.xl)
+                    }
+                    
+                    Spacer()
+                    
+                    // Notification pre-prompt
+                    if appState.shouldShowNotificationPrompt && !showNotificationPrompt {
+                        Button {
+                            showNotificationPrompt = true
+                        } label: {
+                            HStack(spacing: MomentsSpacing.sm) {
+                                Image(systemName: "bell.badge")
+                                Text("¿Te aviso cuando esté listo?")
+                            }
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.accent)
+                            .padding(.vertical, MomentsSpacing.sm)
+                            .padding(.horizontal, MomentsSpacing.md)
+                            .background(MomentsColors.accent.opacity(0.1))
+                            .cornerRadius(20)
+                        }
+                        .accessibilityIdentifier("processing.notificationPrompt")
+                    }
+                    
+                    // "Seguí usando Moments" button
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Seguí usando Moments")
+                            .font(MomentsTypography.buttonLarge)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, MomentsSpacing.md)
+                            .background(
+                                LinearGradient(
+                                    colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(MomentsCorners.large)
+                    }
+                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    .padding(.bottom, MomentsSpacing.xl)
+                    .accessibilityIdentifier("processing.continueButton")
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    }
+                }
+            }
+        }
+        .alert("¿Te aviso cuando esté listo?", isPresented: $showNotificationPrompt) {
+            Button("Sí, avisame") {
+                Task {
+                    _ = await appState.requestNotificationPermission()
+                }
+            }
+            Button("No, gracias", role: .cancel) {}
+        } message: {
+            Text("Te vamos a enviar una notificación cuando terminemos de analizar tu biblioteca.")
+        }
+        .preferredColorScheme(.dark)
+        .accessibilityIdentifier("processing.sheet")
     }
 }
 
@@ -301,6 +457,8 @@ struct OnboardingView: View {
         Task {
             let granted = await appState.requestAuthorization()
             if granted {
+                // Complete onboarding and go directly to home
+                // Background processing starts automatically in completeOnboarding()
                 appState.completeOnboarding()
             }
             isRequesting = false
@@ -383,7 +541,9 @@ struct OnboardingPageView: View {
     }
 }
 
-// MARK: - Scanning View (Dark Premium)
+// MARK: - Scanning View (Legacy - kept for UI tests only)
+// This view is NO LONGER shown in the normal flow
+// After onboarding, users go directly to home with background processing
 
 struct ScanningView: View {
     @EnvironmentObject var appState: AppState
@@ -400,28 +560,25 @@ struct ScanningView: View {
                         .fill(MomentsColors.accent.opacity(0.15))
                         .frame(width: 160, height: 160)
                     
-                    if appState.isIndexing {
+                    if appState.isIndexing || appState.isAnalyzing {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .scaleEffect(2)
                             .tint(MomentsColors.accent)
                     } else {
-                        Image(systemName: "photo.badge.plus")
+                        Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 72, weight: .light))
                             .foregroundStyle(MomentsColors.accent)
                     }
                 }
                 
                 VStack(spacing: MomentsSpacing.sm) {
-                    Text(appState.isIndexing 
-                         ? String(localized: "scanning_in_progress") 
-                         : String(localized: "scanning_ready"))
-                        .font(MomentsTypography.titleMedium)
-                        .foregroundStyle(MomentsColors.textPrimary)
-                        .accessibilityIdentifier(appState.isIndexing ? "scanning.inProgress" : "scanning.ready")
-                    
                     if appState.isIndexing {
-                        Text(String(localized: "scanning_photos_count \(appState.totalPhotosIndexed)"))
+                        Text("Organizando tu biblioteca...")
+                            .font(MomentsTypography.titleMedium)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                        
+                        Text("\(appState.totalPhotosIndexed) fotos encontradas")
                             .font(MomentsTypography.bodyMedium)
                             .foregroundStyle(MomentsColors.textSecondary)
                             .accessibilityIdentifier("scanning.count")
@@ -431,43 +588,501 @@ struct ScanningView: View {
                             .tint(MomentsColors.accent)
                             .padding(.horizontal, MomentsSpacing.xl)
                             .accessibilityIdentifier("scanning.progress")
-                    } else {
-                        Text(String(localized: "scanning_description"))
+                    } else if appState.isAnalyzing {
+                        Text("Analizando...")
+                            .font(MomentsTypography.titleMedium)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                        
+                        Text("\(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)")
                             .font(MomentsTypography.bodyMedium)
                             .foregroundStyle(MomentsColors.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, MomentsSpacing.lg)
+                            .accessibilityIdentifier("scanning.count")
+                    } else {
+                        Text("¡Listo!")
+                            .font(MomentsTypography.titleMedium)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                            .accessibilityIdentifier("scanning.complete")
                     }
                 }
                 
                 Spacer()
+            }
+        }
+        .preferredColorScheme(.dark)
+        .accessibilityIdentifier("scanning.root")
+    }
+}
+
+// MARK: - Repaso del Día (Daily Review)
+
+struct RepasoDelDiaView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var appState: AppState
+    
+    @State private var lowValuePhotos: [PersistedPhoto] = []
+    @State private var selectedPhotos: Set<String> = []
+    @State private var showTagSheet = false
+    @State private var showReminderSheet = false
+    @State private var selectedPhotoForAction: PersistedPhoto?
+    @State private var newTagName = ""
+    @State private var reminderDate = Date().addingTimeInterval(86400) // Tomorrow
+    @State private var reminderNote = ""
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MomentsColors.bgPrimary.ignoresSafeArea()
                 
-                if !appState.isIndexing {
-                    Button {
-                        appState.startScan()
-                    } label: {
-                        Text(String(localized: "scanning_start_button"))
-                            .font(MomentsTypography.buttonLarge)
+                if lowValuePhotos.isEmpty {
+                    VStack(spacing: MomentsSpacing.lg) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 64))
+                            .foregroundStyle(MomentsColors.accent)
+                        
+                        Text("¡Todo limpio!")
+                            .font(MomentsTypography.titleMedium)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                        
+                        Text("No hay fotos de bajo valor de hoy")
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        // Summary header
+                        VStack(spacing: MomentsSpacing.sm) {
+                            Text("Fotos de hoy con bajo valor")
+                                .font(MomentsTypography.titleSmall)
+                                .foregroundStyle(MomentsColors.textPrimary)
+                            
+                            Text("\(lowValuePhotos.count) fotos • \(selectedPhotos.count) seleccionadas")
+                                .font(MomentsTypography.bodySmall)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                        }
+                        .padding(.vertical, MomentsSpacing.md)
+                        
+                        // Photo grid
+                        ScrollView {
+                            LazyVGrid(columns: [
+                                GridItem(.flexible(), spacing: 2),
+                                GridItem(.flexible(), spacing: 2),
+                                GridItem(.flexible(), spacing: 2)
+                            ], spacing: 2) {
+                                ForEach(lowValuePhotos, id: \.id) { photo in
+                                    RepasoPhotoCell(
+                                        photo: photo,
+                                        isSelected: selectedPhotos.contains(photo.id),
+                                        onTap: { toggleSelection(photo) },
+                                        onLongPress: { showActionsFor(photo) }
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Action buttons
+                        VStack(spacing: MomentsSpacing.sm) {
+                            HStack(spacing: MomentsSpacing.md) {
+                                Button {
+                                    selectAll()
+                                } label: {
+                                    Text("Seleccionar todo")
+                                        .font(MomentsTypography.labelMedium)
+                                        .foregroundStyle(MomentsColors.accent)
+                                }
+                                
+                                Spacer()
+                                
+                                Button {
+                                    deselectAll()
+                                } label: {
+                                    Text("Deseleccionar")
+                                        .font(MomentsTypography.labelMedium)
+                                        .foregroundStyle(MomentsColors.textSecondary)
+                                }
+                            }
+                            .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                            
+                            HStack(spacing: MomentsSpacing.md) {
+                                Button {
+                                    keepSelected()
+                                } label: {
+                                    Text("Conservar")
+                                        .font(MomentsTypography.buttonMedium)
+                                        .foregroundStyle(MomentsColors.textPrimary)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, MomentsSpacing.sm)
+                                        .background(MomentsColors.bgTertiary)
+                                        .cornerRadius(MomentsCorners.medium)
+                                }
+                                
+                                Button {
+                                    deleteSelected()
+                                } label: {
+                                    Text("Eliminar \(selectedPhotos.count)")
+                                        .font(MomentsTypography.buttonMedium)
+                                        .foregroundStyle(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, MomentsSpacing.sm)
+                                        .background(Color.red)
+                                        .cornerRadius(MomentsCorners.medium)
+                                }
+                            }
+                            .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                            .padding(.bottom, MomentsSpacing.lg)
+                        }
+                        .padding(.top, MomentsSpacing.md)
+                        .background(MomentsColors.bgSecondary)
+                    }
+                }
+            }
+            .navigationTitle("Repaso del día")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cerrar") { dismiss() }
+                }
+            }
+        }
+        .onAppear { loadTodaysLowValuePhotos() }
+        .sheet(isPresented: $showTagSheet) {
+            AddTagSheet(
+                tagName: $newTagName,
+                photo: selectedPhotoForAction,
+                onSave: { addTagToPhoto() }
+            )
+        }
+        .sheet(isPresented: $showReminderSheet) {
+            AddReminderSheet(
+                reminderDate: $reminderDate,
+                note: $reminderNote,
+                photo: selectedPhotoForAction,
+                onSave: { addReminderToPhoto() }
+            )
+        }
+        .preferredColorScheme(.dark)
+        .accessibilityIdentifier("repasoDia.root")
+    }
+    
+    private func loadTodaysLowValuePhotos() {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? Date()
+        
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { photo in
+                photo.creationDate != nil &&
+                photo.creationDate! >= startOfToday &&
+                photo.creationDate! < endOfToday &&
+                photo.cleanupCategoryRaw != "none" &&
+                photo.cleanupCategoryRaw != nil
+            },
+            sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
+        )
+        
+        lowValuePhotos = (try? modelContext.fetch(descriptor)) ?? []
+        selectedPhotos = Set(lowValuePhotos.map { $0.id })
+    }
+    
+    private func toggleSelection(_ photo: PersistedPhoto) {
+        if selectedPhotos.contains(photo.id) {
+            selectedPhotos.remove(photo.id)
+        } else {
+            selectedPhotos.insert(photo.id)
+        }
+    }
+    
+    private func selectAll() {
+        selectedPhotos = Set(lowValuePhotos.map { $0.id })
+    }
+    
+    private func deselectAll() {
+        selectedPhotos.removeAll()
+    }
+    
+    private func showActionsFor(_ photo: PersistedPhoto) {
+        selectedPhotoForAction = photo
+    }
+    
+    private func keepSelected() {
+        // Remove from cleanup suggestions
+        for photo in lowValuePhotos where selectedPhotos.contains(photo.id) {
+            photo.cleanupCategoryRaw = CleanupCategoryType.none.rawValue
+            photo.isProtected = true
+            photo.protectionReasonRaw = ProtectionReason.userProtected.rawValue
+        }
+        try? modelContext.save()
+        loadTodaysLowValuePhotos()
+    }
+    
+    private func deleteSelected() {
+        // Add to pending trash
+        for photo in lowValuePhotos where selectedPhotos.contains(photo.id) {
+            let trashItem = PendingTrashItem(
+                photoId: photo.id,
+                localIdentifier: photo.localIdentifier,
+                sourceCategory: photo.cleanupCategoryRaw,
+                estimatedFileSize: photo.estimatedFileSize ?? 0
+            )
+            modelContext.insert(trashItem)
+        }
+        try? modelContext.save()
+        loadTodaysLowValuePhotos()
+    }
+    
+    private func addTagToPhoto() {
+        guard let photo = selectedPhotoForAction, !newTagName.isEmpty else { return }
+        
+        // Find or create tag
+        let descriptor = FetchDescriptor<PhotoTag>(
+            predicate: #Predicate { $0.name == newTagName }
+        )
+        
+        let tag: PhotoTag
+        if let existing = try? modelContext.fetch(descriptor).first {
+            tag = existing
+        } else {
+            tag = PhotoTag(name: newTagName)
+            modelContext.insert(tag)
+        }
+        
+        tag.addPhoto(photo.id)
+        try? modelContext.save()
+        
+        newTagName = ""
+        showTagSheet = false
+    }
+    
+    private func addReminderToPhoto() {
+        guard let photo = selectedPhotoForAction else { return }
+        
+        let reminder = PhotoReminder(
+            photoId: photo.id,
+            localIdentifier: photo.localIdentifier,
+            reminderDate: reminderDate,
+            note: reminderNote.isEmpty ? nil : reminderNote
+        )
+        modelContext.insert(reminder)
+        try? modelContext.save()
+        
+        // Schedule notification
+        Task {
+            await appState.schedulePhotoReminder(reminder)
+        }
+        
+        reminderNote = ""
+        reminderDate = Date().addingTimeInterval(86400)
+        showReminderSheet = false
+    }
+}
+
+struct RepasoPhotoCell: View {
+    let photo: PersistedPhoto
+    let isSelected: Bool
+    let onTap: () -> Void
+    let onLongPress: () -> Void
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Rectangle()
+                .fill(MomentsColors.bgTertiary)
+                .aspectRatio(1, contentMode: .fill)
+            
+            // Selection indicator
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(MomentsColors.accent)
+                    .padding(4)
+            }
+            
+            // Category badge
+            VStack {
+                Spacer()
+                HStack {
+                    if let category = CleanupCategoryType(rawValue: photo.cleanupCategoryRaw ?? "none"),
+                       category != .none {
+                        Image(systemName: category.iconName)
+                            .font(.caption2)
                             .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, MomentsSpacing.md)
-                            .background(
-                                LinearGradient(
-                                    colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .cornerRadius(MomentsCorners.large)
+                            .padding(4)
+                            .background(Color.black.opacity(0.5))
+                            .cornerRadius(4)
+                    }
+                    Spacer()
+                }
+                .padding(4)
+            }
+        }
+        .onTapGesture { onTap() }
+        .onLongPressGesture { onLongPress() }
+        .overlay(
+            RoundedRectangle(cornerRadius: 0)
+                .stroke(isSelected ? MomentsColors.accent : Color.clear, lineWidth: 2)
+        )
+    }
+}
+
+struct AddTagSheet: View {
+    @Binding var tagName: String
+    let photo: PersistedPhoto?
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @State private var existingTags: [PhotoTag] = []
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MomentsColors.bgPrimary.ignoresSafeArea()
+                
+                VStack(spacing: MomentsSpacing.lg) {
+                    TextField("Nombre de la etiqueta", text: $tagName)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(MomentsColors.bgTertiary)
+                        .cornerRadius(MomentsCorners.medium)
+                        .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    
+                    if !existingTags.isEmpty {
+                        VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
+                            Text("Etiquetas existentes")
+                                .font(MomentsTypography.labelSmall)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                                .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: MomentsSpacing.xs) {
+                                    ForEach(existingTags, id: \.id) { tag in
+                                        Button {
+                                            tagName = tag.name
+                                        } label: {
+                                            Text(tag.name)
+                                                .font(MomentsTypography.labelMedium)
+                                                .foregroundStyle(MomentsColors.textPrimary)
+                                                .padding(.horizontal, MomentsSpacing.sm)
+                                                .padding(.vertical, MomentsSpacing.xs)
+                                                .background(MomentsColors.bgTertiary)
+                                                .cornerRadius(MomentsCorners.small)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.top, MomentsSpacing.lg)
+            }
+            .navigationTitle("Agregar etiqueta")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        onSave()
+                        dismiss()
+                    }
+                    .disabled(tagName.isEmpty)
+                }
+            }
+        }
+        .onAppear {
+            existingTags = (try? modelContext.fetch(FetchDescriptor<PhotoTag>())) ?? []
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+struct AddReminderSheet: View {
+    @Binding var reminderDate: Date
+    @Binding var note: String
+    let photo: PersistedPhoto?
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MomentsColors.bgPrimary.ignoresSafeArea()
+                
+                VStack(spacing: MomentsSpacing.lg) {
+                    // Quick options
+                    VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
+                        Text("Recordarme")
+                            .font(MomentsTypography.labelSmall)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                        
+                        HStack(spacing: MomentsSpacing.sm) {
+                            QuickReminderButton(title: "Mañana") {
+                                reminderDate = Date().addingTimeInterval(86400)
+                            }
+                            QuickReminderButton(title: "En 3 días") {
+                                reminderDate = Date().addingTimeInterval(86400 * 3)
+                            }
+                            QuickReminderButton(title: "En 1 semana") {
+                                reminderDate = Date().addingTimeInterval(86400 * 7)
+                            }
+                        }
                     }
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
-                    .padding(.bottom, MomentsSpacing.xl)
-                    .accessibilityIdentifier("scanning.startButton")
+                    
+                    DatePicker(
+                        "Fecha y hora",
+                        selection: $reminderDate,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .datePickerStyle(.graphical)
+                    .tint(MomentsColors.accent)
+                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    
+                    TextField("Nota (opcional)", text: $note)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(MomentsColors.bgTertiary)
+                        .cornerRadius(MomentsCorners.medium)
+                        .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    
+                    Spacer()
+                }
+                .padding(.top, MomentsSpacing.lg)
+            }
+            .navigationTitle("Agregar recordatorio")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        onSave()
+                        dismiss()
+                    }
                 }
             }
         }
         .preferredColorScheme(.dark)
-        .accessibilityIdentifier(appState.hasCompletedInitialIndexing ? "scanning.complete" : "scanning.root")
+    }
+}
+
+struct QuickReminderButton: View {
+    let title: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(MomentsTypography.labelMedium)
+                .foregroundStyle(MomentsColors.accent)
+                .padding(.horizontal, MomentsSpacing.sm)
+                .padding(.vertical, MomentsSpacing.xs)
+                .background(MomentsColors.accent.opacity(0.1))
+                .cornerRadius(MomentsCorners.small)
+        }
     }
 }
 
