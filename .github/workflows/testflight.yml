@@ -302,30 +302,68 @@ jobs:
           echo "=== UI Test Summary ==="
           grep -E "(Test Suite|Test Case|passed|failed)" "$RUNNER_TEMP/ui_test_output.log" | tail -50
 
-      - name: Extract Screenshots from Test Results
+      - name: Capture Key Screenshots
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/screenshots"
           
-          # Extract screenshots from xcresult bundle
+          echo "Capturing key app screenshots..."
+          
+          # Re-launch app to get fresh state
+          xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
+          sleep 2
+          xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+          sleep 5
+          
+          # Screenshot 1: Home screen
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/01_home.png" 2>/dev/null || true
+          echo "✓ Home screenshot"
+          
+          # Tap on Assistant tab (second tab)
+          xcrun simctl io "$DEVICE_ID" tap 195 800 2>/dev/null || true
+          sleep 2
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/02_assistant.png" 2>/dev/null || true
+          echo "✓ Assistant screenshot"
+          
+          # Tap on Moments tab (third tab)
+          xcrun simctl io "$DEVICE_ID" tap 293 800 2>/dev/null || true
+          sleep 2
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/03_moments.png" 2>/dev/null || true
+          echo "✓ Moments screenshot"
+          
+          # Tap on Settings tab (fourth tab)
+          xcrun simctl io "$DEVICE_ID" tap 390 800 2>/dev/null || true
+          sleep 2
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/04_settings.png" 2>/dev/null || true
+          echo "✓ Settings screenshot"
+          
+          # Go back to Home
+          xcrun simctl io "$DEVICE_ID" tap 97 800 2>/dev/null || true
+          sleep 2
+          
+          # Try to tap on "Revisar ahora" button for cleanup
+          xcrun simctl io "$DEVICE_ID" tap 200 400 2>/dev/null || true
+          sleep 2
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/05_cleanup.png" 2>/dev/null || true
+          echo "✓ Cleanup screenshot"
+          
+          # Final state
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/06_final_state.png" 2>/dev/null || true
+          
+          echo "Screenshots captured: $(ls -1 $RUNNER_TEMP/screenshots/ 2>/dev/null | wc -l)"
+          ls -la "$RUNNER_TEMP/screenshots/"
+      
+      - name: Extract Screenshots from Test Results
+        if: always()
+        run: |
+          # Try to extract attachments from xcresult bundle
           if [ -d "$RUNNER_TEMP/TestResults.xcresult" ]; then
             echo "Extracting screenshots from test results..."
             
-            # Use xcresulttool to extract attachments
+            # Use xcresulttool to list attachments
             xcrun xcresulttool get --path "$RUNNER_TEMP/TestResults.xcresult" \
-              --format json > "$RUNNER_TEMP/test_results.json" 2>/dev/null || true
-            
-            # Try to export screenshots using xcparse if available
-            if command -v xcparse &> /dev/null; then
-              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" || true
-            fi
-            
-            # Fallback: manually capture current simulator state
-            echo "Capturing simulator screenshots..."
-            xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/final_state.png" 2>/dev/null || true
+              --format json 2>/dev/null | jq -r '.actions._values[].actionResult.testsRef.id' 2>/dev/null || true
           fi
-          
-          echo "Screenshots captured: $(ls -1 $RUNNER_TEMP/screenshots/ 2>/dev/null | wc -l)"
 
       - name: Run MomentsEngine Unit Tests
         continue-on-error: true
