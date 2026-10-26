@@ -168,15 +168,17 @@ struct SettingsView: View {
             
             Spacer()
             
-            if appState.isScanning {
+            if appState.isIndexing || appState.isAnalyzing {
                 ProgressView()
             }
         }
     }
     
     private var libraryStatusText: String {
-        if appState.isScanning {
-            return "Escaneando... \(Int(appState.scanProgress * 100))%"
+        if appState.isIndexing {
+            return "Indexando... \(Int(appState.indexingProgress * 100))%"
+        } else if appState.isAnalyzing {
+            return "Analizando \(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)"
         } else if appState.hasCompletedInitialScan {
             return "\(appState.totalPhotosIndexed) elementos indexados"
         } else {
@@ -185,7 +187,7 @@ struct SettingsView: View {
     }
     
     private var libraryStatusIcon: String {
-        if appState.isScanning {
+        if appState.isIndexing || appState.isAnalyzing {
             return "arrow.triangle.2.circlepath"
         } else if appState.hasCompletedInitialScan {
             return "checkmark.circle.fill"
@@ -195,7 +197,7 @@ struct SettingsView: View {
     }
     
     private var libraryStatusColor: Color {
-        if appState.isScanning {
+        if appState.isIndexing || appState.isAnalyzing {
             return .orange
         } else if appState.hasCompletedInitialScan {
             return .green

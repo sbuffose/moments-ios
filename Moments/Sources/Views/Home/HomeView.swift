@@ -120,7 +120,7 @@ struct HomeView: View {
         .padding(.horizontal, MomentsSpacing.md)
         .padding(.vertical, MomentsSpacing.xs)
         .background(MomentsColors.bgSecondary)
-        .cornerRadius(MomentsCorners.full)
+        .cornerRadius(20)
         .accessibilityIdentifier("home.analysisPill")
     }
     
