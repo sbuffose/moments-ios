@@ -105,25 +105,23 @@ class AppState: ObservableObject {
     @Published var scanProgress: Double = 0
     @Published var totalPhotosIndexed = 0
     @Published var hasCompletedInitialScan = false
-    @Published var selectedTab: AppTab = .cleanup
+    @Published var selectedTab: AppTab = .home
     
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
     
     enum AppTab: String, CaseIterable, Sendable {
-        case cleanup = "cleanup"
-        case search = "search"
-        case fechas = "fechas"
-        case timeline = "timeline"
-        case people = "people"
+        case home = "home"
+        case assistant = "assistant"
+        case moments = "moments"
+        case settings = "settings"
         
         var icon: String {
             switch self {
-            case .cleanup: return "house.fill"
-            case .search: return "magnifyingglass"
-            case .fechas: return "gift.fill"
-            case .timeline: return "photo.on.rectangle.angled"
-            case .people: return "person.2.fill"
+            case .home: return "house.fill"
+            case .assistant: return "sparkles"
+            case .moments: return "photo.on.rectangle.angled"
+            case .settings: return "gear"
             }
         }
         

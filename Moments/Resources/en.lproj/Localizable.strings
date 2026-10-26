@@ -4,11 +4,16 @@
 "app_tagline" = "Free up space and relive your moments";
 
 /* Tabs */
+"tab_home" = "Home";
+"tab_assistant" = "Assistant";
+"tab_moments" = "Moments";
+"tab_settings" = "Settings";
 "tab_cleanup" = "Home";
 "tab_search" = "Search";
-"tab_timeline" = "Moments";
+"tab_timeline" = "Timeline";
 "tab_places" = "Places";
 "tab_people" = "People";
+"tab_fechas" = "Dates";
 
 /* Onboarding - Page 1: Save Space */
 "onboarding_page1_title" = "Free up space without losing what matters";

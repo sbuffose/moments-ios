@@ -4,11 +4,16 @@
 "app_tagline" = "Liberá espacio y reviví tus momentos";
 
 /* Tabs */
+"tab_home" = "Inicio";
+"tab_assistant" = "Asistente";
+"tab_moments" = "Momentos";
+"tab_settings" = "Ajustes";
 "tab_cleanup" = "Inicio";
 "tab_search" = "Buscar";
-"tab_timeline" = "Momentos";
+"tab_timeline" = "Línea";
 "tab_places" = "Lugares";
 "tab_people" = "Personas";
+"tab_fechas" = "Fechas";
 
 /* Onboarding - Page 1: Save Space */
 "onboarding_page1_title" = "Liberá espacio sin perder lo importante";

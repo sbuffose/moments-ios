@@ -35,41 +35,94 @@ struct ContentView: View {
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         TabView(selection: $appState.selectedTab) {
-            // Limpiar is now the hero/home tab
-            CleanupView()
+            // Home feed with proactive cards
+            HomeView()
                 .tabItem {
-                    Label(String(localized: "tab_cleanup"), systemImage: AppState.AppTab.cleanup.icon)
+                    Label(String(localized: "tab_home"), systemImage: AppState.AppTab.home.icon)
                 }
-                .tag(AppState.AppTab.cleanup)
+                .tag(AppState.AppTab.home)
             
-            SearchView()
+            // Conversational assistant
+            AssistantView()
                 .tabItem {
-                    Label(String(localized: "tab_search"), systemImage: AppState.AppTab.search.icon)
+                    Label(String(localized: "tab_assistant"), systemImage: AppState.AppTab.assistant.icon)
                 }
-                .tag(AppState.AppTab.search)
+                .tag(AppState.AppTab.assistant)
             
-            FechasView()
+            // Moments/Timeline
+            MomentsListView()
                 .tabItem {
-                    Label(String(localized: "tab_fechas"), systemImage: AppState.AppTab.fechas.icon)
+                    Label(String(localized: "tab_moments"), systemImage: AppState.AppTab.moments.icon)
                 }
-                .tag(AppState.AppTab.fechas)
+                .tag(AppState.AppTab.moments)
             
-            TimelineView()
+            // Settings
+            SettingsView()
                 .tabItem {
-                    Label(String(localized: "tab_timeline"), systemImage: AppState.AppTab.timeline.icon)
+                    Label(String(localized: "tab_settings"), systemImage: AppState.AppTab.settings.icon)
                 }
-                .tag(AppState.AppTab.timeline)
-            
-            PeopleView()
-                .tabItem {
-                    Label(String(localized: "tab_people"), systemImage: AppState.AppTab.people.icon)
-                }
-                .tag(AppState.AppTab.people)
+                .tag(AppState.AppTab.settings)
         }
-        .tint(.primary)
+        .tint(MomentsColors.accent)
+    }
+}
+
+// MARK: - Moments List View (Timeline + People + Places combined)
+
+struct MomentsListView: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var selectedSection: MomentsSection = .timeline
+    
+    enum MomentsSection: String, CaseIterable {
+        case timeline = "Línea"
+        case people = "Personas"
+        case places = "Lugares"
+        case dates = "Fechas"
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Section picker
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: MomentsSpacing.xs) {
+                        ForEach(MomentsSection.allCases, id: \.self) { section in
+                            MomentsChip(
+                                label: section.rawValue,
+                                isSelected: selectedSection == section,
+                                action: {
+                                    withAnimation(MomentsAnimation.spring) {
+                                        selectedSection = section
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    .padding(.vertical, MomentsSpacing.sm)
+                }
+                
+                // Content
+                Group {
+                    switch selectedSection {
+                    case .timeline:
+                        TimelineView()
+                    case .people:
+                        PeopleView()
+                    case .places:
+                        PlacesView()
+                    case .dates:
+                        FechasView()
+                    }
+                }
+            }
+            .navigationTitle(Text("Momentos"))
+            .background(MomentsColors.bgPrimary)
+        }
     }
 }
 
