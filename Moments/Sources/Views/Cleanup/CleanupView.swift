@@ -355,7 +355,7 @@ struct CleanupView: View {
     
     private func upcomingDateSubtitle(_ date: PersistedImportantDate) -> LocalizedStringKey {
         switch date.dateType {
-        case .birthday, .childBirthday:
+        case .birthday, .childBirthday, .friendBirthday:
             if let year = date.year {
                 let age = Calendar.current.component(.year, from: Date()) - year
                 let nextAge = (date.daysUntilNext ?? 0) == 0 ? age : age + 1

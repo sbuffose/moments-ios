@@ -242,7 +242,7 @@ struct UpcomingDateRow: View {
     
     private var colorForDateType: Color {
         switch importantDate.dateType {
-        case .birthday: return .pink
+        case .birthday, .friendBirthday: return .pink
         case .wedding, .anniversary: return .red
         case .childBirthday: return .orange
         case .other: return .blue
@@ -379,7 +379,7 @@ struct UnconfirmedDateRow: View {
         let name = importantDate.personName ?? "esta persona"
         
         switch importantDate.dateType {
-        case .birthday:
+        case .birthday, .friendBirthday:
             return "¿El \(date) es el cumpleaños de \(name)?"
         case .wedding, .anniversary:
             return "¿El \(date) es el aniversario de \(name)?"

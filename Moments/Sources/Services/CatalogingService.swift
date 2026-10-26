@@ -204,7 +204,7 @@ class CatalogingService: ObservableObject {
             let subtitle: String
             
             switch date.dateType {
-            case .birthday:
+            case .birthday, .friendBirthday:
                 cardType = .confirmBirthday
                 let name = date.personName ?? String(localized: "cataloging_unknown_person")
                 title = String(localized: "cataloging_birthday_question \(date.displayDate) \(name)")

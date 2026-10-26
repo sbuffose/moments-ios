@@ -146,11 +146,11 @@ class CalendarService: ObservableObject {
         
         if let year = importantDate.year {
             switch importantDate.dateType {
-            case .birthday, .childBirthday:
+            case .birthday, .childBirthday, .friendBirthday:
                 notes.append("Año de nacimiento: \(year)")
             case .wedding, .anniversary:
                 notes.append("Fecha de la boda: \(importantDate.displayDate)/\(year)")
-            default:
+            case .other:
                 break
             }
         }

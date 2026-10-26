@@ -968,7 +968,7 @@ final class PersistedImportantDate {
     
     var displayName: String {
         switch dateType {
-        case .birthday:
+        case .birthday, .friendBirthday:
             return personName ?? String(localized: "important_date_unknown_person")
         case .wedding, .anniversary:
             if let name1 = personName, let name2 = secondPersonName {

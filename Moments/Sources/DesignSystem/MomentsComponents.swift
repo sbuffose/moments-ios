@@ -237,7 +237,7 @@ struct DateReminderCard: View {
     
     private var colorForType: Color {
         switch importantDate.dateType {
-        case .birthday, .childBirthday: return .pink
+        case .birthday, .childBirthday, .friendBirthday: return .pink
         case .wedding, .anniversary: return .red
         case .other: return MomentsColors.accent
         }
@@ -245,7 +245,7 @@ struct DateReminderCard: View {
     
     private var eventTypeText: String {
         switch importantDate.dateType {
-        case .birthday: return "Cumpleaños"
+        case .birthday, .friendBirthday: return "Cumpleaños"
         case .childBirthday: return "Cumpleaños"
         case .wedding: return "Aniversario de boda"
         case .anniversary: return "Aniversario"

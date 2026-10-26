@@ -219,7 +219,7 @@ struct MemoryReelView: View {
     
     private var colorForDateType: Color {
         switch importantDate.dateType {
-        case .birthday: return .pink
+        case .birthday, .friendBirthday: return .pink
         case .wedding, .anniversary: return .red
         case .childBirthday: return .orange
         case .other: return .blue
@@ -243,7 +243,7 @@ struct MemoryReelView: View {
     private var subtitleText: String {
         let date = importantDate.displayDate
         switch importantDate.dateType {
-        case .birthday, .childBirthday:
+        case .birthday, .childBirthday, .friendBirthday:
             if let year = importantDate.year {
                 let currentYear = Calendar.current.component(.year, from: Date())
                 let age = currentYear - year
@@ -326,7 +326,7 @@ struct YearMemorySection: View {
     
     private var yearTitle: String {
         switch importantDate.dateType {
-        case .birthday, .childBirthday:
+        case .birthday, .childBirthday, .friendBirthday:
             if let birthYear = importantDate.year {
                 let age = year - birthYear
                 return "\(year) • \(age) años"

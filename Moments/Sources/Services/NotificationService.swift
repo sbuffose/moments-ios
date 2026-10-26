@@ -145,7 +145,7 @@ class NotificationService: ObservableObject {
         
         let shouldNotify: Bool
         switch importantDate.dateType {
-        case .birthday:
+        case .birthday, .friendBirthday:
             shouldNotify = settings.notifyBirthdays
         case .anniversary, .wedding:
             shouldNotify = settings.notifyAnniversaries
