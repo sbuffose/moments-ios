@@ -97,16 +97,6 @@ targets:
     sources:
       - path: MomentsUITests
         type: group
-    info:
-      properties:
-        CFBundleDevelopmentRegion: es-AR
-        CFBundleExecutable: $(EXECUTABLE_NAME)
-        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
-        CFBundleInfoDictionaryVersion: "6.0"
-        CFBundleName: $(PRODUCT_NAME)
-        CFBundlePackageType: BNDL
-        CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments.uitests
@@ -126,16 +116,6 @@ targets:
       - path: MomentsTests
         type: group
         optional: true
-    info:
-      properties:
-        CFBundleDevelopmentRegion: es-AR
-        CFBundleExecutable: $(EXECUTABLE_NAME)
-        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
-        CFBundleInfoDictionaryVersion: "6.0"
-        CFBundleName: $(PRODUCT_NAME)
-        CFBundlePackageType: BNDL
-        CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments.tests
