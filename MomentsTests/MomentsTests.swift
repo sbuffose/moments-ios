@@ -559,4 +559,194 @@ final class MomentsTests: XCTestCase {
             XCTAssertTrue(formatted.contains(String(count)), "Should contain count")
         }
     }
+    
+    // MARK: - Background Task Checkpoint Tests
+    
+    func testCheckpointMarksIndexedAssets() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.checkpoint.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let lastIndexedIdKey = "\(testSuite).lastIndexedId"
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: lastIndexedIdKey)
+        
+        var indexedIds = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        XCTAssertTrue(indexedIds.isEmpty, "Should start empty")
+        
+        indexedIds.insert("asset-1")
+        indexedIds.insert("asset-2")
+        indexedIds.insert("asset-3")
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        defaults.set("asset-3", forKey: lastIndexedIdKey)
+        
+        let reloaded = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        XCTAssertEqual(reloaded.count, 3, "Should have 3 indexed assets")
+        XCTAssertTrue(reloaded.contains("asset-1"))
+        XCTAssertTrue(reloaded.contains("asset-2"))
+        XCTAssertTrue(reloaded.contains("asset-3"))
+        
+        let lastIndexed = defaults.string(forKey: lastIndexedIdKey)
+        XCTAssertEqual(lastIndexed, "asset-3", "Should track last indexed")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: lastIndexedIdKey)
+    }
+    
+    func testCheckpointResumesFromLastIndexed() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.resume.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        
+        let preexistingIds = ["asset-1", "asset-2", "asset-3", "asset-4", "asset-5"]
+        defaults.set(preexistingIds, forKey: indexedIdsKey)
+        
+        let allAssetsToProcess = ["asset-1", "asset-2", "asset-3", "asset-4", "asset-5",
+                                   "asset-6", "asset-7", "asset-8", "asset-9", "asset-10"]
+        
+        var indexedSet = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        var newlyProcessed = 0
+        
+        for assetId in allAssetsToProcess {
+            if !indexedSet.contains(assetId) {
+                indexedSet.insert(assetId)
+                newlyProcessed += 1
+            }
+        }
+        
+        defaults.set(Array(indexedSet), forKey: indexedIdsKey)
+        
+        XCTAssertEqual(newlyProcessed, 5, "Should only process 5 new assets")
+        XCTAssertEqual(indexedSet.count, 10, "Total should be 10 after resume")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+    }
+    
+    func testCheckpointProgressTracking() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.progress.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let analyzedIdsKey = "\(testSuite).analyzedIds"
+        let totalPhotosKey = "\(testSuite).totalPhotos"
+        let scanInProgressKey = "\(testSuite).scanInProgress"
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: analyzedIdsKey)
+        defaults.removeObject(forKey: totalPhotosKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+        
+        defaults.set(true, forKey: scanInProgressKey)
+        defaults.set(100, forKey: totalPhotosKey)
+        
+        XCTAssertTrue(defaults.bool(forKey: scanInProgressKey), "Scan should be in progress")
+        XCTAssertEqual(defaults.integer(forKey: totalPhotosKey), 100, "Total should be 100")
+        
+        var indexedIds = Set<String>()
+        for i in 1...50 {
+            indexedIds.insert("photo-\(i)")
+        }
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        
+        let indexed = defaults.stringArray(forKey: indexedIdsKey)?.count ?? 0
+        let analyzed = defaults.stringArray(forKey: analyzedIdsKey)?.count ?? 0
+        let total = defaults.integer(forKey: totalPhotosKey)
+        
+        XCTAssertEqual(indexed, 50, "Should have 50 indexed")
+        XCTAssertEqual(analyzed, 0, "Should have 0 analyzed yet")
+        XCTAssertEqual(total, 100, "Total should be 100")
+        
+        let progress = Double(indexed) / Double(max(total, 1))
+        XCTAssertEqual(progress, 0.5, accuracy: 0.01, "Progress should be 50%")
+        
+        var analyzedIds = Set<String>()
+        for i in 1...25 {
+            analyzedIds.insert("photo-\(i)")
+        }
+        defaults.set(Array(analyzedIds), forKey: analyzedIdsKey)
+        
+        let newAnalyzed = defaults.stringArray(forKey: analyzedIdsKey)?.count ?? 0
+        XCTAssertEqual(newAnalyzed, 25, "Should have 25 analyzed")
+        
+        let hasAnalysisPending = newAnalyzed < indexed
+        XCTAssertTrue(hasAnalysisPending, "Should have pending analysis")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: analyzedIdsKey)
+        defaults.removeObject(forKey: totalPhotosKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+    }
+    
+    func testCheckpointClearOnComplete() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.clear.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let analyzedIdsKey = "\(testSuite).analyzedIds"
+        let totalPhotosKey = "\(testSuite).totalPhotos"
+        let scanInProgressKey = "\(testSuite).scanInProgress"
+        
+        defaults.set(["photo-1", "photo-2"], forKey: indexedIdsKey)
+        defaults.set(["photo-1", "photo-2"], forKey: analyzedIdsKey)
+        defaults.set(2, forKey: totalPhotosKey)
+        defaults.set(true, forKey: scanInProgressKey)
+        
+        defaults.set(false, forKey: scanInProgressKey)
+        
+        XCTAssertFalse(defaults.bool(forKey: scanInProgressKey), "Scan should be complete")
+        
+        let hasWork = defaults.bool(forKey: scanInProgressKey)
+        XCTAssertFalse(hasWork, "Should have no pending work after completion")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: analyzedIdsKey)
+        defaults.removeObject(forKey: totalPhotosKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+    }
+    
+    func testCheckpointIdempotency() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.idempotent.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        
+        var indexedIds = Set<String>()
+        
+        indexedIds.insert("photo-1")
+        indexedIds.insert("photo-2")
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        XCTAssertEqual(indexedIds.count, 2)
+        
+        indexedIds.insert("photo-1")
+        indexedIds.insert("photo-2")
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        
+        let reloaded = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        XCTAssertEqual(reloaded.count, 2, "Set should remain at 2 (idempotent)")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+    }
+    
+    func testCheckpointPersistenceAcrossRestarts() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.persist.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let scanInProgressKey = "\(testSuite).scanInProgress"
+        
+        defaults.set(["photo-1", "photo-2", "photo-3"], forKey: indexedIdsKey)
+        defaults.set(true, forKey: scanInProgressKey)
+        defaults.synchronize()
+        
+        let isInProgress = defaults.bool(forKey: scanInProgressKey)
+        let indexedIds = defaults.stringArray(forKey: indexedIdsKey) ?? []
+        
+        XCTAssertTrue(isInProgress, "Should detect interrupted scan")
+        XCTAssertEqual(indexedIds.count, 3, "Should restore checkpoint data")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+    }
 }
