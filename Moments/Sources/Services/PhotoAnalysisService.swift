@@ -15,6 +15,7 @@ class PhotoAnalysisService: ObservableObject {
     private let imageAnalyzer = ImageAnalyzer()
     private let faceAnalyzer = FaceAnalyzer()
     private let geocodingService = GeocodingService.shared
+    private let metadataService = MetadataExtractionService.shared
     
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -151,6 +152,30 @@ class PhotoAnalysisService: ObservableObject {
         // Tamaño de archivo
         let resourceInfo = await getResourceInfo(for: asset)
         photo.estimatedFileSize = resourceInfo.fileSize
+        
+        // Extract EXIF metadata and determine origin
+        let metadata = await metadataService.extractMetadata(for: asset)
+        let originResult = await metadataService.detectOrigin(for: asset, metadata: metadata)
+        
+        photo.origin = originResult.origin
+        photo.hasExifData = metadata?.hasExifData ?? false
+        photo.cameraMake = metadata?.cameraMake
+        photo.cameraModel = metadata?.cameraModel
+        photo.lensMake = metadata?.lensMake
+        photo.lensModel = metadata?.lensModel
+        photo.software = metadata?.software
+        photo.originalFilename = metadata?.originalFilename
+        
+        // Mark downloaded memes/forwards as cleanup category
+        if photo.isDownloadedWithoutExif && photo.cleanupCategory == .none {
+            // Only if it looks like a meme (low res, no faces)
+            let maxDim = max(photo.pixelWidth, photo.pixelHeight)
+            if maxDim < 1000 && (photo.facesDetected ?? 0) == 0 {
+                photo.cleanupCategory = .downloadedMeme
+            } else if photo.origin.isMessagingApp && (photo.facesDetected ?? 0) == 0 {
+                photo.cleanupCategory = .forwardedImage
+            }
+        }
         
         photo.analysisCompleted = true
         photo.lastAnalyzedAt = Date()

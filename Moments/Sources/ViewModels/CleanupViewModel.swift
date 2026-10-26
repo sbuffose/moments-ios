@@ -168,6 +168,10 @@ class CleanupViewModel: ObservableObject {
                     $0.cleanupCategory == .largeVideo || 
                     ($0.mediaTypeRaw == "video" && ($0.estimatedFileSize ?? 0) > 100_000_000)
                 }.sorted { ($0.estimatedFileSize ?? 0) > ($1.estimatedFileSize ?? 0) }
+            case .downloadedMeme:
+                photosForCategory = allPhotos.filter { $0.cleanupCategory == .downloadedMeme }
+            case .forwardedImage:
+                photosForCategory = allPhotos.filter { $0.cleanupCategory == .forwardedImage }
             case .none:
                 continue
             }

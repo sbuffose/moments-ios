@@ -176,3 +176,96 @@
 
 /* Photo Detail */
 "search_photo_detail" = "Detalle";
+
+/* Photo Origins */
+"origin_camera" = "Cámara";
+"origin_screenshot" = "Captura de pantalla";
+"origin_screenRecording" = "Grabación de pantalla";
+"origin_whatsapp" = "WhatsApp";
+"origin_telegram" = "Telegram";
+"origin_instagram" = "Instagram";
+"origin_messenger" = "Messenger";
+"origin_snapchat" = "Snapchat";
+"origin_twitter" = "Twitter";
+"origin_tiktok" = "TikTok";
+"origin_download" = "Descarga";
+"origin_savedFromWeb" = "Guardado de web";
+"origin_editedExport" = "Exportación editada";
+"origin_airdrop" = "AirDrop";
+"origin_email" = "Email";
+"origin_cloudSync" = "Sincronizado";
+"origin_unknown" = "Desconocido";
+
+/* Place Types */
+"place_type_home" = "Casa";
+"place_type_work" = "Trabajo";
+"place_type_familyHome" = "Casa de familia";
+"place_type_gym" = "Gimnasio";
+"place_type_school" = "Escuela";
+"place_type_frequentPlace" = "Lugar frecuente";
+"place_type_tripDestination" = "Destino de viaje";
+"place_type_custom" = "Personalizado";
+"place_type_unknown" = "Sin etiquetar";
+
+/* New Cleanup Categories */
+"cleanup_category_downloadedMeme" = "Memes descargados";
+"cleanup_category_forwardedImage" = "Imágenes reenviadas";
+
+/* Cataloging */
+"cataloging_title" = "Organizar";
+"cataloging_analyzing" = "Analizando...";
+"cataloging_all_done_title" = "Todo organizado";
+"cataloging_all_done_description" = "No hay elementos pendientes de catalogar.";
+"cataloging_header_title" = "Ayudanos a organizar";
+"cataloging_header_subtitle" = "Responder estas preguntas mejora la búsqueda y la línea de tiempo.";
+"cataloging_skip" = "Saltar";
+"cataloging_cancel" = "Cancelar";
+"cataloging_save" = "Guardar";
+
+/* Cataloging Card Types */
+"cataloging_unknown_person_title" = "Persona sin nombre";
+"cataloging_unknown_place_title" = "Lugar sin etiquetar";
+"cataloging_messaging_photos_title" = "Fotos de mensajería";
+"cataloging_recurring_date_title" = "Fecha recurrente";
+"cataloging_downloaded_title" = "Contenido descargado";
+
+/* Cataloging Person */
+"cataloging_person_appears %lld" = "Esta persona aparece en %lld fotos";
+"cataloging_who_is_this" = "¿Quién es?";
+"cataloging_name_person" = "Nombrar";
+"cataloging_person_name_placeholder" = "Nombre";
+"cataloging_person_name_header" = "Nombre de la persona";
+"cataloging_has_birthday" = "Agregar cumpleaños";
+"cataloging_birthday_header" = "Cumpleaños";
+"cataloging_month" = "Mes";
+"cataloging_day" = "Día";
+
+/* Cataloging Place */
+"cataloging_place_photos %lld" = "Tenés %lld fotos en este lugar";
+"cataloging_unknown_location" = "Ubicación desconocida";
+"cataloging_label_place" = "Etiquetar";
+"cataloging_what_place" = "¿Qué es este lugar?";
+"cataloging_custom_name" = "Nombre personalizado";
+"cataloging_custom_name_header" = "Nombre";
+
+/* Cataloging Messaging */
+"cataloging_from_app %@ %lld" = "Tenés %lld fotos de %@";
+"cataloging_review_these" = "¿Las revisás?";
+"cataloging_review" = "Revisar";
+"cataloging_review_explanation" = "Podés revisar estas fotos y decidir cuáles conservar.";
+"cataloging_go_to_review" = "Ir a revisar";
+
+/* Cataloging Dates */
+"cataloging_every_date %@ %lld" = "Cada %@ hay fotos (%lld años)";
+"cataloging_is_birthday" = "¿Es un cumpleaños o evento especial?";
+"cataloging_confirm_date" = "Confirmar";
+"cataloging_what_event" = "¿Qué tipo de evento es?";
+"cataloging_event_type" = "Tipo de evento";
+"cataloging_event_birthday" = "Cumpleaños";
+"cataloging_event_anniversary" = "Aniversario";
+"cataloging_event_holiday" = "Feriado/Festividad";
+"cataloging_event_other" = "Otro";
+
+/* Cataloging Downloaded */
+"cataloging_downloaded_count %lld" = "Tenés %lld imágenes descargadas";
+"cataloging_review_cleanup" = "¿Las revisás para limpiar?";

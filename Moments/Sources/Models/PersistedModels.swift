@@ -4,6 +4,95 @@
 import Foundation
 import SwiftData
 
+// MARK: - Photo Origin Enum
+
+enum PhotoOrigin: String, Codable, CaseIterable, Sendable {
+    case camera = "camera"
+    case screenshot = "screenshot"
+    case screenRecording = "screenRecording"
+    case whatsapp = "whatsapp"
+    case telegram = "telegram"
+    case instagram = "instagram"
+    case messenger = "messenger"
+    case snapchat = "snapchat"
+    case twitter = "twitter"
+    case tiktok = "tiktok"
+    case download = "download"
+    case savedFromWeb = "savedFromWeb"
+    case editedExport = "editedExport"
+    case airdrop = "airdrop"
+    case email = "email"
+    case cloudSync = "cloudSync"
+    case unknown = "unknown"
+    
+    var localizedKey: String {
+        "origin_\(rawValue)"
+    }
+    
+    var iconName: String {
+        switch self {
+        case .camera: return "camera"
+        case .screenshot: return "rectangle.on.rectangle"
+        case .screenRecording: return "record.circle"
+        case .whatsapp: return "message.fill"
+        case .telegram: return "paperplane.fill"
+        case .instagram: return "camera.filters"
+        case .messenger: return "message.circle.fill"
+        case .snapchat: return "camera.badge.ellipsis"
+        case .twitter: return "at"
+        case .tiktok: return "music.note"
+        case .download: return "arrow.down.circle"
+        case .savedFromWeb: return "globe"
+        case .editedExport: return "paintbrush"
+        case .airdrop: return "airplayaudio"
+        case .email: return "envelope"
+        case .cloudSync: return "cloud"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+    
+    var isMessagingApp: Bool {
+        switch self {
+        case .whatsapp, .telegram, .instagram, .messenger, .snapchat, .twitter, .tiktok:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+// MARK: - Place Cluster Type
+
+enum PlaceClusterType: String, Codable, CaseIterable, Sendable {
+    case home = "home"
+    case work = "work"
+    case familyHome = "familyHome"
+    case gym = "gym"
+    case school = "school"
+    case frequentPlace = "frequentPlace"
+    case tripDestination = "tripDestination"
+    case custom = "custom"
+    case unknown = "unknown"
+    
+    var localizedKey: String {
+        "place_type_\(rawValue)"
+    }
+    
+    var iconName: String {
+        switch self {
+        case .home: return "house.fill"
+        case .work: return "building.2.fill"
+        case .familyHome: return "house.and.flag.fill"
+        case .gym: return "dumbbell.fill"
+        case .school: return "graduationcap.fill"
+        case .frequentPlace: return "mappin.circle.fill"
+        case .tripDestination: return "airplane"
+        case .custom: return "star.fill"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+}
+
 // MARK: - Cleanup Category Enum
 
 enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
@@ -21,6 +110,8 @@ enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
     case receipt = "receipt"
     case qrCode = "qrCode"
     case largeVideo = "largeVideo"
+    case downloadedMeme = "downloadedMeme"
+    case forwardedImage = "forwardedImage"
     
     var localizedKey: String {
         "cleanup_category_\(rawValue)"
@@ -42,8 +133,20 @@ enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
         case .receipt: return "receipt"
         case .qrCode: return "qrcode"
         case .largeVideo: return "film"
+        case .downloadedMeme: return "arrow.down.circle"
+        case .forwardedImage: return "arrowshape.turn.up.right"
         }
     }
+}
+
+// MARK: - Cataloging Card Type
+
+enum CatalogingCardType: String, Codable, Sendable {
+    case unknownPerson = "unknownPerson"
+    case unknownPlace = "unknownPlace"
+    case messagingAppPhotos = "messagingAppPhotos"
+    case recurringDate = "recurringDate"
+    case downloadedContent = "downloadedContent"
 }
 
 // MARK: - Foto Persistida
@@ -93,6 +196,18 @@ final class PersistedPhoto {
     var detailScore: Double?
     var facesOpenScore: Double?
     
+    // Origin/Source metadata
+    var originRaw: String?
+    var cameraMake: String?
+    var cameraModel: String?
+    var lensMake: String?
+    var lensModel: String?
+    var software: String?
+    var originalFilename: String?
+    var hasExifData: Bool?
+    var sourceAppIdentifier: String?
+    var placeClusterId: String?
+    
     // Relaciones
     @Relationship(deleteRule: .cascade, inverse: \PersistedFaceDetection.photo)
     var faceDetections: [PersistedFaceDetection]?
@@ -134,24 +249,24 @@ final class PersistedPhoto {
         self.analysisCompleted = false
         self.cleanupCategoryRaw = CleanupCategoryType.none.rawValue
         self.isBestInGroup = nil
+        self.originRaw = PhotoOrigin.unknown.rawValue
     }
     
-    // Computed properties for cleanup category
+    // Computed properties
     var cleanupCategory: CleanupCategoryType {
-        get {
-            CleanupCategoryType(rawValue: cleanupCategoryRaw ?? "none") ?? .none
-        }
-        set {
-            cleanupCategoryRaw = newValue.rawValue
-        }
+        get { CleanupCategoryType(rawValue: cleanupCategoryRaw ?? "none") ?? .none }
+        set { cleanupCategoryRaw = newValue.rawValue }
     }
     
-    // Parse vision labels as array
+    var origin: PhotoOrigin {
+        get { PhotoOrigin(rawValue: originRaw ?? "unknown") ?? .unknown }
+        set { originRaw = newValue.rawValue }
+    }
+    
     var labelsArray: [String] {
         visionLabels?.components(separatedBy: "|") ?? []
     }
     
-    // Searchable text combining all indexed content
     var searchableText: String {
         var parts: [String] = []
         if let labels = visionLabels { parts.append(labels) }
@@ -159,7 +274,17 @@ final class PersistedPhoto {
         if let place = placeName { parts.append(place) }
         if let city = placeCity { parts.append(city) }
         if let country = placeCountry { parts.append(country) }
+        if let origin = originRaw { parts.append(origin) }
+        if let camera = cameraModel { parts.append(camera) }
         return parts.joined(separator: " ").lowercased()
+    }
+    
+    var isFromMessagingApp: Bool {
+        origin.isMessagingApp
+    }
+    
+    var isDownloadedWithoutExif: Bool {
+        hasExifData == false && (origin == .download || origin == .savedFromWeb || origin.isMessagingApp)
     }
 }
 
@@ -172,7 +297,7 @@ final class PersistedMoment {
     var subtitle: String?
     var startDate: Date
     var endDate: Date
-    var photoIds: String // JSON array
+    var photoIds: String
     var coverPhotoId: String?
     var latitude: Double?
     var longitude: Double?
@@ -210,14 +335,74 @@ final class PersistedMoment {
     
     var photoIdArray: [String] {
         guard let data = Data(base64Encoded: photoIds),
-              let ids = try? JSONDecoder().decode([String].self, from: data) else {
-            return []
-        }
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
         return ids
     }
 }
 
-// MARK: - Lugar Persistido
+// MARK: - Place Cluster (for home, work, etc.)
+
+@Model
+final class PersistedPlaceCluster {
+    @Attribute(.unique) var id: String
+    var name: String?
+    var placeTypeRaw: String
+    var latitude: Double
+    var longitude: Double
+    var radius: Double
+    var address: String?
+    var city: String?
+    var country: String?
+    var photoCount: Int
+    var firstVisit: Date?
+    var lastVisit: Date?
+    var visitCount: Int
+    var isUserLabeled: Bool
+    
+    init(
+        id: String = UUID().uuidString,
+        name: String? = nil,
+        placeType: PlaceClusterType = .unknown,
+        latitude: Double,
+        longitude: Double,
+        radius: Double = 100,
+        address: String? = nil,
+        city: String? = nil,
+        country: String? = nil,
+        photoCount: Int = 0,
+        firstVisit: Date? = nil,
+        lastVisit: Date? = nil,
+        visitCount: Int = 1
+    ) {
+        self.id = id
+        self.name = name
+        self.placeTypeRaw = placeType.rawValue
+        self.latitude = latitude
+        self.longitude = longitude
+        self.radius = radius
+        self.address = address
+        self.city = city
+        self.country = country
+        self.photoCount = photoCount
+        self.firstVisit = firstVisit
+        self.lastVisit = lastVisit
+        self.visitCount = visitCount
+        self.isUserLabeled = false
+    }
+    
+    var placeType: PlaceClusterType {
+        get { PlaceClusterType(rawValue: placeTypeRaw) ?? .unknown }
+        set { placeTypeRaw = newValue.rawValue }
+    }
+    
+    var displayName: String {
+        if let name = name, !name.isEmpty { return name }
+        if let city = city { return city }
+        return String(localized: "place_type_\(placeTypeRaw)")
+    }
+}
+
+// MARK: - Lugar Persistido (legacy, kept for compatibility)
 
 @Model
 final class PersistedPlace {
@@ -229,7 +414,7 @@ final class PersistedPlace {
     var latitude: Double
     var longitude: Double
     var radius: Double
-    var photoIds: String // JSON array
+    var photoIds: String
     var firstVisit: Date?
     var lastVisit: Date?
     var visitCount: Int
@@ -264,9 +449,7 @@ final class PersistedPlace {
     
     var photoIdArray: [String] {
         guard let data = Data(base64Encoded: photoIds),
-              let ids = try? JSONDecoder().decode([String].self, from: data) else {
-            return []
-        }
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
         return ids
     }
 }
@@ -279,7 +462,7 @@ final class PersistedPerson {
     var name: String?
     var faceClusterId: String
     var representativeFacePhotoId: String?
-    var photoIds: String // JSON array
+    var photoIds: String
     var faceCount: Int
     var birthdayMonth: Int?
     var birthdayDay: Int?
@@ -309,15 +492,11 @@ final class PersistedPerson {
     
     var photoIdArray: [String] {
         guard let data = Data(base64Encoded: photoIds),
-              let ids = try? JSONDecoder().decode([String].self, from: data) else {
-            return []
-        }
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
         return ids
     }
     
-    var isNamed: Bool {
-        name != nil && !name!.isEmpty
-    }
+    var isNamed: Bool { name != nil && !name!.isEmpty }
 }
 
 // MARK: - Detección de Rostro Persistida
@@ -359,6 +538,43 @@ final class PersistedFaceDetection {
     }
 }
 
+// MARK: - Cataloging Card (for interactive labeling)
+
+@Model
+final class PersistedCatalogingCard {
+    @Attribute(.unique) var id: String
+    var cardTypeRaw: String
+    var targetId: String?
+    var photoCount: Int
+    var createdAt: Date
+    var isDismissed: Bool
+    var isCompleted: Bool
+    var priority: Int
+    var detailsJson: String?
+    
+    init(
+        id: String = UUID().uuidString,
+        cardType: CatalogingCardType,
+        targetId: String? = nil,
+        photoCount: Int = 0,
+        priority: Int = 0
+    ) {
+        self.id = id
+        self.cardTypeRaw = cardType.rawValue
+        self.targetId = targetId
+        self.photoCount = photoCount
+        self.createdAt = Date()
+        self.isDismissed = false
+        self.isCompleted = false
+        self.priority = priority
+    }
+    
+    var cardType: CatalogingCardType {
+        get { CatalogingCardType(rawValue: cardTypeRaw) ?? .unknownPerson }
+        set { cardTypeRaw = newValue.rawValue }
+    }
+}
+
 // MARK: - Evento Recurrente Persistido
 
 @Model
@@ -372,6 +588,8 @@ final class PersistedRecurringEvent {
     var day: Int
     var occurrencesData: Data?
     var confidence: Double
+    var yearsDetected: Int
+    var isUserConfirmed: Bool
     
     init(
         id: String = UUID().uuidString,
@@ -381,7 +599,8 @@ final class PersistedRecurringEvent {
         dayOfYear: Int,
         month: Int,
         day: Int,
-        confidence: Double = 0
+        confidence: Double = 0,
+        yearsDetected: Int = 0
     ) {
         self.id = id
         self.typeRaw = typeRaw
@@ -391,6 +610,8 @@ final class PersistedRecurringEvent {
         self.month = month
         self.day = day
         self.confidence = confidence
+        self.yearsDetected = yearsDetected
+        self.isUserConfirmed = false
     }
 }
 
@@ -405,6 +626,9 @@ final class AnalysisState {
     var homeLatitude: Double?
     var homeLongitude: Double?
     var homeConfidence: Double?
+    var workLatitude: Double?
+    var workLongitude: Double?
+    var workConfidence: Double?
     var version: Int
     
     init(id: String = "main") {

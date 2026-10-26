@@ -36,6 +36,7 @@ class SearchService: ObservableObject {
         var places: [String] = []
         var people: [String] = []
         var types: [PhotoType] = []
+        var origins: [PhotoOrigin] = []
         
         enum DateRange: Equatable {
             case today
@@ -55,7 +56,7 @@ class SearchService: ObservableObject {
         }
         
         var isEmpty: Bool {
-            dateRange == nil && places.isEmpty && people.isEmpty && types.isEmpty
+            dateRange == nil && places.isEmpty && people.isEmpty && types.isEmpty && origins.isEmpty
         }
     }
     
@@ -126,10 +127,43 @@ class SearchService: ObservableObject {
         var terms = SearchTerms()
         let lowercased = query.lowercased()
         
+        // Check for origin patterns first
+        let originPatterns: [(pattern: String, origin: PhotoOrigin)] = [
+            ("whatsapp", .whatsapp),
+            ("telegram", .telegram),
+            ("instagram", .instagram),
+            ("messenger", .messenger),
+            ("snapchat", .snapchat),
+            ("twitter", .twitter),
+            ("tiktok", .tiktok),
+            ("descargadas", .download),
+            ("downloaded", .download),
+            ("cámara", .camera),
+            ("camera", .camera),
+            ("captura", .screenshot),
+            ("screenshot", .screenshot),
+        ]
+        
+        for (pattern, origin) in originPatterns {
+            if lowercased.contains(pattern) {
+                terms.origins.append(origin)
+            }
+        }
+        
         // Split by spaces but keep phrases in quotes
         let words = lowercased.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
         
         for word in words {
+            // Skip origin words already processed
+            if originPatterns.contains(where: { word.contains($0.pattern) }) {
+                continue
+            }
+            
+            // Skip common prepositions
+            if ["de", "del", "la", "las", "los", "from", "the", "fotos", "photos"].contains(word) {
+                continue
+            }
+            
             // Check for year patterns (e.g., "2024")
             if let year = Int(word), year >= 1990 && year <= 2100 {
                 terms.years.append(year)
@@ -153,6 +187,7 @@ class SearchService: ObservableObject {
         var textTerms: [String] = []
         var years: [Int] = []
         var months: [Int] = []
+        var origins: [PhotoOrigin] = []
     }
     
     private func parseMonth(_ word: String) -> Int? {
@@ -178,6 +213,14 @@ class SearchService: ObservableObject {
     private func calculateMatchScore(photo: PersistedPhoto, searchTerms: SearchTerms) -> (Double, [SearchResult.MatchedField]) {
         var totalScore: Double = 0
         var matchedFields: [SearchResult.MatchedField] = []
+        
+        // Origin matching
+        for origin in searchTerms.origins {
+            if photo.origin == origin {
+                totalScore += 15
+                matchedFields.append(.label(origin.rawValue))
+            }
+        }
         
         // Date matching
         if let date = photo.creationDate {
@@ -234,6 +277,12 @@ class SearchService: ObservableObject {
             if let country = photo.placeCountry?.lowercased(), country.contains(term) {
                 totalScore += 4
                 matchedFields.append(.place(country))
+            }
+            
+            // Camera model match
+            if let camera = photo.cameraModel?.lowercased(), camera.contains(term) {
+                totalScore += 5
+                matchedFields.append(.label(camera))
             }
         }
         
@@ -293,6 +342,13 @@ class SearchService: ObservableObject {
                     }
                 }
                 return false
+            }
+        }
+        
+        // Origin filter
+        if !filters.origins.isEmpty {
+            filtered = filtered.filter { photo in
+                filters.origins.contains(photo.origin)
             }
         }
         

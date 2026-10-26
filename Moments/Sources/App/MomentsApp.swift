@@ -15,9 +15,11 @@ struct MomentsApp: App {
             PersistedPhoto.self,
             PersistedMoment.self,
             PersistedPlace.self,
+            PersistedPlaceCluster.self,
             PersistedPerson.self,
             PersistedFaceDetection.self,
             PersistedRecurringEvent.self,
+            PersistedCatalogingCard.self,
             AnalysisState.self
         ])
         
