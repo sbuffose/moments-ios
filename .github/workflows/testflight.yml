@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
@@ -420,6 +423,7 @@ jobs:
           xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
 
       - name: Create ExportOptions.plist
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -448,6 +452,7 @@ jobs:
           cat "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Export IPA
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -458,6 +463,7 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Upload to TestFlight
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
