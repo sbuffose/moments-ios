@@ -9,7 +9,9 @@ public struct CleanupAnalyzer {
     // MARK: - Configuración
     
     public struct Configuration {
-        public var sharpnessThreshold: Double = 0.3
+        /// Threshold for blur detection - photos with sharpness below this are considered blurry
+        /// Lowered from 0.3 to 0.15 to reduce false positives (sharp photos flagged as blurry)
+        public var sharpnessThreshold: Double = 0.15
         public var overexposureThreshold: Double = 0.85
         public var underexposureThreshold: Double = 0.15
         public var duplicateSimilarityThreshold: Double = 0.95
