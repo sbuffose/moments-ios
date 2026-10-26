@@ -17,6 +17,10 @@ struct AssistantView: View {
             // Background
             MomentsColors.bgPrimary.ignoresSafeArea()
             
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityIdentifier("assistant.root")
+            
             VStack(spacing: 0) {
                 // Messages/Cards feed
                 ScrollViewReader { proxy in
@@ -58,8 +62,6 @@ struct AssistantView: View {
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("assistant.root")
     }
     
     // MARK: - Input Bar

@@ -15,6 +15,10 @@ struct HomeView: View {
             ZStack {
                 MomentsColors.bgPrimary.ignoresSafeArea()
                 
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("home.root")
+                
                 ScrollView {
                     VStack(spacing: MomentsSpacing.lg) {
                         // Header
@@ -55,8 +59,6 @@ struct HomeView: View {
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("home.root")
     }
     
     // MARK: - Header Section

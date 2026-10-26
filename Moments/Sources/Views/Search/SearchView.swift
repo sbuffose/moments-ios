@@ -16,9 +16,14 @@ struct SearchView: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Search bar and filters
-                searchHeader
+            ZStack {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("search.root")
+                
+                VStack(spacing: 0) {
+                    // Search bar and filters
+                    searchHeader
                 
                 // Content
                 if searchText.isEmpty && selectedFilters.isEmpty {
@@ -31,14 +36,14 @@ struct SearchView: View {
                     resultsView
                 }
             }
-            .navigationTitle(Text("search_title"))
-            .navigationBarTitleDisplayMode(.inline)
+                }
+                .navigationTitle(Text("search_title"))
+                .navigationBarTitleDisplayMode(.inline)
+            }
         }
         .onAppear {
             searchService.initialize(modelContext: modelContext)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("search.root")
         .onChange(of: searchText) { _, newValue in
             Task {
                 await performSearch()

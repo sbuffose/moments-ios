@@ -20,13 +20,19 @@ struct FechasView: View {
     
     var body: some View {
         NavigationStack {
-            Group {
-                if isLoading {
-                    loadingView
-                } else if upcomingDates.isEmpty && unconfirmedDates.isEmpty {
-                    emptyStateView
-                } else {
-                    datesList
+            ZStack {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("fechas.root")
+                
+                Group {
+                    if isLoading {
+                        loadingView
+                    } else if upcomingDates.isEmpty && unconfirmedDates.isEmpty {
+                        emptyStateView
+                    } else {
+                        datesList
+                    }
                 }
             }
             .navigationTitle(Text("fechas_title"))
@@ -75,8 +81,6 @@ struct FechasView: View {
                 await refreshDates()
             }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("fechas.root")
     }
     
     private var loadingView: some View {

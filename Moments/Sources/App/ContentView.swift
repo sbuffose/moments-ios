@@ -103,10 +103,15 @@ struct MomentsListView: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: MomentsSpacing.xs) {
-                        ForEach(MomentsSection.allCases, id: \.self) { section in
+            ZStack {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("moments.root")
+                
+                VStack(spacing: 0) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: MomentsSpacing.xs) {
+                            ForEach(MomentsSection.allCases, id: \.self) { section in
                             MomentsChip(
                                 label: section.localizedName,
                                 isSelected: selectedSection == section,
@@ -139,12 +144,11 @@ struct MomentsListView: View {
                             .accessibilityIdentifier("fechas.content")
                     }
                 }
+                }
             }
             .navigationTitle(Text(String(localized: "tab_moments")))
             .background(MomentsColors.bgPrimary)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("moments.root")
     }
 }
 

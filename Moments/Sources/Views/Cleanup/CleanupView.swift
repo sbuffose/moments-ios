@@ -18,10 +18,15 @@ struct CleanupView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Space Card (Hero)
-                    spaceCard
+            ZStack {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("cleanup.root")
+                
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Space Card (Hero)
+                        spaceCard
                     
                     // Moments Card
                     momentsCard
@@ -31,7 +36,8 @@ struct CleanupView: View {
                         categoriesSection
                     }
                 }
-                .padding()
+                    .padding()
+                }
             }
             .navigationTitle(Text("home_title"))
             .toolbar {
@@ -76,8 +82,6 @@ struct CleanupView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("cleanup.root")
     }
     
     // MARK: - Space Card
