@@ -335,12 +335,13 @@ struct PlaceDetailView: View {
     private func loadPhotos() async {
         let ids = place.photoIds
         let descriptor = FetchDescriptor<PersistedPhoto>(
-            predicate: #Predicate { ids.contains($0.localIdentifier) },
-            sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
+            predicate: #Predicate { ids.contains($0.localIdentifier) }
         )
         
         do {
-            photos = try modelContext.fetch(descriptor)
+            var fetchedPhotos = try modelContext.fetch(descriptor)
+            fetchedPhotos.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
+            photos = fetchedPhotos
         } catch {
             print("Error loading place photos: \(error)")
         }

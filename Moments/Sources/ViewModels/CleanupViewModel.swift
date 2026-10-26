@@ -88,11 +88,12 @@ class CleanupViewModel: ObservableObject {
         
         do {
             let descriptor = FetchDescriptor<PersistedPhoto>(
-                predicate: #Predicate { $0.analysisCompleted },
-                sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
+                predicate: #Predicate { $0.analysisCompleted }
             )
             
-            allPhotos = try context.fetch(descriptor)
+            var fetchedPhotos = try context.fetch(descriptor)
+            fetchedPhotos.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
+            allPhotos = fetchedPhotos
             
             await MainActor.run {
                 self.buildCategories()

@@ -22,12 +22,12 @@ class PhotoAnalysisService: ObservableObject {
     
     func analyzeAllPhotos(progressHandler: @escaping @Sendable (Double) async -> Void) async {
         let descriptor = FetchDescriptor<PersistedPhoto>(
-            predicate: #Predicate { !$0.analysisCompleted },
-            sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
+            predicate: #Predicate { !$0.analysisCompleted }
         )
         
         do {
-            let photosToAnalyze = try modelContext.fetch(descriptor)
+            var photosToAnalyze = try modelContext.fetch(descriptor)
+            photosToAnalyze.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
             let total = photosToAnalyze.count
             guard total > 0 else { return }
             

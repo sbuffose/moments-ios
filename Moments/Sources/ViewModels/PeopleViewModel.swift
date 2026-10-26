@@ -295,8 +295,9 @@ class PeopleViewModel: ObservableObject {
     func updatePersonName(_ person: PersonItem, name: String) async {
         guard let context = modelContext else { return }
         
+        let personId = person.id
         let descriptor = FetchDescriptor<PersistedPerson>(
-            predicate: #Predicate { $0.id == person.id }
+            predicate: #Predicate { $0.id == personId }
         )
         
         do {
@@ -313,8 +314,9 @@ class PeopleViewModel: ObservableObject {
     func updatePersonBirthday(_ person: PersonItem, month: Int, day: Int) async {
         guard let context = modelContext else { return }
         
+        let personId = person.id
         let descriptor = FetchDescriptor<PersistedPerson>(
-            predicate: #Predicate { $0.id == person.id }
+            predicate: #Predicate { $0.id == personId }
         )
         
         do {
@@ -333,8 +335,9 @@ class PeopleViewModel: ObservableObject {
     func toggleFavorite(_ person: PersonItem) async {
         guard let context = modelContext else { return }
         
+        let personId = person.id
         let descriptor = FetchDescriptor<PersistedPerson>(
-            predicate: #Predicate { $0.id == person.id }
+            predicate: #Predicate { $0.id == personId }
         )
         
         do {
