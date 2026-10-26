@@ -47,9 +47,9 @@ jobs:
           mkdir -p ~/private_keys
           KEY_FILE=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
           
-          # Use printf %b to interpret escape sequences like \n
-          # This is the most reliable way to handle secrets that may contain literal \n
-          printf '%b\n' "$ASC_PRIVATE_KEY" | tr -d '\r' > "$KEY_FILE"
+          # Try multiple approaches to convert the key to proper format
+          # Approach 1: Use awk to replace literal backslash-n with newlines
+          echo "$ASC_PRIVATE_KEY" | awk '{gsub(/\\n/,"\n")}1' | tr -d '\r' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           
           # Validate key file structure (without exposing content)
@@ -77,9 +77,14 @@ jobs:
           LINE_COUNT=$(wc -l < "$KEY_FILE")
           if [ "$LINE_COUNT" -lt 3 ]; then
             echo "✗ Key file has too few lines ($LINE_COUNT). Expected multi-line PEM format."
-            echo "Note: The ASC_PRIVATE_KEY secret should contain the full .p8 file content"
-            echo "with actual newlines (not literal \\n characters)."
-            echo "Please update the secret in GitHub repo settings."
+            echo ""
+            echo "IMPORTANT: The ASC_PRIVATE_KEY secret must be set correctly."
+            echo "Go to: GitHub repo Settings > Secrets > Actions > ASC_PRIVATE_KEY"
+            echo "Delete the current secret and create a new one."
+            echo ""
+            echo "Copy the ENTIRE contents of your AuthKey_XXXXXX.p8 file,"
+            echo "including the -----BEGIN PRIVATE KEY----- and -----END PRIVATE KEY----- lines."
+            echo "Paste it directly into the secret value (GitHub preserves newlines)."
             exit 1
           fi
           
