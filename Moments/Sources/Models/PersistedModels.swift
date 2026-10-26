@@ -400,6 +400,10 @@ final class PersistedPhoto {
     // iCloud status
     var isPendingICloud: Bool
     
+    // Deletion likelihood score (0-1, higher = more likely to delete)
+    // This is a STORED property for use in predicates and sorting
+    var deletionLikelihoodScore: Double
+    
     // Relaciones
     @Relationship(deleteRule: .cascade, inverse: \PersistedFaceDetection.photo)
     var faceDetections: [PersistedFaceDetection]?
@@ -450,6 +454,7 @@ final class PersistedPhoto {
         self.isSharedOrReceived = false
         self.isLivePhoto = false
         self.isPendingICloud = false
+        self.deletionLikelihoodScore = 0.0
     }
     
     // Computed properties for enums
