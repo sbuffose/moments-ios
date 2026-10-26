@@ -95,7 +95,6 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          set -o pipefail
           xcodebuild archive \
             -project Moments.xcodeproj \
             -scheme "$SCHEME" \
@@ -108,8 +107,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            | xcpretty --color
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
       - name: Create ExportOptions.plist
         run: |
@@ -138,7 +136,6 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          set -o pipefail
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Moments.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
@@ -146,8 +143,7 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            | xcpretty --color
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
       - name: Upload to TestFlight
         env:
