@@ -35,9 +35,11 @@ jobs:
 
       - name: Generate Xcode project
         run: |
-          sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"${{ github.run_number }}\"/" project.yml
+          # Ensure build number is higher than 16 (previous TestFlight build)
+          BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
           xcodegen generate
-          echo "Project generated with build number ${{ github.run_number }}"
+          echo "Project generated with build number $BUILD_NUMBER"
 
       - name: Setup Keychain and Import Certificate
         env:
@@ -47,15 +49,11 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
           
-          # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          
-          # Set as default keychain
           security default-keychain -s "$KEYCHAIN_PATH"
           
-          # Decode and import certificate
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           echo "$DIST_CERT_P12" | base64 --decode > "$CERT_PATH"
           
@@ -68,17 +66,12 @@ jobs:
           
           rm "$CERT_PATH"
           
-          # Set keychain partition list for codesign access
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          
-          # Add to search list (make sure our keychain is first)
           security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
           
-          # Verify certificate imported
           echo "=== Certificates in keychain ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -5
           
-          # Store keychain path for later steps (mask password in logs)
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
           echo "::add-mask::$KEYCHAIN_PASSWORD"
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
@@ -109,7 +102,6 @@ jobs:
           echo "$ASC_PRIVATE_KEY" | awk '{gsub(/\\n/,"\n")}1' | tr -d '\r' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           
-          # Validate key file structure
           if head -1 "$KEY_FILE" | grep -q "BEGIN PRIVATE KEY"; then
             echo "✓ API Key file structure OK"
           else
@@ -119,6 +111,7 @@ jobs:
 
       - name: Build and Archive
         run: |
+          BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))
           xcodebuild archive \
             -project Moments.xcodeproj \
             -scheme "$SCHEME" \
@@ -129,7 +122,114 @@ jobs:
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+
+      - name: Validate Info.plist
+        run: |
+          APP_PATH="$RUNNER_TEMP/Moments.xcarchive/Products/Applications/Moments.app"
+          INFO_PLIST="$APP_PATH/Info.plist"
+          
+          echo "=== Validating Info.plist ==="
+          
+          if [ ! -f "$INFO_PLIST" ]; then
+            echo "✗ Info.plist not found at $INFO_PLIST"
+            exit 1
+          fi
+          
+          echo "--- Full Info.plist contents ---"
+          plutil -p "$INFO_PLIST"
+          echo "--- End of Info.plist ---"
+          
+          # Check required privacy keys
+          REQUIRED_KEYS=(
+            "NSPhotoLibraryUsageDescription"
+            "NSPhotoLibraryAddUsageDescription"
+            "NSLocationWhenInUseUsageDescription"
+          )
+          
+          MISSING=0
+          for key in "${REQUIRED_KEYS[@]}"; do
+            if plutil -extract "$key" raw "$INFO_PLIST" > /dev/null 2>&1; then
+              VALUE=$(plutil -extract "$key" raw "$INFO_PLIST")
+              echo "✓ $key: $VALUE"
+            else
+              echo "✗ MISSING: $key"
+              MISSING=1
+            fi
+          done
+          
+          if [ $MISSING -eq 1 ]; then
+            echo ""
+            echo "ERROR: Required Info.plist keys are missing!"
+            echo "The app will CRASH on launch when accessing PhotoKit."
+            exit 1
+          fi
+          
+          echo ""
+          echo "✓ All required Info.plist keys present"
+
+      - name: Build for Simulator (Smoke Test)
+        run: |
+          xcodebuild build \
+            -project Moments.xcodeproj \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=iPhone 16" \
+            -derivedDataPath "$RUNNER_TEMP/SimulatorBuild" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Run Simulator Smoke Test
+        run: |
+          # Boot simulator
+          DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone 16" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
+          
+          if [ -z "$DEVICE_ID" ]; then
+            echo "Creating iPhone 16 simulator..."
+            DEVICE_ID=$(xcrun simctl create "iPhone 16 Test" "iPhone 16")
+          fi
+          
+          echo "Using simulator: $DEVICE_ID"
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          
+          # Wait for boot
+          sleep 5
+          
+          # Install app
+          APP_PATH="$RUNNER_TEMP/SimulatorBuild/Build/Products/Debug-iphonesimulator/Moments.app"
+          echo "Installing app from: $APP_PATH"
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          
+          # Launch app
+          echo "Launching app..."
+          xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+          
+          # Wait and check if still running
+          echo "Waiting 15 seconds for app to stabilize..."
+          sleep 15
+          
+          # Check if app is still running
+          if xcrun simctl spawn "$DEVICE_ID" launchctl list | grep -q "$BUNDLE_ID"; then
+            echo "✓ App is still running after 15 seconds"
+          else
+            echo "✗ App appears to have crashed!"
+            
+            # Try to get crash log
+            echo "=== Checking for crash logs ==="
+            CRASH_DIR=~/Library/Logs/DiagnosticReports
+            if ls "$CRASH_DIR"/Moments* 2>/dev/null; then
+              echo "Found crash logs:"
+              cat "$CRASH_DIR"/Moments* | head -100
+            fi
+            
+            # Also check simulator logs
+            xcrun simctl spawn "$DEVICE_ID" log show --predicate 'process == "Moments"' --last 1m --style compact || true
+            
+            exit 1
+          fi
+          
+          # Shutdown simulator
+          xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
 
       - name: Create ExportOptions.plist
         run: |
@@ -161,7 +261,6 @@ jobs:
 
       - name: Export IPA
         run: |
-          # Ensure keychain is unlocked for export
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           

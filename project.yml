@@ -39,11 +39,23 @@ targets:
       - path: Moments/Resources/es-AR.lproj
       - path: Moments/Resources/en.lproj
     info:
-      path: Moments/Resources/Info.plist
       properties:
+        CFBundleDevelopmentRegion: es-AR
         CFBundleDisplayName: Moments
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
         UILaunchScreen:
           UIColorName: AccentColor
+        UIRequiredDeviceCapabilities:
+          - arm64
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
@@ -54,22 +66,22 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        NSPhotoLibraryUsageDescription: "Moments necesita acceso a tu biblioteca de fotos para analizar y organizar tus recuerdos. Todo el procesamiento se realiza en tu dispositivo de forma privada."
+        NSPhotoLibraryAddUsageDescription: "Moments puede guardar fotos editadas en tu biblioteca."
+        NSLocationWhenInUseUsageDescription: "Moments usa tu ubicación actual para identificar tu ubicación habitual y detectar viajes en tus fotos."
+        NSFaceIDUsageDescription: "Moments puede usar Face ID para proteger el acceso a fotos privadas."
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments
-        INFOPLIST_FILE: Moments/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_ASSET_PATHS: '"Moments/Preview Content"'
         DEVELOPMENT_TEAM: R56Y2GZ2M9
         CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - package: MomentsEngine
-    entitlements:
-      path: Moments/Moments.entitlements
-      properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.personal-information.photos-library: true
 
 schemes:
   Moments:

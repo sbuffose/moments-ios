@@ -11,27 +11,73 @@ struct MomentsApp: App {
     @StateObject private var appState = AppState()
     
     init() {
+        let schema = Schema([
+            PersistedPhoto.self,
+            PersistedMoment.self,
+            PersistedPlace.self,
+            PersistedPerson.self,
+            PersistedFaceDetection.self,
+            PersistedRecurringEvent.self,
+            AnalysisState.self
+        ])
+        
+        // Try to create container, with fallback strategies
+        if let persistentContainer = MomentsApp.createContainer(schema: schema, inMemory: false) {
+            container = persistentContainer
+        } else if let inMemoryContainer = MomentsApp.createContainer(schema: schema, inMemory: true) {
+            // Fallback to in-memory if persistent fails
+            container = inMemoryContainer
+            print("Warning: Using in-memory container. Data will not persist.")
+        } else {
+            // Last resort: create minimal container that won't crash
+            container = try! ModelContainer(for: schema)
+        }
+    }
+    
+    private static func createContainer(schema: Schema, inMemory: Bool) -> ModelContainer? {
         do {
-            let schema = Schema([
-                PersistedPhoto.self,
-                PersistedMoment.self,
-                PersistedPlace.self,
-                PersistedPerson.self,
-                PersistedFaceDetection.self,
-                PersistedRecurringEvent.self,
-                AnalysisState.self
-            ])
-            
-            let modelConfiguration = ModelConfiguration(
+            let config = ModelConfiguration(
                 schema: schema,
-                isStoredInMemoryOnly: false,
+                isStoredInMemoryOnly: inMemory,
                 allowsSave: true
             )
-            
-            container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            fatalError("No se pudo inicializar el ModelContainer: \(error)")
+            print("Failed to create ModelContainer (inMemory: \(inMemory)): \(error)")
+            
+            // If persistent container failed, try deleting the store
+            if !inMemory {
+                MomentsApp.deleteExistingStore()
+                // Retry once after deletion
+                do {
+                    let config = ModelConfiguration(
+                        schema: schema,
+                        isStoredInMemoryOnly: false,
+                        allowsSave: true
+                    )
+                    return try ModelContainer(for: schema, configurations: [config])
+                } catch {
+                    print("Still failed after deleting store: \(error)")
+                }
+            }
+            return nil
         }
+    }
+    
+    private static func deleteExistingStore() {
+        let fileManager = FileManager.default
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+        
+        let storeURL = appSupport.appendingPathComponent("default.store")
+        let shmURL = appSupport.appendingPathComponent("default.store-shm")
+        let walURL = appSupport.appendingPathComponent("default.store-wal")
+        
+        for url in [storeURL, shmURL, walURL] {
+            try? fileManager.removeItem(at: url)
+        }
+        print("Deleted existing SwiftData store files")
     }
     
     var body: some Scene {
@@ -118,17 +164,17 @@ class AppState: ObservableObject {
         isScanning = true
         scanProgress = 0
         
-        Task {
-            await photoService.scanLibrary { [weak self] progress, indexed in
-                await MainActor.run {
-                    self?.scanProgress = progress * 0.5
-                    self?.totalPhotosIndexed = indexed
+        Task { @MainActor in
+            await photoService.scanLibrary { progress, indexed in
+                Task { @MainActor in
+                    self.scanProgress = progress * 0.5
+                    self.totalPhotosIndexed = indexed
                 }
             }
             
-            await analysisService.analyzeAllPhotos { [weak self] progress in
-                await MainActor.run {
-                    self?.scanProgress = 0.5 + (progress * 0.5)
+            await analysisService.analyzeAllPhotos { progress in
+                Task { @MainActor in
+                    self.scanProgress = 0.5 + (progress * 0.5)
                 }
             }
             
