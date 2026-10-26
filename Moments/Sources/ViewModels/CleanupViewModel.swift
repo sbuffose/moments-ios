@@ -13,6 +13,8 @@ class CleanupViewModel: ObservableObject {
     @Published var isLoading = true
     @Published var selectedCategory: CleanupCategoryItem?
     @Published var selectedPhotos: Set<String> = []
+    @Published var reviewedPhotos: Set<String> = []
+    @Published var keptPhotos: Set<String> = []
     @Published var isDeleting = false
     @Published var showDeleteConfirmation = false
     @Published var errorMessage: String?
@@ -26,6 +28,12 @@ class CleanupViewModel: ObservableObject {
     
     private var modelContext: ModelContext?
     private var allPhotos: [PersistedPhoto] = []
+    
+    // MARK: - Persistence Keys
+    
+    private let selectedPhotosKey = "com.moments.cleanup.selectedPhotos"
+    private let reviewedPhotosKey = "com.moments.cleanup.reviewedPhotos"
+    private let keptPhotosKey = "com.moments.cleanup.keptPhotos"
     
     // MARK: - Category Item
     
@@ -64,9 +72,75 @@ class CleanupViewModel: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        loadPersistedProgress()
         Task {
             await loadCleanupSuggestions()
         }
+    }
+    
+    // MARK: - Progress Persistence
+    
+    private func loadPersistedProgress() {
+        if let selectedData = UserDefaults.standard.array(forKey: selectedPhotosKey) as? [String] {
+            selectedPhotos = Set(selectedData)
+        }
+        if let reviewedData = UserDefaults.standard.array(forKey: reviewedPhotosKey) as? [String] {
+            reviewedPhotos = Set(reviewedData)
+        }
+        if let keptData = UserDefaults.standard.array(forKey: keptPhotosKey) as? [String] {
+            keptPhotos = Set(keptData)
+        }
+    }
+    
+    func persistProgress() {
+        UserDefaults.standard.set(Array(selectedPhotos), forKey: selectedPhotosKey)
+        UserDefaults.standard.set(Array(reviewedPhotos), forKey: reviewedPhotosKey)
+        UserDefaults.standard.set(Array(keptPhotos), forKey: keptPhotosKey)
+    }
+    
+    func clearPersistedProgress() {
+        UserDefaults.standard.removeObject(forKey: selectedPhotosKey)
+        UserDefaults.standard.removeObject(forKey: reviewedPhotosKey)
+        UserDefaults.standard.removeObject(forKey: keptPhotosKey)
+        selectedPhotos.removeAll()
+        reviewedPhotos.removeAll()
+        keptPhotos.removeAll()
+    }
+    
+    // MARK: - Review Actions
+    
+    func markAsReviewed(_ photoId: String, delete: Bool) {
+        reviewedPhotos.insert(photoId)
+        if delete {
+            selectedPhotos.insert(photoId)
+            keptPhotos.remove(photoId)
+        } else {
+            selectedPhotos.remove(photoId)
+            keptPhotos.insert(photoId)
+        }
+        persistProgress()
+    }
+    
+    func hasReviewProgress(for photos: [PersistedPhoto]) -> Bool {
+        let photoIds = Set(photos.map { $0.id })
+        return !reviewedPhotos.intersection(photoIds).isEmpty
+    }
+    
+    func unreviewedPhotos(from photos: [PersistedPhoto]) -> [PersistedPhoto] {
+        photos.filter { !reviewedPhotos.contains($0.id) }
+    }
+    
+    func reviewedCount(from photos: [PersistedPhoto]) -> Int {
+        let photoIds = Set(photos.map { $0.id })
+        return reviewedPhotos.intersection(photoIds).count
+    }
+    
+    func photosMarkedForDeletion(from photos: [PersistedPhoto]) -> [PersistedPhoto] {
+        photos.filter { selectedPhotos.contains($0.id) }
+    }
+    
+    func deletionSizeForReview(from photos: [PersistedPhoto]) -> Int64 {
+        photosMarkedForDeletion(from: photos).reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
     }
     
     // MARK: - Loading
@@ -130,13 +204,15 @@ class CleanupViewModel: ObservableObject {
                 }
                 defaultConfidence = .maybe // Screen recordings might be important
             case .blurry:
+                // Stricter blur detection - only include photos with very low sharpness
+                // Threshold lowered from 0.3 to 0.15 to reduce false positives
                 photosForCategory = cleanablePhotos.filter { 
                     $0.cleanupCategory == .blurry || 
-                    ($0.mediaTypeRaw == "image" && ($0.sharpnessScore ?? 1.0) < 0.3)
+                    ($0.mediaTypeRaw == "image" && ($0.sharpnessScore ?? 1.0) < 0.15)
                 }
-                // Very blurry (<0.15) is very likely, somewhat blurry is maybe
+                // Very blurry (<0.08) is very likely, somewhat blurry (<0.15) is maybe
                 photosForCategory.forEach { photo in
-                    if (photo.sharpnessScore ?? 1.0) < 0.15 {
+                    if (photo.sharpnessScore ?? 1.0) < 0.08 {
                         photo.cleanupConfidenceTier = .veryLikely
                     } else {
                         photo.cleanupConfidenceTier = .maybe

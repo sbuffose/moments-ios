@@ -3,6 +3,8 @@
 
 import SwiftUI
 import SwiftData
+import Photos
+import AVFoundation
 
 struct CleanupView: View {
     @Environment(\.modelContext) private var modelContext
@@ -566,28 +568,47 @@ struct OnThisDayView: View {
 struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
     @State private var currentIndex = 0
-    @State private var showDeleteConfirmation = false
+    @State private var showFinishSheet = false
+    @State private var showShareSheet = false
+    @State private var showPostShareDeletePrompt = false
+    @State private var sharedPhotoId: String?
     @Environment(\.dismiss) private var dismiss
     
     private var allPhotos: [PersistedPhoto] {
         viewModel.categories.flatMap { $0.photos }
     }
     
+    private var unreviewedPhotos: [PersistedPhoto] {
+        viewModel.unreviewedPhotos(from: allPhotos)
+    }
+    
+    private var photosToDelete: [PersistedPhoto] {
+        viewModel.photosMarkedForDeletion(from: allPhotos)
+    }
+    
+    private var deletionSize: Int64 {
+        viewModel.deletionSizeForReview(from: allPhotos)
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
-            if currentIndex < allPhotos.count {
+            if currentIndex < unreviewedPhotos.count {
+                let currentPhoto = unreviewedPhotos[currentIndex]
+                let totalReviewed = viewModel.reviewedCount(from: allPhotos)
+                let totalPhotos = allPhotos.count
+                
                 // Progress indicator
-                ProgressView(value: Double(currentIndex), total: Double(allPhotos.count))
+                ProgressView(value: Double(totalReviewed + currentIndex), total: Double(totalPhotos))
                     .padding(.horizontal)
                     .padding(.top)
                 
-                Text("cleanup_review_progress \(currentIndex + 1) \(allPhotos.count)")
+                Text("\(totalReviewed + currentIndex + 1) de \(totalPhotos)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
                 
                 // Current photo category
-                if let category = categoryFor(photo: allPhotos[currentIndex]) {
+                if let category = categoryFor(photo: currentPhoto) {
                     Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
                         .font(.caption)
                         .foregroundStyle(.tint)
@@ -598,16 +619,16 @@ struct CleanupReviewView: View {
                 
                 // Swipeable card
                 SwipeablePhotoCard(
-                    photo: allPhotos[currentIndex],
+                    photo: currentPhoto,
                     onKeep: {
-                        withAnimation {
-                            viewModel.selectedPhotos.remove(allPhotos[currentIndex].id)
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(currentPhoto.id, delete: false)
                             currentIndex += 1
                         }
                     },
                     onDelete: {
-                        withAnimation {
-                            viewModel.selectedPhotos.insert(allPhotos[currentIndex].id)
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(currentPhoto.id, delete: true)
                             currentIndex += 1
                         }
                     }
@@ -615,11 +636,11 @@ struct CleanupReviewView: View {
                 .padding()
                 
                 // Action buttons
-                HStack(spacing: 60) {
+                HStack(spacing: 40) {
                     // Keep button
                     Button {
-                        withAnimation {
-                            viewModel.selectedPhotos.remove(allPhotos[currentIndex].id)
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(currentPhoto.id, delete: false)
                             currentIndex += 1
                         }
                     } label: {
@@ -627,7 +648,22 @@ struct CleanupReviewView: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 56))
                                 .foregroundStyle(.green)
-                            Text("cleanup_keep")
+                            Text("Conservar")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    // Share button
+                    Button {
+                        sharedPhotoId = currentPhoto.id
+                        showShareSheet = true
+                    } label: {
+                        VStack {
+                            Image(systemName: "square.and.arrow.up.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(.blue)
+                            Text("Compartir")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -635,8 +671,8 @@ struct CleanupReviewView: View {
                     
                     // Delete button
                     Button {
-                        withAnimation {
-                            viewModel.selectedPhotos.insert(allPhotos[currentIndex].id)
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(currentPhoto.id, delete: true)
                             currentIndex += 1
                         }
                     } label: {
@@ -644,7 +680,7 @@ struct CleanupReviewView: View {
                             Image(systemName: "trash.circle.fill")
                                 .font(.system(size: 56))
                                 .foregroundStyle(.red)
-                            Text("cleanup_delete")
+                            Text("Eliminar")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -653,42 +689,86 @@ struct CleanupReviewView: View {
                 .padding(.bottom, 40)
                 
             } else {
-                // Review complete
+                // Review complete (all photos reviewed)
                 reviewCompleteView
             }
         }
-        .navigationTitle(Text("cleanup_review_title"))
+        .navigationTitle(Text("Revisar fotos"))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(photosToDelete.count > 0)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.root")
         .toolbar {
-            if viewModel.selectedCount > 0 {
-                ToolbarItem(placement: .bottomBar) {
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
+            ToolbarItem(placement: .topBarLeading) {
+                if photosToDelete.count > 0 {
+                    Button {
+                        showFinishSheet = true
                     } label: {
-                        HStack {
-                            Image(systemName: "trash")
-                            Text("cleanup_delete_selected \(viewModel.selectedCount)")
-                        }
+                        Image(systemName: "chevron.left")
+                    }
+                }
+            }
+            
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Terminar") {
+                    showFinishSheet = true
+                }
+                .fontWeight(.medium)
+            }
+        }
+        .interactiveDismissDisabled(photosToDelete.count > 0)
+        .sheet(isPresented: $showFinishSheet) {
+            ReviewSummarySheet(
+                photosToDelete: photosToDelete,
+                deletionSize: deletionSize,
+                viewModel: viewModel,
+                onConfirmDelete: {
+                    Task {
+                        await viewModel.deleteSelectedPhotos()
+                        viewModel.clearPersistedProgress()
+                        dismiss()
+                    }
+                },
+                onKeepAll: {
+                    viewModel.clearPersistedProgress()
+                    dismiss()
+                },
+                onContinue: {
+                    showFinishSheet = false
+                }
+            )
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let photoId = sharedPhotoId,
+               let photo = unreviewedPhotos.first(where: { $0.id == photoId }) {
+                PhotoShareSheet(photo: photo) { didShare in
+                    if didShare {
+                        showPostShareDeletePrompt = true
                     }
                 }
             }
         }
-        .confirmationDialog(
-            "cleanup_delete_confirmation_title",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("cleanup_delete_confirm \(viewModel.selectedCount)", role: .destructive) {
-                Task {
-                    await viewModel.deleteSelectedPhotos()
-                    dismiss()
+        .alert("¿Eliminar después de compartir?", isPresented: $showPostShareDeletePrompt) {
+            Button("Eliminar", role: .destructive) {
+                if let photoId = sharedPhotoId {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photoId, delete: true)
+                        currentIndex += 1
+                    }
                 }
+                sharedPhotoId = nil
             }
-            Button("cleanup_cancel", role: .cancel) {}
+            Button("Conservar", role: .cancel) {
+                if let photoId = sharedPhotoId {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photoId, delete: false)
+                        currentIndex += 1
+                    }
+                }
+                sharedPhotoId = nil
+            }
         } message: {
-            Text("cleanup_delete_confirmation_message \(viewModel.formattedSize(viewModel.selectedSize))")
+            Text("Ya compartiste esta foto. ¿Querés eliminarla de tu biblioteca?")
         }
     }
     
@@ -711,33 +791,33 @@ struct CleanupReviewView: View {
             }
             
             VStack(spacing: 8) {
-                Text("cleanup_review_complete_title")
+                Text("¡Revisión completada!")
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                if viewModel.selectedCount > 0 {
-                    Text("cleanup_review_complete_selected \(viewModel.selectedCount)")
+                if photosToDelete.count > 0 {
+                    Text("Seleccionaste \(photosToDelete.count) fotos para eliminar")
                         .foregroundStyle(.secondary)
                     
-                    Text(viewModel.formattedSize(viewModel.selectedSize))
+                    Text(viewModel.formattedSize(deletionSize))
                         .font(.title)
                         .fontWeight(.bold)
                         .foregroundStyle(.tint)
                 } else {
-                    Text("cleanup_review_complete_none")
+                    Text("No seleccionaste fotos para eliminar")
                         .foregroundStyle(.secondary)
                 }
             }
             
             Spacer()
             
-            if viewModel.selectedCount > 0 {
+            if photosToDelete.count > 0 {
                 Button(role: .destructive) {
-                    showDeleteConfirmation = true
+                    showFinishSheet = true
                 } label: {
                     HStack {
                         Image(systemName: "trash")
-                        Text("cleanup_delete_selected \(viewModel.selectedCount)")
+                        Text("Eliminar \(photosToDelete.count) fotos")
                     }
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -750,9 +830,10 @@ struct CleanupReviewView: View {
             }
             
             Button {
+                viewModel.clearPersistedProgress()
                 dismiss()
             } label: {
-                Text("cleanup_done")
+                Text("Listo")
                     .font(.headline)
                     .foregroundStyle(.tint)
                     .frame(maxWidth: .infinity)
@@ -764,6 +845,288 @@ struct CleanupReviewView: View {
             .padding(.bottom, 32)
         }
     }
+}
+
+// MARK: - Review Summary Sheet
+
+struct ReviewSummarySheet: View {
+    let photosToDelete: [PersistedPhoto]
+    let deletionSize: Int64
+    let viewModel: CleanupViewModel
+    let onConfirmDelete: () -> Void
+    let onKeepAll: () -> Void
+    let onContinue: () -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer()
+                
+                if photosToDelete.isEmpty {
+                    // No photos marked for deletion
+                    ZStack {
+                        Circle()
+                            .fill(Color.green.opacity(0.15))
+                            .frame(width: 100, height: 100)
+                        
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundStyle(.green)
+                    }
+                    
+                    Text("No hay fotos para eliminar")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text("Conservaste todas las fotos revisadas")
+                        .foregroundStyle(.secondary)
+                } else {
+                    // Photos marked for deletion
+                    ZStack {
+                        Circle()
+                            .fill(Color.red.opacity(0.15))
+                            .frame(width: 100, height: 100)
+                        
+                        Image(systemName: "trash.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundStyle(.red)
+                    }
+                    
+                    VStack(spacing: 8) {
+                        Text("Eliminar \(photosToDelete.count) fotos")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Text(formattedSize(deletionSize))
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.red)
+                        
+                        Text("Se moverán a Eliminados Recientemente")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    // Preview of photos to delete
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(photosToDelete.prefix(10), id: \.id) { photo in
+                                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            
+                            if photosToDelete.count > 10 {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color(.systemGray4))
+                                        .frame(width: 60, height: 60)
+                                    
+                                    Text("+\(photosToDelete.count - 10)")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                Spacer()
+                
+                VStack(spacing: 12) {
+                    if !photosToDelete.isEmpty {
+                        Button(role: .destructive) {
+                            onConfirmDelete()
+                        } label: {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Eliminar \(photosToDelete.count) fotos")
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red)
+                            .cornerRadius(14)
+                        }
+                    }
+                    
+                    Button {
+                        onKeepAll()
+                    } label: {
+                        Text(photosToDelete.isEmpty ? "Salir" : "Conservar todas y salir")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(14)
+                    }
+                    
+                    Button {
+                        onContinue()
+                    } label: {
+                        Text("Seguir revisando")
+                            .font(.subheadline)
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 32)
+            }
+            .navigationTitle("Resumen")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+    
+    private func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - Photo Share Sheet
+
+struct PhotoShareSheet: View {
+    let photo: PersistedPhoto
+    let onComplete: (Bool) -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    @State private var shareItems: [Any] = []
+    @State private var isLoading = true
+    
+    var body: some View {
+        NavigationStack {
+            VStack {
+                if isLoading {
+                    ProgressView("Preparando...")
+                } else if !shareItems.isEmpty {
+                    ShareActivityView(activityItems: shareItems) { completed in
+                        dismiss()
+                        onComplete(completed)
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "No se pudo cargar",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text("No se pudo cargar la foto para compartir")
+                    )
+                }
+            }
+            .navigationTitle("Compartir")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                        onComplete(false)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .task {
+            await loadShareItems()
+        }
+    }
+    
+    private func loadShareItems() async {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [photo.localIdentifier], options: nil)
+        guard let asset = fetchResult.firstObject else {
+            isLoading = false
+            return
+        }
+        
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.isSynchronous = false
+        
+        if asset.mediaType == .video {
+            // For videos, get the video URL
+            let videoOptions = PHVideoRequestOptions()
+            videoOptions.isNetworkAccessAllowed = true
+            videoOptions.deliveryMode = .highQualityFormat
+            
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: videoOptions) { avAsset, _, _ in
+                DispatchQueue.main.async {
+                    if let urlAsset = avAsset as? AVURLAsset {
+                        self.shareItems = [urlAsset.url]
+                    }
+                    self.isLoading = false
+                }
+            }
+        } else if asset.mediaSubtypes.contains(.photoLive) {
+            // For Live Photos, get the Live Photo object
+            let livePhotoOptions = PHLivePhotoRequestOptions()
+            livePhotoOptions.isNetworkAccessAllowed = true
+            livePhotoOptions.deliveryMode = .highQualityFormat
+            
+            PHImageManager.default().requestLivePhoto(
+                for: asset,
+                targetSize: PHImageManagerMaximumSize,
+                contentMode: .aspectFit,
+                options: livePhotoOptions
+            ) { livePhoto, _ in
+                DispatchQueue.main.async {
+                    if let livePhoto = livePhoto {
+                        self.shareItems = [livePhoto]
+                    }
+                    self.isLoading = false
+                }
+            }
+        } else {
+            // For regular images, get full-size image
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: PHImageManagerMaximumSize,
+                contentMode: .aspectFit,
+                options: options
+            ) { image, _ in
+                DispatchQueue.main.async {
+                    if let image = image {
+                        self.shareItems = [image]
+                    }
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Share Activity View (UIKit wrapper)
+
+struct ShareActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let onComplete: (Bool) -> Void
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        controller.completionWithItemsHandler = { _, completed, _, _ in
+            onComplete(completed)
+        }
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Category Row
@@ -1080,6 +1443,214 @@ struct SwipeablePhotoCard: View {
                     }
                 }
                 .padding()
+            }
+    }
+}
+
+// MARK: - Similar Photos Group View
+
+struct SimilarPhotosGroupView: View {
+    let groupId: String
+    let photos: [PersistedPhoto]
+    @ObservedObject var viewModel: CleanupViewModel
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var selectedToKeep: Set<String> = []
+    @State private var selectedPreviewPhoto: PersistedPhoto?
+    @State private var showDeleteConfirmation = false
+    
+    private var bestPhoto: PersistedPhoto? {
+        photos.first { $0.isBestInGroup == true } ?? photos.first
+    }
+    
+    private var photosToDelete: [PersistedPhoto] {
+        photos.filter { !selectedToKeep.contains($0.id) }
+    }
+    
+    private var deletionSize: Int64 {
+        photosToDelete.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Large preview of selected photo
+            if let previewPhoto = selectedPreviewPhoto ?? bestPhoto {
+                AsyncPhotoThumbnail(localIdentifier: previewPhoto.localIdentifier, targetSize: CGSize(width: 600, height: 600))
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 400)
+                    .cornerRadius(12)
+                    .padding()
+                    .overlay(alignment: .topLeading) {
+                        if previewPhoto.isBestInGroup == true {
+                            Label("Mejor foto", systemImage: "star.fill")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange)
+                                .cornerRadius(8)
+                                .padding(24)
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if selectedToKeep.contains(previewPhoto.id) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title)
+                                .foregroundStyle(.green)
+                                .padding(24)
+                        }
+                    }
+            }
+            
+            Text("\(photos.count) fotos similares")
+                .font(.headline)
+                .padding(.bottom, 8)
+            
+            Text("Seleccioná las que querés conservar")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            
+            // Horizontal grid of all photos in group
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(photos, id: \.id) { photo in
+                        SimilarPhotoCell(
+                            photo: photo,
+                            isSelected: selectedToKeep.contains(photo.id),
+                            isBest: photo.isBestInGroup == true,
+                            isPreview: selectedPreviewPhoto?.id == photo.id || (selectedPreviewPhoto == nil && photo.id == bestPhoto?.id)
+                        ) {
+                            // Toggle selection
+                            if selectedToKeep.contains(photo.id) {
+                                selectedToKeep.remove(photo.id)
+                            } else {
+                                selectedToKeep.insert(photo.id)
+                            }
+                        } onLongPress: {
+                            selectedPreviewPhoto = photo
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(.vertical)
+            
+            Spacer()
+            
+            // Delete button
+            VStack(spacing: 12) {
+                if photosToDelete.count > 0 {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("Borrar las otras \(photosToDelete.count) (\(formattedSize(deletionSize)))")
+                        }
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red)
+                        .cornerRadius(14)
+                    }
+                } else {
+                    Text("Seleccioná al menos una para conservar")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Cancelar")
+                        .font(.headline)
+                        .foregroundStyle(.tint)
+                }
+            }
+            .padding()
+            .padding(.bottom, 16)
+        }
+        .navigationTitle("Fotos similares")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            // Pre-select best photo
+            if let best = bestPhoto {
+                selectedToKeep.insert(best.id)
+            }
+        }
+        .confirmationDialog(
+            "Eliminar \(photosToDelete.count) fotos",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar \(photosToDelete.count) fotos", role: .destructive) {
+                Task {
+                    // Mark photos for deletion
+                    for photo in photosToDelete {
+                        viewModel.selectedPhotos.insert(photo.id)
+                    }
+                    await viewModel.deleteSelectedPhotos()
+                    dismiss()
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Se liberarán \(formattedSize(deletionSize)). Las fotos se moverán a Eliminados Recientemente.")
+        }
+    }
+    
+    private func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+struct SimilarPhotoCell: View {
+    let photo: PersistedPhoto
+    let isSelected: Bool
+    let isBest: Bool
+    let isPreview: Bool
+    let onTap: () -> Void
+    let onLongPress: () -> Void
+    
+    var body: some View {
+        AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? .green : .white.opacity(0.8))
+                    .shadow(radius: 2)
+                    .padding(4)
+            }
+            .overlay(alignment: .topLeading) {
+                if isBest {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                        .shadow(radius: 2)
+                        .padding(4)
+                }
+            }
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.green, lineWidth: 3)
+                }
+                if isPreview {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.accentColor, lineWidth: 2)
+                }
+            }
+            .onTapGesture {
+                onTap()
+            }
+            .onLongPressGesture {
+                onLongPress()
             }
     }
 }
