@@ -230,7 +230,7 @@ class NotificationService: ObservableObject {
         let daysText = daysBefore == 1 ? "mañana" : "en \(daysBefore) días"
         
         switch importantDate.dateType {
-        case .birthday:
+        case .birthday, .friendBirthday:
             let name = importantDate.personName ?? "Alguien"
             if let age = calculateUpcomingAge(for: importantDate) {
                 content.title = "\(emoji) Cumple \(daysText)"
@@ -278,7 +278,7 @@ class NotificationService: ObservableObject {
         let emoji = importantDate.dateType.notificationEmoji
         
         switch importantDate.dateType {
-        case .birthday:
+        case .birthday, .friendBirthday:
             let name = importantDate.personName ?? "Alguien"
             if let age = calculateUpcomingAge(for: importantDate) {
                 content.title = "\(emoji) ¡Feliz cumple!"

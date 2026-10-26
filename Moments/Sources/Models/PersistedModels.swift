@@ -260,6 +260,7 @@ enum CatalogingCardType: String, Codable, Sendable {
 
 enum ImportantDateType: String, Codable, CaseIterable, Sendable {
     case birthday = "birthday"
+    case friendBirthday = "friendBirthday"
     case wedding = "wedding"
     case anniversary = "anniversary"
     case childBirthday = "childBirthday"
@@ -272,6 +273,7 @@ enum ImportantDateType: String, Codable, CaseIterable, Sendable {
     var iconName: String {
         switch self {
         case .birthday: return "gift.fill"
+        case .friendBirthday: return "person.2.fill"
         case .wedding: return "heart.fill"
         case .anniversary: return "heart.circle.fill"
         case .childBirthday: return "figure.and.child.holdinghands"
@@ -282,6 +284,7 @@ enum ImportantDateType: String, Codable, CaseIterable, Sendable {
     var notificationEmoji: String {
         switch self {
         case .birthday: return "🎂"
+        case .friendBirthday: return "🎁"
         case .wedding: return "💒"
         case .anniversary: return "💑"
         case .childBirthday: return "🎈"

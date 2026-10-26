@@ -22,7 +22,7 @@ class RememberListService: ObservableObject {
         guard let context = modelContext else { return }
         
         let descriptor = FetchDescriptor<RememberListItem>(
-            sortBy: [SortDescriptor(\.createdAt, order: .descending)]
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         
         facts = (try? context.fetch(descriptor)) ?? []

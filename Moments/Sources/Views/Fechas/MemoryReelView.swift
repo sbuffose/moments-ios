@@ -229,7 +229,7 @@ struct MemoryReelView: View {
     private var titleText: String {
         let emoji = importantDate.dateType.notificationEmoji
         switch importantDate.dateType {
-        case .birthday, .childBirthday:
+        case .birthday, .childBirthday, .friendBirthday:
             return "\(emoji) Cumpleaños de \(importantDate.displayName)"
         case .wedding:
             return "\(emoji) Boda de \(importantDate.displayName)"

@@ -122,7 +122,7 @@ class CalendarService: ObservableObject {
         let emoji = importantDate.dateType.notificationEmoji
         
         switch importantDate.dateType {
-        case .birthday:
+        case .birthday, .friendBirthday:
             let name = importantDate.personName ?? "Cumpleaños"
             return "\(emoji) Cumple de \(name)"
             

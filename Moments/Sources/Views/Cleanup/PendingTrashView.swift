@@ -160,7 +160,7 @@ struct PendingTrashView: View {
                     .foregroundStyle(.blue)
                 
                 Text("Se moverán a Eliminados recientemente. Podés recuperarlas durante 30 días.")
-                    .font(MomentsTypography.caption)
+                    .font(MomentsTypography.labelSmall)
                     .foregroundStyle(MomentsColors.textSecondary)
             }
             .padding(.horizontal, MomentsSpacing.screenHorizontal)

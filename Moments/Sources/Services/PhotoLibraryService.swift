@@ -33,24 +33,48 @@ class PhotoLibraryService: ObservableObject {
         return status == .authorized || status == .limited
     }
     
-    // MARK: - Library Scanning
+    // MARK: - Library Scanning (Resumable)
     
     func scanLibrary(progressHandler: @escaping @Sendable (Double, Int) async -> Void) async {
+        // Load or create analysis state for resumable indexing
+        let analysisState = loadOrCreateAnalysisState()
+        
+        // Check if we're resuming an interrupted scan
+        let isResuming = analysisState.indexingInProgress && analysisState.lastIndexedPhotoDate != nil
+        
         let fetchOptions = PHFetchOptions()
         fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         fetchOptions.includeHiddenAssets = false
         fetchOptions.includeAssetSourceTypes = [.typeUserLibrary, .typeCloudShared, .typeiTunesSynced]
         
-        let allAssets = PHAsset.fetchAssets(with: fetchOptions)
-        let totalCount = allAssets.count
+        // If resuming, only fetch photos newer than the last indexed one
+        if isResuming, let lastDate = analysisState.lastIndexedPhotoDate {
+            fetchOptions.predicate = NSPredicate(format: "creationDate > %@", lastDate as NSDate)
+        }
         
-        guard totalCount > 0 else { return }
+        let allAssets = PHAsset.fetchAssets(with: fetchOptions)
+        let totalCount = allAssets.count + analysisState.indexedCount
+        
+        guard allAssets.count > 0 else {
+            // Already fully indexed
+            analysisState.indexingInProgress = false
+            try? modelContext.save()
+            await progressHandler(1.0, analysisState.indexedCount)
+            return
+        }
+        
+        // Mark indexing as in progress
+        analysisState.indexingInProgress = true
+        analysisState.totalLibraryCount = totalCount
+        try? modelContext.save()
         
         let existingIds = fetchExistingPhotoIds()
         
         let batchSize = 100
-        var processedCount = 0
+        var processedCount = analysisState.indexedCount
         var photosToInsert: [PersistedPhoto] = []
+        var lastProcessedDate: Date?
+        var lastProcessedId: String?
         
         // Collect all assets first
         var assets: [PHAsset] = []
@@ -65,6 +89,8 @@ class PhotoLibraryService: ObservableObject {
                 photosToInsert.append(photo)
             }
             
+            lastProcessedDate = asset.creationDate
+            lastProcessedId = asset.localIdentifier
             processedCount += 1
             
             if processedCount % batchSize == 0 {
@@ -72,6 +98,12 @@ class PhotoLibraryService: ObservableObject {
                     modelContext.insert(photo)
                 }
                 photosToInsert.removeAll()
+                
+                // Update resumable state
+                analysisState.lastIndexedPhotoDate = lastProcessedDate
+                analysisState.lastIndexedPhotoId = lastProcessedId
+                analysisState.indexedCount = processedCount
+                
                 try? modelContext.save()
                 
                 let progress = Double(processedCount) / Double(totalCount)
@@ -83,8 +115,48 @@ class PhotoLibraryService: ObservableObject {
         for photo in photosToInsert {
             modelContext.insert(photo)
         }
+        
+        // Mark indexing complete
+        analysisState.indexingInProgress = false
+        analysisState.lastIndexedPhotoDate = lastProcessedDate
+        analysisState.lastIndexedPhotoId = lastProcessedId
+        analysisState.indexedCount = processedCount
+        analysisState.lastScanDate = Date()
+        
         try? modelContext.save()
         await progressHandler(1.0, processedCount)
+    }
+    
+    private func loadOrCreateAnalysisState() -> AnalysisState {
+        let descriptor = FetchDescriptor<AnalysisState>(
+            predicate: #Predicate { $0.id == "main" }
+        )
+        
+        if let existing = try? modelContext.fetch(descriptor).first {
+            return existing
+        }
+        
+        let newState = AnalysisState(id: "main")
+        modelContext.insert(newState)
+        return newState
+    }
+    
+    func pauseIndexing() {
+        if let state = try? modelContext.fetch(FetchDescriptor<AnalysisState>()).first {
+            state.indexingPausedAt = Date()
+            try? modelContext.save()
+        }
+    }
+    
+    func getIndexingProgress() -> (indexed: Int, total: Int, inProgress: Bool) {
+        let descriptor = FetchDescriptor<AnalysisState>(
+            predicate: #Predicate { $0.id == "main" }
+        )
+        
+        if let state = try? modelContext.fetch(descriptor).first {
+            return (state.indexedCount, state.totalLibraryCount, state.indexingInProgress)
+        }
+        return (0, 0, false)
     }
     
     private func fetchExistingPhotoIds() -> Set<String> {

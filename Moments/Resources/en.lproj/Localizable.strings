@@ -430,6 +430,7 @@
 
 /* Important Date Types */
 "important_date_type_birthday" = "Birthday";
+"important_date_type_friendBirthday" = "Friend's birthday";
 "important_date_type_wedding" = "Wedding";
 "important_date_type_anniversary" = "Anniversary";
 "important_date_type_childBirthday" = "Child's birthday";

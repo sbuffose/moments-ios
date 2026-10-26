@@ -247,13 +247,13 @@ struct FactRow: View {
                 HStack(spacing: MomentsSpacing.xs) {
                     if let personName = fact.personName {
                         Label(personName, systemImage: "person.fill")
-                            .font(MomentsTypography.caption)
+                            .font(MomentsTypography.labelSmall)
                             .foregroundStyle(MomentsColors.textTertiary)
                     }
                     
                     if fact.isUserEdited {
                         Label("Editado", systemImage: "pencil")
-                            .font(MomentsTypography.caption)
+                            .font(MomentsTypography.labelSmall)
                             .foregroundStyle(MomentsColors.textTertiary)
                     }
                 }

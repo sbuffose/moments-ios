@@ -260,7 +260,7 @@ struct UpcomingDateRow: View {
     private var titleText: String {
         let emoji = importantDate.dateType.notificationEmoji
         switch importantDate.dateType {
-        case .birthday, .childBirthday:
+        case .birthday, .childBirthday, .friendBirthday:
             return "\(emoji) Cumple de \(importantDate.displayName)"
         case .wedding, .anniversary:
             return "\(emoji) Aniversario de \(importantDate.displayName)"
@@ -271,7 +271,7 @@ struct UpcomingDateRow: View {
     
     private var subtitleText: String {
         switch importantDate.dateType {
-        case .birthday, .childBirthday:
+        case .birthday, .childBirthday, .friendBirthday:
             if let year = importantDate.year {
                 let currentYear = Calendar.current.component(.year, from: Date())
                 let age = currentYear - year

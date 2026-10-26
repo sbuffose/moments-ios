@@ -28,8 +28,11 @@ class DeletionService: ObservableObject {
         
         for photo in photos {
             // Check if already in trash
+            let photoId = photo.id
             let existingDescriptor = FetchDescriptor<PendingTrashItem>(
-                predicate: #Predicate<PendingTrashItem> { $0.photoId == photo.id }
+                predicate: #Predicate<PendingTrashItem> { item in
+                    item.photoId == photoId
+                }
             )
             
             if let existing = try? context.fetch(existingDescriptor).first {
@@ -88,7 +91,7 @@ class DeletionService: ObservableObject {
         guard let context = modelContext else { return [] }
         
         let descriptor = FetchDescriptor<PendingTrashItem>(
-            sortBy: [SortDescriptor(\.addedAt, order: .descending)]
+            sortBy: [SortDescriptor(\.addedAt, order: .reverse)]
         )
         
         return (try? context.fetch(descriptor)) ?? []

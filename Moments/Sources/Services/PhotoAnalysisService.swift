@@ -104,20 +104,20 @@ class PhotoAnalysisService: ObservableObject {
         }
         
         // Análisis de calidad
-        let qualityMetrics = await imageAnalyzer.analyzeQuality(image: image)
+        let qualityMetrics = await imageAnalyzer.analyzeQuality(image: analysisImage)
         photo.sharpnessScore = qualityMetrics.sharpness
         photo.exposureScore = qualityMetrics.exposure
         photo.detailScore = qualityMetrics.detail
         photo.deviceTilt = qualityMetrics.tilt
         
         // Detección de texto/documentos
-        let textAnalysis = await imageAnalyzer.analyzeText(image: image)
+        let textAnalysis = await imageAnalyzer.analyzeText(image: analysisImage)
         photo.hasText = textAnalysis.hasText
         photo.isDocument = textAnalysis.isDocument
         photo.ocrText = textAnalysis.detectedText
         
         // Vision labels (clasificación de imagen)
-        let labels = await imageAnalyzer.classifyImage(image: image)
+        let labels = await imageAnalyzer.classifyImage(image: analysisImage)
         if !labels.isEmpty {
             let labelStrings = labels.map { $0.label }
             let confidences = labels.map { String(format: "%.2f", $0.confidence) }
@@ -126,7 +126,7 @@ class PhotoAnalysisService: ObservableObject {
         }
         
         // Barcode/QR detection
-        let barcodeResult = await imageAnalyzer.detectBarcodes(image: image)
+        let barcodeResult = await imageAnalyzer.detectBarcodes(image: analysisImage)
         photo.hasBarcode = barcodeResult.hasBarcode
         if barcodeResult.hasQR {
             photo.cleanupCategory = .qrCode
@@ -136,12 +136,12 @@ class PhotoAnalysisService: ObservableObject {
         await determineCleanupCategory(photo: photo, textAnalysis: textAnalysis, qualityMetrics: qualityMetrics)
         
         // Feature print para duplicados
-        if let featurePrint = await imageAnalyzer.generateFeaturePrint(image: image) {
+        if let featurePrint = await imageAnalyzer.generateFeaturePrint(image: analysisImage) {
             photo.imageFeaturePrintData = featurePrint
         }
         
         // Detección de rostros
-        let faces = await faceAnalyzer.detectFaces(in: image, photoId: photo.id)
+        let faces = await faceAnalyzer.detectFaces(in: analysisImage, photoId: photo.id)
         photo.facesDetected = faces.count
         
         // Calculate faces open score (for burst best-selection)
