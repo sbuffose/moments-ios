@@ -598,7 +598,7 @@ class AssistantViewModel: ObservableObject {
                 isUser: false,
                 card: .photoGrid(
                     title: person.name ?? name,
-                    subtitle: "\(personPhotos.count) fotos",
+                    subtitle: MomentsPluralization.photos(personPhotos.count),
                     photos: Array(personPhotos.prefix(9))
                 )
             )

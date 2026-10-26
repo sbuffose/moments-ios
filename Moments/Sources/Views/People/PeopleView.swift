@@ -11,19 +11,16 @@ struct PeopleView: View {
     @State private var searchText = ""
     
     var body: some View {
-        NavigationStack {
-            Group {
-                if viewModel.isLoading {
-                    loadingView
-                } else if viewModel.people.isEmpty {
-                    emptyStateView
-                } else {
-                    contentView
-                }
+        Group {
+            if viewModel.isLoading {
+                loadingView
+            } else if viewModel.people.isEmpty {
+                emptyStateView
+            } else {
+                contentView
             }
-            .navigationTitle(Text("people_title"))
-            .searchable(text: $searchText, prompt: "people_search_prompt")
         }
+        .searchable(text: $searchText, prompt: "people_search_prompt")
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
@@ -102,7 +99,7 @@ struct PeopleView: View {
                 
                 Spacer()
                 
-                Text("\(filteredPeople.count) personas")
+                Text(MomentsPluralization.people(filteredPeople.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -199,7 +196,7 @@ struct PersonCell: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
             
-            Text("\(person.photoCount) fotos")
+            Text(MomentsPluralization.photos(person.photoCount))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }

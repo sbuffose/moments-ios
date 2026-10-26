@@ -255,6 +255,15 @@ struct MomentsListView: View {
             }
         }
         
+        var navigationTitle: String {
+            switch self {
+            case .timeline: return String(localized: "timeline_title")
+            case .people: return String(localized: "people_title")
+            case .places: return String(localized: "places_title")
+            case .dates: return String(localized: "fechas_title")
+            }
+        }
+        
         var accessibilityId: String {
             switch self {
             case .timeline: return "moments.timeline"
@@ -310,7 +319,7 @@ struct MomentsListView: View {
                 }
                 }
             }
-            .navigationTitle(Text(String(localized: "tab_moments")))
+            .navigationTitle(selectedSection.navigationTitle)
             .background(MomentsColors.bgPrimary)
         }
     }

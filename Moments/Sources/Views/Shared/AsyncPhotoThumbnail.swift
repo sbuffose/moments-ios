@@ -4,12 +4,44 @@
 import SwiftUI
 import Photos
 
+// MARK: - Shared Caching Image Manager
+
+@MainActor
+final class ThumbnailCache {
+    static let shared = ThumbnailCache()
+    
+    let cachingManager = PHCachingImageManager()
+    
+    private init() {
+        cachingManager.allowsCachingHighQualityImages = true
+    }
+    
+    func startCaching(assets: [PHAsset], targetSize: CGSize) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.isNetworkAccessAllowed = true
+        cachingManager.startCachingImages(for: assets, targetSize: targetSize, contentMode: .aspectFill, options: options)
+    }
+    
+    func stopCaching(assets: [PHAsset], targetSize: CGSize) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        cachingManager.stopCachingImages(for: assets, targetSize: targetSize, contentMode: .aspectFill, options: options)
+    }
+}
+
 struct AsyncPhotoThumbnail: View {
     let localIdentifier: String
     var targetSize: CGSize = CGSize(width: 200, height: 200)
     
     @State private var image: UIImage?
     @State private var isLoading = true
+    @State private var requestID: PHImageRequestID?
+    
+    private var scaledTargetSize: CGSize {
+        let scale = UIScreen.main.scale
+        return CGSize(width: targetSize.width * scale, height: targetSize.height * scale)
+    }
     
     var body: some View {
         Group {
@@ -33,12 +65,20 @@ struct AsyncPhotoThumbnail: View {
                     }
             }
         }
-        .task(id: localIdentifier) {
-            await loadImage()
+        .onAppear {
+            loadImage()
+        }
+        .onDisappear {
+            cancelRequest()
+        }
+        .onChange(of: localIdentifier) { _, _ in
+            cancelRequest()
+            image = nil
+            loadImage()
         }
     }
     
-    private func loadImage() async {
+    private func loadImage() {
         isLoading = true
         
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
@@ -51,24 +91,34 @@ struct AsyncPhotoThumbnail: View {
         options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
+        options.resizeMode = .fast
         
-        let loadedImage = await withCheckedContinuation { continuation in
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: targetSize,
-                contentMode: .aspectFill,
-                options: options
-            ) { image, info in
+        requestID = ThumbnailCache.shared.cachingManager.requestImage(
+            for: asset,
+            targetSize: scaledTargetSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { loadedImage, info in
+            let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+            guard !isCancelled else { return }
+            
+            DispatchQueue.main.async {
+                if let loadedImage = loadedImage {
+                    self.image = loadedImage
+                }
+                
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 if !isDegraded {
-                    continuation.resume(returning: image)
+                    self.isLoading = false
                 }
             }
         }
-        
-        await MainActor.run {
-            self.image = loadedImage
-            self.isLoading = false
+    }
+    
+    private func cancelRequest() {
+        if let requestID = requestID {
+            ThumbnailCache.shared.cachingManager.cancelImageRequest(requestID)
+            self.requestID = nil
         }
     }
 }

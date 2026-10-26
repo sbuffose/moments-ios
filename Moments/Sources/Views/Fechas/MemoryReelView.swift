@@ -293,7 +293,7 @@ struct YearMemorySection: View {
                 
                 Spacer()
                 
-                Text("\(photos.count) fotos")
+                Text(MomentsPluralization.photos(photos.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

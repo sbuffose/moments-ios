@@ -202,7 +202,7 @@ struct HomeView: View {
             } label: {
                 HStack {
                     Image(systemName: "sparkles")
-                    Text("Revisar \(viewModel.cleanupItemCount > 0 ? "\(viewModel.cleanupItemCount) fotos" : "ahora")")
+                    Text("Revisar \(viewModel.cleanupItemCount > 0 ? MomentsPluralization.photos(viewModel.cleanupItemCount) : "ahora")")
                 }
             }
             .momentsAccentButton()
