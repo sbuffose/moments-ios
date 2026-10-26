@@ -22,7 +22,11 @@ struct MomentsApp: App {
             PersistedCatalogingCard.self,
             PersistedImportantDate.self,
             PersistedNotificationSettings.self,
-            AnalysisState.self
+            AnalysisState.self,
+            RememberListItem.self,
+            PendingTrashItem.self,
+            SimilarGroup.self,
+            DeletionRecord.self
         ])
         
         // Try to create container, with fallback strategies

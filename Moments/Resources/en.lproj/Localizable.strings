@@ -455,3 +455,80 @@
 "relationship_type_friend" = "Friend";
 "relationship_type_colleague" = "Colleague";
 "relationship_type_other" = "Other";
+
+/* Protection Reasons */
+"protection_favorite" = "Marked as favorite";
+"protection_edited" = "Edited photo";
+"protection_in_album" = "In an album";
+"protection_shared" = "Shared or received";
+"protection_only_of_day" = "Only photo of the day";
+"protection_only_of_trip" = "Only photo of the trip";
+"protection_named_person" = "Has a named person";
+"protection_hidden" = "Hidden photo";
+"protection_important_date" = "Important date";
+"protection_user_protected" = "Protected by you";
+"protection_badge" = "Protected";
+
+/* Confidence Tiers */
+"confidence_very_likely" = "Very likely";
+"confidence_maybe" = "Maybe";
+"cleanup_very_likely_header" = "Very likely junk";
+"cleanup_maybe_header" = "Maybe junk";
+
+/* Best Shot Reasons */
+"best_shot_sharpest" = "Sharpest";
+"best_shot_eyes_open" = "Eyes open";
+"best_shot_smile" = "Smiling";
+"best_shot_aesthetics" = "Best composition";
+"best_shot_edited" = "Edited";
+"best_shot_favorited" = "Favorite";
+"best_shot_resolution" = "Highest resolution";
+"best_shot_live_photo" = "Live Photo";
+"best_shot_explanation" = "Best shot: %@";
+
+/* Similar Groups */
+"similar_not_similar" = "Not similar";
+"similar_confirm_group" = "They are similar";
+"similar_feedback_thanks" = "Thanks! We won't group them again.";
+
+/* Pending Trash */
+"trash_title" = "Trash";
+"trash_review_before_delete" = "Review before deleting";
+"trash_items_count %lld" = "%lld items";
+"trash_size" = "Size: %@";
+"trash_empty" = "Trash is empty";
+"trash_delete_all" = "Delete all";
+"trash_delete_selected" = "Delete selected";
+"trash_confirm_title" = "Delete permanently?";
+"trash_confirm_message %lld" = "%lld photos will be moved to Recently Deleted in Photos. You can recover them for 30 days.";
+"trash_cancel" = "Cancel";
+"trash_confirm" = "Delete";
+"trash_success_title" = "Done!";
+"trash_success_message" = "You freed %@";
+"trash_partial_success" = "Deleted %lld of %lld items";
+"trash_error" = "Error deleting";
+
+/* Deletion Verification */
+"deletion_verification_failed %lld" = "%lld items could not be deleted";
+"deletion_verifying" = "Verifying...";
+
+/* Remember List */
+"remember_list_title" = "Remember this";
+"remember_list_empty" = "No saved data yet";
+"remember_list_empty_description" = "When you answer cataloging questions or add information, it will appear here.";
+"remember_list_add" = "Add fact";
+"remember_list_edit" = "Edit";
+"remember_list_delete" = "Delete";
+"remember_list_category_birthday" = "Birthdays";
+"remember_list_category_relationship" = "Relationships";
+"remember_list_category_place" = "Places";
+"remember_list_category_general" = "General";
+
+/* Space Card */
+"space_freed_total" = "You've freed %@";
+"space_available" = "%@ available to free";
+"space_review_count %lld" = "%lld items to review";
+
+/* Privacy */
+"privacy_on_device" = "100% on your device";
+"privacy_no_uploads" = "Your photos never leave your iPhone";

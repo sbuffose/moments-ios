@@ -48,6 +48,25 @@ struct SettingsView: View {
                     Text("settings_analysis_footer")
                 }
                 
+                // Data Section
+                Section {
+                    NavigationLink {
+                        RememberListView()
+                    } label: {
+                        Label("Recordá esto", systemImage: "brain.head.profile")
+                    }
+                    
+                    NavigationLink {
+                        PendingTrashView()
+                    } label: {
+                        Label("Papelera pendiente", systemImage: "trash")
+                    }
+                } header: {
+                    Text("Tus datos")
+                } footer: {
+                    Text("Los datos que Moments aprende de vos se guardan localmente y podés editarlos.")
+                }
+                
                 // Storage Section
                 Section {
                     HStack {

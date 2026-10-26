@@ -75,8 +75,31 @@ class PhotoAnalysisService: ObservableObject {
             return
         }
         
-        guard let image = await loadImage(for: asset) else {
-            photo.analysisCompleted = true
+        // Check if this is a Live Photo
+        photo.isLivePhoto = asset.mediaSubtypes.contains(.photoLive)
+        if photo.isLivePhoto {
+            // Get paired video identifier for Live Photo duplicate detection
+            let resources = PHAssetResource.assetResources(for: asset)
+            photo.livePhotoVideoIdentifier = resources.first { $0.type == .pairedVideo }?.assetLocalIdentifier
+        }
+        
+        // Check if photo is edited (has adjustments)
+        let resources = PHAssetResource.assetResources(for: asset)
+        photo.isEdited = resources.contains { $0.type == .adjustmentData }
+        
+        // Check shared status
+        photo.isSharedOrReceived = asset.sourceType.contains(.typeCloudShared) ||
+                                   asset.sourceType.contains(.typeiTunesSynced)
+        
+        // Try to load local image, fall back to thumbnail if iCloud-only
+        var image = await loadImage(for: asset)
+        if image == nil {
+            image = await loadThumbnail(for: asset)
+        }
+        
+        guard let analysisImage = image else {
+            // Image only in iCloud and no thumbnail - mark for later
+            photo.analysisCompleted = false
             return
         }
         
@@ -280,7 +303,7 @@ class PhotoAnalysisService: ObservableObject {
         return false
     }
     
-    // MARK: - Duplicate Detection
+    // MARK: - Duplicate Detection (Live Photo Aware)
     
     func detectDuplicates() async {
         let descriptor = FetchDescriptor<PersistedPhoto>(
@@ -292,6 +315,22 @@ class PhotoAnalysisService: ObservableObject {
             photos.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
             
             guard photos.count > 1 else { return }
+            
+            // Check for user feedback on similar groups that should be excluded
+            let feedbackDescriptor = FetchDescriptor<SimilarGroup>(
+                predicate: #Predicate<SimilarGroup> { $0.feedbackRaw == "notSimilar" }
+            )
+            let excludedGroups = (try? modelContext.fetch(feedbackDescriptor)) ?? []
+            var excludedPairs = Set<String>()
+            for group in excludedGroups {
+                let ids = group.photoIds
+                for i in 0..<ids.count {
+                    for j in (i+1)..<ids.count {
+                        let pairKey = [ids[i], ids[j]].sorted().joined(separator: "_")
+                        excludedPairs.insert(pairKey)
+                    }
+                }
+            }
             
             var processedIds: Set<String> = []
             var groupId = 0
@@ -307,6 +346,18 @@ class PhotoAnalysisService: ObservableObject {
                     if processedIds.contains(otherPhoto.id) { continue }
                     guard let featurePrint2 = otherPhoto.imageFeaturePrintData else { continue }
                     
+                    // Check if this pair was marked as "not similar" by user
+                    let pairKey = [photo.id, otherPhoto.id].sorted().joined(separator: "_")
+                    if excludedPairs.contains(pairKey) { continue }
+                    
+                    // LIVE PHOTO AWARENESS: Don't match Live Photo with its own still/video
+                    if photo.isLivePhoto && otherPhoto.localIdentifier == photo.livePhotoVideoIdentifier {
+                        continue
+                    }
+                    if otherPhoto.isLivePhoto && photo.localIdentifier == otherPhoto.livePhotoVideoIdentifier {
+                        continue
+                    }
+                    
                     let distance = await imageAnalyzer.compareFeaturePrints(featurePrint1, featurePrint2)
                     
                     // Near-duplicate threshold
@@ -319,16 +370,29 @@ class PhotoAnalysisService: ObservableObject {
                     let currentGroupId = "dup_\(groupId)"
                     groupId += 1
                     
-                    // Find the best photo in the group
-                    let bestPhoto = selectBestPhoto(from: duplicateGroup)
+                    // Find the best photo in the group with reasons
+                    let (bestPhoto, reasons) = selectBestPhotoWithReasons(from: duplicateGroup)
+                    
+                    // Create SimilarGroup for tracking
+                    let similarGroup = SimilarGroup(
+                        photoIds: duplicateGroup.map { $0.id },
+                        bestPhotoId: bestPhoto.id,
+                        bestShotReasons: reasons
+                    )
+                    similarGroup.timeWindowStart = duplicateGroup.compactMap { $0.creationDate }.min()
+                    similarGroup.timeWindowEnd = duplicateGroup.compactMap { $0.creationDate }.max()
+                    modelContext.insert(similarGroup)
                     
                     for dupPhoto in duplicateGroup {
                         processedIds.insert(dupPhoto.id)
                         dupPhoto.duplicateGroupId = currentGroupId
                         dupPhoto.isBestInGroup = (dupPhoto.id == bestPhoto.id)
+                        dupPhoto.bestShotReasons = reasons.map { $0.rawValue }
                         
                         if dupPhoto.id != bestPhoto.id {
                             dupPhoto.cleanupCategory = .nearDuplicate
+                            // High confidence if visual similarity is very high
+                            dupPhoto.cleanupConfidenceTier = .veryLikely
                         }
                     }
                 }
@@ -341,43 +405,82 @@ class PhotoAnalysisService: ObservableObject {
         }
     }
     
-    private func selectBestPhoto(from photos: [PersistedPhoto]) -> PersistedPhoto {
-        // Score each photo based on multiple criteria
-        var scores: [(PersistedPhoto, Double)] = []
+    // MARK: - Select Best Photo with Explained Reasons
+    
+    private func selectBestPhotoWithReasons(from photos: [PersistedPhoto]) -> (PersistedPhoto, [BestShotReason]) {
+        var scores: [(PersistedPhoto, Double, [BestShotReason])] = []
         
         for photo in photos {
             var score: Double = 0
+            var reasons: [BestShotReason] = []
             
-            // Sharpness is most important
-            if let sharpness = photo.sharpnessScore {
+            // Check if favorited (strongest signal)
+            if photo.isFavorite {
+                score += 100
+                reasons.append(.favorited)
+            }
+            
+            // Check if edited (user chose to edit this one)
+            if photo.isEdited {
+                score += 80
+                reasons.append(.edited)
+            }
+            
+            // Live Photo bonus (more content value)
+            if photo.isLivePhoto {
+                score += 15
+                reasons.append(.livePhoto)
+            }
+            
+            // Sharpness is most important for quality
+            if let sharpness = photo.sharpnessScore, sharpness > 0.7 {
                 score += sharpness * 40
+                if sharpness > 0.85 {
+                    reasons.append(.sharpest)
+                }
             }
             
             // Good exposure
             if let exposure = photo.exposureScore {
                 let exposureScore = 1.0 - abs(exposure - 0.5) * 2
                 score += exposureScore * 20
+                if exposureScore > 0.8 {
+                    reasons.append(.bestAesthetics)
+                }
             }
             
             // Faces with eyes open
-            if let facesOpen = photo.facesOpenScore {
+            if let facesOpen = photo.facesOpenScore, facesOpen > 0.8 {
                 score += facesOpen * 30
+                reasons.append(.eyesOpen)
             }
             
-            // Has faces
+            // Has faces (smile detection would be part of faces analysis)
             if let faces = photo.facesDetected, faces > 0 {
                 score += 10
             }
             
-            // Represents burst (already selected as best)
+            // Higher resolution
+            let resolution = photo.pixelWidth * photo.pixelHeight
+            if resolution > 8_000_000 { // > 8MP
+                score += 5
+                reasons.append(.highestResolution)
+            }
+            
+            // Represents burst (already selected as best by iOS)
             if photo.representsBurst {
                 score += 5
             }
             
-            scores.append((photo, score))
+            scores.append((photo, score, reasons))
         }
         
-        return scores.max(by: { $0.1 < $1.1 })?.0 ?? photos[0]
+        let best = scores.max(by: { $0.1 < $1.1 }) ?? (photos[0], 0, [])
+        
+        // Remove duplicates in reasons and take top 3
+        let uniqueReasons = Array(Set(best.2)).prefix(3)
+        
+        return (best.0, Array(uniqueReasons))
     }
     
     // MARK: - Helpers
@@ -388,10 +491,12 @@ class PhotoAnalysisService: ObservableObject {
     }
     
     private func loadImage(for asset: PHAsset) async -> UIImage? {
+        // NEVER force iCloud downloads - use local data only
+        // If original not available, use thumbnail for analysis
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
+            options.isNetworkAccessAllowed = false  // CRITICAL: Never download from iCloud
             options.isSynchronous = false
             options.resizeMode = .exact
             
@@ -405,7 +510,46 @@ class PhotoAnalysisService: ObservableObject {
                 options: options
             ) { image, info in
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if !isDegraded && !hasResumed {
+                let isInCloud = (info?[PHImageResultIsInCloudKey] as? Bool) ?? false
+                
+                // If the image is in iCloud and we got a degraded version, use it anyway
+                // Better to analyze a thumbnail than to download gigabytes
+                if !hasResumed {
+                    if image != nil && (!isDegraded || isInCloud) {
+                        hasResumed = true
+                        continuation.resume(returning: image)
+                    } else if image == nil && isInCloud {
+                        // Image only in iCloud, try to get thumbnail
+                        hasResumed = true
+                        continuation.resume(returning: nil)
+                    } else if image != nil {
+                        // Got degraded local image, use it
+                        hasResumed = true
+                        continuation.resume(returning: image)
+                    }
+                }
+            }
+        }
+    }
+    
+    // Load thumbnail for iCloud-only photos
+    private func loadThumbnail(for asset: PHAsset) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .fastFormat
+            options.isNetworkAccessAllowed = false
+            options.isSynchronous = false
+            
+            let targetSize = CGSize(width: 256, height: 256)
+            
+            var hasResumed = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFit,
+                options: options
+            ) { image, _ in
+                if !hasResumed {
                     hasResumed = true
                     continuation.resume(returning: image)
                 }
