@@ -60,7 +60,7 @@ class AppState: ObservableObject {
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
     
-    enum AppTab: String, CaseIterable {
+    enum AppTab: String, CaseIterable, Sendable {
         case timeline = "timeline"
         case cleanup = "cleanup"
         case places = "places"
@@ -95,12 +95,10 @@ class AppState: ObservableObject {
         guard let service = photoLibraryService else { return }
         let status = await service.checkAuthorizationStatus()
         
-        await MainActor.run {
-            self.isLibraryAuthorized = (status == .authorized || status == .limited)
-            
-            if self.isLibraryAuthorized {
-                self.loadAnalysisState()
-            }
+        self.isLibraryAuthorized = (status == .authorized || status == .limited)
+        
+        if self.isLibraryAuthorized {
+            self.loadAnalysisState()
         }
     }
     
@@ -108,9 +106,7 @@ class AppState: ObservableObject {
         guard let service = photoLibraryService else { return false }
         let granted = await service.requestAuthorization()
         
-        await MainActor.run {
-            self.isLibraryAuthorized = granted
-        }
+        self.isLibraryAuthorized = granted
         
         return granted
     }
@@ -123,24 +119,22 @@ class AppState: ObservableObject {
         scanProgress = 0
         
         Task {
-            await photoService.scanLibrary { progress, indexed in
-                Task { @MainActor in
-                    self.scanProgress = progress
-                    self.totalPhotosIndexed = indexed
+            await photoService.scanLibrary { [weak self] progress, indexed in
+                await MainActor.run {
+                    self?.scanProgress = progress * 0.5
+                    self?.totalPhotosIndexed = indexed
                 }
             }
             
-            await analysisService.analyzeAllPhotos { progress in
-                Task { @MainActor in
-                    self.scanProgress = 0.5 + (progress * 0.5)
+            await analysisService.analyzeAllPhotos { [weak self] progress in
+                await MainActor.run {
+                    self?.scanProgress = 0.5 + (progress * 0.5)
                 }
             }
             
-            await MainActor.run {
-                self.isScanning = false
-                self.hasCompletedInitialScan = true
-                self.saveAnalysisState()
-            }
+            self.isScanning = false
+            self.hasCompletedInitialScan = true
+            self.saveAnalysisState()
         }
     }
     

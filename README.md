@@ -11,43 +11,78 @@ Moments analiza tus fotos y videos localmente en tu dispositivo para ayudarte a:
 ## 🚀 Requisitos
 
 - **iOS 17.0** o superior
-- **Xcode 15.0** o superior (para compilar)
+- **Xcode 15.0** o superior (para compilar localmente)
 - iPhone con biblioteca de fotos
 
 ## 📱 Cómo ejecutar la app
 
-### Opción 1: Abrir directamente en Xcode
+### Opción 1: TestFlight (Recomendado)
+
+La app se despliega automáticamente a TestFlight cuando hay cambios en `main`.
+
+### Opción 2: Compilar localmente en Xcode
 
 1. Cloná o descargá este repositorio
-2. Abrí `Moments.xcodeproj` en Xcode
-3. Seleccioná tu iPhone o un simulador como destino
-4. Presioná `Cmd + R` para compilar y ejecutar
+2. Instalá XcodeGen si no lo tenés: `brew install xcodegen`
+3. Generá el proyecto: `xcodegen generate`
+4. Abrí `Moments.xcodeproj` en Xcode
+5. Seleccioná tu iPhone o un simulador como destino
+6. Presioná `Cmd + R` para compilar y ejecutar
 
-### Opción 2: Usar XcodeGen (recomendado)
-
-Si tenés [XcodeGen](https://github.com/yonaskolb/XcodeGen) instalado:
-
-```bash
-# Instalar XcodeGen si no lo tenés
-brew install xcodegen
-
-# Generar el proyecto
-xcodegen generate
-
-# Abrir en Xcode
-open Moments.xcodeproj
-```
-
-### Configuración adicional
+### Configuración adicional (desarrollo local)
 
 1. **Team de desarrollo**: En Xcode, seleccioná tu cuenta de desarrollador en `Signing & Capabilities`
-2. **Bundle Identifier**: Cambiá `com.moments.app` por uno único si vas a instalarlo en un dispositivo físico
+2. **Bundle Identifier**: Si cambiás el bundle ID, asegurate de actualizarlo en `project.yml`
+
+## 🚢 Despliegue a TestFlight
+
+El proyecto incluye un workflow de GitHub Actions que automatiza el despliegue a TestFlight.
+
+### Configuración de secretos
+
+En tu repositorio de GitHub, configurá estos secretos en **Settings > Secrets and variables > Actions**:
+
+| Secreto | Descripción |
+|---------|-------------|
+| `ASC_KEY_ID` | ID de la clave de App Store Connect API (ej: `ABC123DEF4`) |
+| `ASC_ISSUER_ID` | Issuer ID de App Store Connect (UUID) |
+| `ASC_PRIVATE_KEY` | Contenido completo del archivo `.p8` de la API key |
+
+### Cómo obtener las credenciales
+
+1. Andá a [App Store Connect > Users and Access > Integrations > App Store Connect API](https://appstoreconnect.apple.com/access/integrations/api)
+2. Generá una nueva clave con permisos de **App Manager** o superior
+3. Descargá el archivo `.p8` (solo se puede descargar una vez)
+4. Copiá el **Key ID** y el **Issuer ID**
+5. El contenido del `.p8` va en `ASC_PRIVATE_KEY` (incluyendo `-----BEGIN PRIVATE KEY-----` y `-----END PRIVATE KEY-----`)
+
+### Proceso de despliegue
+
+El workflow se ejecuta automáticamente en:
+- Cada push a `main`
+- Manualmente via **Actions > Build and Deploy to TestFlight > Run workflow**
+
+El workflow:
+1. Genera el proyecto con XcodeGen
+2. Usa el número de run como `CURRENT_PROJECT_VERSION` (build number único)
+3. Archiva con firma automática usando la API key de App Store Connect
+4. Exporta el IPA con método `app-store-connect`
+5. Sube a TestFlight con `xcrun altool`
+
+### Notas importantes
+
+- El bundle ID es `com.sbuffose.moments`
+- El Team ID es `R56Y2GZ2M9`
+- La app ya debe existir en App Store Connect (el record "Moments Photos" ya está creado)
+- Los nuevos builds aparecen en TestFlight en ~10-15 minutos después del upload
 
 ## 🏗️ Arquitectura del Proyecto
 
 ```
 Moments/
-├── Moments.xcodeproj/          # Proyecto Xcode
+├── .github/workflows/
+│   └── testflight.yml          # CI/CD para TestFlight
+├── Moments.xcodeproj/          # Proyecto Xcode (generado por XcodeGen)
 ├── MomentsEngine/              # Motor de análisis (Swift Package)
 │   ├── Sources/
 │   │   └── MomentsEngine/
@@ -67,7 +102,8 @@ Moments/
 │       ├── en.lproj/          # Localización Inglés
 │       ├── Assets.xcassets/   # Iconos y colores
 │       └── Info.plist         # Configuración y permisos
-└── project.yml                 # Especificación XcodeGen
+├── project.yml                 # Especificación XcodeGen (fuente de verdad)
+└── ExportOptions.plist         # Opciones de exportación para App Store
 ```
 
 ## ✨ Funcionalidades
@@ -80,10 +116,10 @@ Detecta automáticamente fotos que podrías querer eliminar:
 |-----------|-----------------|
 | Screenshots | `PHAsset.mediaSubtypes` contiene `.photoScreenshot` |
 | Grabaciones de pantalla | `mediaSubtypes` contiene `.videoScreenRecording` |
-| Fotos borrosas | Vision: score de nitidez < 0.3 |
+| Fotos borrosas | Análisis de bordes con Core Image (Sobel) |
 | Sobreexpuestas | Core Image: luminancia promedio > 0.85 |
 | Subexpuestas | Core Image: luminancia promedio < 0.15 |
-| Duplicados | Vision: feature prints con similitud coseno > 0.95 |
+| Duplicados | Vision: feature prints con similitud |
 | Ráfagas | `burstIdentifier` + selección de la mejor |
 | Tomas accidentales | Combinación: muy oscura, sin rostros, aspecto raro |
 | Documentos | Vision: detección de texto extenso |
@@ -141,6 +177,8 @@ Permisos requeridos (definidos en `Info.plist`):
 - `NSPhotoLibraryUsageDescription`: Acceso a la biblioteca de fotos
 - `NSLocationWhenInUseUsageDescription`: Para detectar viajes (opcional)
 
+La app declara `ITSAppUsesNonExemptEncryption = NO` para simplificar el proceso de exportación.
+
 ## 🌐 Localización
 
 La app está disponible en:
@@ -155,9 +193,9 @@ Para agregar un nuevo idioma:
 ## ⚠️ Limitaciones Conocidas
 
 ### Heurísticas aproximadas
-- **Fotos borrosas**: El score de nitidez de Vision es orientativo; algunas fotos de movimiento intencional pueden marcarse
+- **Fotos borrosas**: Usa detección de bordes como proxy de nitidez; algunas fotos artísticas pueden marcarse
 - **Tomas accidentales**: Puede haber falsos positivos con fotos artísticas oscuras
-- **Detección de fiestas/cumpleaños**: Basada en cantidad de rostros y fotos en poco tiempo; no detecta tortas ni decoraciones
+- **Detección de fiestas/cumpleaños**: Basada en cantidad de rostros y fotos en poco tiempo
 
 ### No implementado en esta versión
 - Clasificación de objetos (tortas, decoraciones) para cumpleaños
@@ -165,8 +203,10 @@ Para agregar un nuevo idioma:
 - Sincronización con iCloud Photo Library (funciona con fotos locales)
 - Widget de iOS
 
-### Verificación en Linux
-El motor `MomentsEngine` compila y sus tests pasan en cualquier plataforma con Swift 5.9+. Sin embargo, la app iOS completa solo puede compilarse en macOS con Xcode.
+### Notas de compilación
+- El proyecto usa Swift 5 con concurrencia mínima (`SWIFT_STRICT_CONCURRENCY = minimal`) para evitar warnings innecesarios
+- El motor `MomentsEngine` es pure Swift y sus tests pasan en cualquier plataforma
+- La app iOS completa solo puede compilarse en macOS con Xcode 15+
 
 ## 🛠️ Próximos Pasos
 
@@ -175,6 +215,7 @@ El motor `MomentsEngine` compila y sus tests pasan en cualquier plataforma con S
 3. [ ] Agregar widget de iOS para "En este día"
 4. [ ] Soporte para carpetas compartidas de iCloud
 5. [ ] Exportar momentos como álbumes de Fotos
+6. [ ] Diseñar un ícono de app profesional
 
 ## 📄 Licencia
 

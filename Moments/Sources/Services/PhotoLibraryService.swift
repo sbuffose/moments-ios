@@ -21,25 +21,21 @@ class PhotoLibraryService: ObservableObject {
     
     func checkAuthorizationStatus() async -> PHAuthorizationStatus {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        await MainActor.run {
-            self.authorizationStatus = status
-            self.isLimitedAccess = (status == .limited)
-        }
+        self.authorizationStatus = status
+        self.isLimitedAccess = (status == .limited)
         return status
     }
     
     func requestAuthorization() async -> Bool {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        await MainActor.run {
-            self.authorizationStatus = status
-            self.isLimitedAccess = (status == .limited)
-        }
+        self.authorizationStatus = status
+        self.isLimitedAccess = (status == .limited)
         return status == .authorized || status == .limited
     }
     
     // MARK: - Library Scanning
     
-    func scanLibrary(progressHandler: @escaping (Double, Int) async -> Void) async {
+    func scanLibrary(progressHandler: @escaping @Sendable (Double, Int) async -> Void) async {
         let fetchOptions = PHFetchOptions()
         fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         fetchOptions.includeHiddenAssets = false
@@ -50,36 +46,48 @@ class PhotoLibraryService: ObservableObject {
         
         guard totalCount > 0 else { return }
         
+        let existingIds = fetchExistingPhotoIds()
+        
         let batchSize = 100
         var processedCount = 0
+        var photosToInsert: [PersistedPhoto] = []
         
-        let existingIds = await fetchExistingPhotoIds()
+        // Collect all assets first
+        var assets: [PHAsset] = []
+        allAssets.enumerateObjects { asset, _, _ in
+            assets.append(asset)
+        }
         
-        allAssets.enumerateObjects { [weak self] asset, index, _ in
-            guard let self = self else { return }
-            
+        // Process in batches on main actor
+        for asset in assets {
             if !existingIds.contains(asset.localIdentifier) {
-                let persistedPhoto = self.createPersistedPhoto(from: asset)
-                self.modelContext.insert(persistedPhoto)
+                let photo = createPersistedPhoto(from: asset)
+                photosToInsert.append(photo)
             }
             
             processedCount += 1
             
             if processedCount % batchSize == 0 {
-                try? self.modelContext.save()
-                
-                Task {
-                    let progress = Double(processedCount) / Double(totalCount)
-                    await progressHandler(progress, processedCount)
+                for photo in photosToInsert {
+                    modelContext.insert(photo)
                 }
+                photosToInsert.removeAll()
+                try? modelContext.save()
+                
+                let progress = Double(processedCount) / Double(totalCount)
+                await progressHandler(progress, processedCount)
             }
         }
         
+        // Insert remaining
+        for photo in photosToInsert {
+            modelContext.insert(photo)
+        }
         try? modelContext.save()
         await progressHandler(1.0, processedCount)
     }
     
-    private func fetchExistingPhotoIds() async -> Set<String> {
+    private func fetchExistingPhotoIds() -> Set<String> {
         let descriptor = FetchDescriptor<PersistedPhoto>(
             predicate: nil,
             sortBy: []
@@ -154,13 +162,12 @@ class PhotoLibraryService: ObservableObject {
     
     // MARK: - Asset Fetching
     
-    func fetchAsset(for photo: PersistedPhoto) -> PHAsset? {
+    nonisolated func fetchAsset(for photo: PersistedPhoto) -> PHAsset? {
         let result = PHAsset.fetchAssets(withLocalIdentifiers: [photo.localIdentifier], options: nil)
         return result.firstObject
     }
     
-    func fetchAssets(for photos: [PersistedPhoto]) -> [String: PHAsset] {
-        let identifiers = photos.map { $0.localIdentifier }
+    nonisolated func fetchAssets(for identifiers: [String]) -> [String: PHAsset] {
         let result = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
         
         var assetMap: [String: PHAsset] = [:]
@@ -177,38 +184,49 @@ class PhotoLibraryService: ObservableObject {
         return await loadImage(for: asset, targetSize: targetSize)
     }
     
-    func loadImage(for asset: PHAsset, targetSize: CGSize) async -> UIImage? {
+    nonisolated func loadImage(for asset: PHAsset, targetSize: CGSize) async -> UIImage? {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
             options.isSynchronous = false
+            options.resizeMode = .exact
             
+            var hasResumed = false
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: targetSize,
                 contentMode: .aspectFill,
                 options: options
-            ) { image, _ in
-                continuation.resume(returning: image)
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                if !isDegraded && !hasResumed {
+                    hasResumed = true
+                    continuation.resume(returning: image)
+                }
             }
         }
     }
     
-    func loadFullSizeImage(for asset: PHAsset) async -> UIImage? {
+    nonisolated func loadFullSizeImage(for asset: PHAsset) async -> UIImage? {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
             options.isSynchronous = false
             
+            var hasResumed = false
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: PHImageManagerMaximumSize,
                 contentMode: .aspectFit,
                 options: options
-            ) { image, _ in
-                continuation.resume(returning: image)
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                if !isDegraded && !hasResumed {
+                    hasResumed = true
+                    continuation.resume(returning: image)
+                }
             }
         }
     }
@@ -231,47 +249,43 @@ class PhotoLibraryService: ObservableObject {
     
     // MARK: - Resource Info
     
-    func getResourceInfo(for asset: PHAsset) async -> (fileSize: Int64, uniformTypeIdentifier: String?) {
-        await withCheckedContinuation { continuation in
-            let resources = PHAssetResource.assetResources(for: asset)
-            
-            var totalSize: Int64 = 0
-            var uti: String?
-            
-            for resource in resources {
-                if let size = resource.value(forKey: "fileSize") as? Int64 {
-                    totalSize += size
-                }
-                if uti == nil {
-                    uti = resource.uniformTypeIdentifier
-                }
+    nonisolated func getResourceInfo(for asset: PHAsset) -> (fileSize: Int64, uniformTypeIdentifier: String?) {
+        let resources = PHAssetResource.assetResources(for: asset)
+        
+        var totalSize: Int64 = 0
+        var uti: String?
+        
+        for resource in resources {
+            if let size = resource.value(forKey: "fileSize") as? Int64 {
+                totalSize += size
             }
-            
-            continuation.resume(returning: (totalSize, uti))
+            if uti == nil {
+                uti = resource.uniformTypeIdentifier
+            }
         }
+        
+        return (totalSize, uti)
     }
     
     // MARK: - Change Observation
     
-    func registerForLibraryChanges(_ handler: @escaping (PHChange) -> Void) -> Any {
+    nonisolated func registerForLibraryChanges(_ handler: @escaping @Sendable (PHChange) -> Void) -> PhotoLibraryChangeObserver {
         let observer = PhotoLibraryChangeObserver(handler: handler)
         PHPhotoLibrary.shared().register(observer)
         return observer
     }
     
-    func unregisterForLibraryChanges(_ observer: Any) {
-        if let obs = observer as? PHPhotoLibraryChangeObserver {
-            PHPhotoLibrary.shared().unregisterChangeObserver(obs)
-        }
+    nonisolated func unregisterForLibraryChanges(_ observer: PhotoLibraryChangeObserver) {
+        PHPhotoLibrary.shared().unregisterChangeObserver(observer)
     }
 }
 
 // MARK: - Change Observer
 
-class PhotoLibraryChangeObserver: NSObject, PHPhotoLibraryChangeObserver {
-    private let handler: (PHChange) -> Void
+final class PhotoLibraryChangeObserver: NSObject, PHPhotoLibraryChangeObserver, Sendable {
+    private let handler: @Sendable (PHChange) -> Void
     
-    init(handler: @escaping (PHChange) -> Void) {
+    init(handler: @escaping @Sendable (PHChange) -> Void) {
         self.handler = handler
         super.init()
     }

@@ -65,15 +65,26 @@ struct PlacesView: View {
     
     private var mapView: some View {
         ZStack(alignment: .bottom) {
-            Map(coordinateRegion: $viewModel.mapRegion, annotationItems: viewModel.clusters) { cluster in
-                MapAnnotation(coordinate: cluster.coordinate) {
-                    PlaceMapAnnotation(cluster: cluster) {
-                        if cluster.places.count == 1 {
-                            viewModel.selectedPlace = cluster.places.first
+            Map(position: .constant(.region(viewModel.mapRegion))) {
+                ForEach(viewModel.clusters) { cluster in
+                    if cluster.places.count == 1, let place = cluster.places.first {
+                        Annotation(place.displayName, coordinate: cluster.coordinate) {
+                            PlaceMapMarker(isSingle: true) {
+                                viewModel.selectedPlace = place
+                            }
+                        }
+                    } else {
+                        Annotation("\(cluster.places.count)", coordinate: cluster.coordinate) {
+                            PlaceMapMarker(isSingle: false, count: cluster.places.count) {
+                                if let first = cluster.places.first {
+                                    viewModel.selectPlace(first)
+                                }
+                            }
                         }
                     }
                 }
             }
+            .mapStyle(.standard)
             .ignoresSafeArea(edges: .top)
             .onChange(of: viewModel.mapRegion.span.latitudeDelta) { _, _ in
                 viewModel.updateClusters()
@@ -104,46 +115,40 @@ struct PlacesView: View {
     }
 }
 
-// MARK: - Map Annotation
+// MARK: - Map Marker
 
-struct PlaceMapAnnotation: View {
-    let cluster: PlacesViewModel.PlaceClusterItem
+struct PlaceMapMarker: View {
+    let isSingle: Bool
+    var count: Int = 1
     let onTap: () -> Void
     
     var body: some View {
         Button(action: onTap) {
-            if cluster.places.count == 1 {
-                singlePlaceMarker
+            if isSingle {
+                VStack(spacing: 0) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.title)
+                        .foregroundStyle(.white, .red)
+                    
+                    Image(systemName: "arrowtriangle.down.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .offset(y: -3)
+                }
             } else {
-                clusterMarker
+                ZStack {
+                    Circle()
+                        .fill(.blue)
+                        .frame(width: 40, height: 40)
+                    
+                    Text("\(count)")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.white)
+                }
             }
         }
-    }
-    
-    private var singlePlaceMarker: some View {
-        VStack(spacing: 0) {
-            Image(systemName: "mappin.circle.fill")
-                .font(.title)
-                .foregroundStyle(.white, .red)
-            
-            Image(systemName: "arrowtriangle.down.fill")
-                .font(.caption2)
-                .foregroundStyle(.red)
-                .offset(y: -3)
-        }
-    }
-    
-    private var clusterMarker: some View {
-        ZStack {
-            Circle()
-                .fill(.blue)
-                .frame(width: 40, height: 40)
-            
-            Text("\(cluster.places.count)")
-                .font(.caption)
-                .fontWeight(.bold)
-                .foregroundStyle(.white)
-        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -263,6 +268,7 @@ struct PlaceDetailView: View {
     
     @Environment(\.modelContext) private var modelContext
     @State private var photos: [PersistedPhoto] = []
+    @State private var cameraPosition: MapCameraPosition = .automatic
     
     let columns = [
         GridItem(.adaptive(minimum: 100), spacing: 2)
@@ -272,15 +278,19 @@ struct PlaceDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 // Map Preview
-                Map(coordinateRegion: .constant(MKCoordinateRegion(
-                    center: place.coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )), annotationItems: [place]) { _ in
-                    MapMarker(coordinate: place.coordinate, tint: .red)
+                Map(position: $cameraPosition) {
+                    Marker(place.displayName, coordinate: place.coordinate)
                 }
+                .mapStyle(.standard)
                 .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal)
+                .onAppear {
+                    cameraPosition = .region(MKCoordinateRegion(
+                        center: place.coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                    ))
+                }
                 
                 // Info
                 VStack(alignment: .leading, spacing: 8) {
