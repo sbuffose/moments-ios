@@ -1,22 +1,51 @@
 /* Moments - English Localization */
 
+/* App Tagline */
+"app_tagline" = "Free up space and relive your moments";
+
 /* Tabs */
-"tab_cleanup" = "Cleanup";
+"tab_cleanup" = "Home";
 "tab_search" = "Search";
-"tab_timeline" = "Timeline";
+"tab_timeline" = "Moments";
 "tab_places" = "Places";
 "tab_people" = "People";
 
-/* Onboarding */
+/* Onboarding - Page 1: Save Space */
+"onboarding_page1_title" = "Free up space without losing what matters";
+"onboarding_page1_subtitle" = "A full phone isn't a problem, it's an opportunity.";
+"onboarding_page1_highlight1" = "We detect blurry, duplicate, and screenshot photos";
+"onboarding_page1_highlight2" = "We keep the best from each moment";
+"onboarding_page1_highlight3" = "You decide what to delete, we suggest";
+
+/* Onboarding - Page 2: Relive Moments */
+"onboarding_page2_title" = "Relive your best moments";
+"onboarding_page2_subtitle" = "Your photos tell stories. Let us help you find them.";
+"onboarding_page2_highlight1" = "\"One year ago today...\" with photos from that date";
+"onboarding_page2_highlight2" = "Birthday and anniversary reminders";
+"onboarding_page2_highlight3" = "Your trips organized automatically";
+
+/* Onboarding - Page 3: Privacy */
+"onboarding_page3_title" = "Everything stays on your iPhone";
+"onboarding_page3_subtitle" = "Nothing leaves your phone. Ever.";
+"onboarding_page3_highlight1" = "100% on-device processing";
+"onboarding_page3_highlight2" = "No servers, no cloud, no uploads";
+"onboarding_page3_highlight3" = "Your photos are yours and yours alone";
+
+/* Onboarding - Navigation */
+"onboarding_continue" = "Continue";
+"onboarding_skip" = "Skip";
+"onboarding_allow_access" = "Allow Photo Access";
+"onboarding_privacy_footer" = "We need access to your photos to analyze them. Everything happens on your iPhone.";
+
+/* Legacy onboarding strings (for compatibility) */
 "onboarding_title" = "Moments";
-"onboarding_subtitle" = "Your photo library, intelligently and privately organized.";
+"onboarding_subtitle" = "Free up space and relive your moments.";
 "onboarding_feature_cleanup" = "Clean up duplicate and blurry photos";
 "onboarding_feature_search" = "Search by people, places and objects";
 "onboarding_feature_timeline" = "Organize your memories into moments";
 "onboarding_feature_places" = "Discover the places you've visited";
 "onboarding_feature_people" = "Find photos by people";
-"onboarding_allow_access" = "Allow Photo Access";
-"onboarding_privacy_note" = "All analysis happens on your device. Your photos never leave your iPhone.";
+"onboarding_privacy_note" = "All analysis happens on your device.";
 
 /* Scanning */
 "scanning_ready" = "Ready to scan";
@@ -25,7 +54,44 @@
 "scanning_photos_count %lld" = "%lld photos indexed";
 "scanning_start_button" = "Start Scan";
 
-/* Cleanup - Hero */
+/* Home Screen */
+"home_title" = "Moments";
+"home_space_saved_total %@" = "You've freed %@";
+"home_space_can_free" = "you can free";
+"home_space_items_count %lld" = "%lld photos to review";
+"home_free_space_cta" = "Free Up Space";
+"home_all_clean_title" = "All clean!";
+"home_all_clean_subtitle" = "We didn't find any photos to delete. Good job!";
+
+/* Home - Moments Card */
+"home_moments_title" = "Your moments";
+"home_on_this_day" = "One year ago today...";
+"home_on_this_day_count %lld" = "%lld photos from this date";
+"home_latest_trip" = "Your latest trip";
+"home_trip_photos %lld" = "%lld photos";
+"home_moments_empty" = "Your memories will appear here";
+"home_upcoming_date" = "Upcoming date";
+"home_date_today %@" = "Today! %@";
+"home_date_tomorrow %@" = "Tomorrow: %@";
+"home_date_in_days %lld %@" = "%lld days away: %@";
+"home_turns_years %lld" = "Turns %lld";
+"home_birthday" = "Birthday";
+"home_anniversary_years %lld" = "%lld year anniversary";
+"home_anniversary" = "Anniversary";
+"home_special_date" = "Special date";
+
+/* On This Day */
+"on_this_day_title" = "One year ago today";
+
+/* Celebration */
+"celebration_title" = "Space freed!";
+"celebration_freed" = "You freed";
+"celebration_memory_suggestion" = "Now, enjoy a memory";
+"celebration_on_this_day" = "See what happened on this date";
+"celebration_view_memories" = "View photos";
+"celebration_done" = "Done";
+
+/* Cleanup - Hero (legacy) */
 "cleanup_title" = "Cleanup";
 "cleanup_hero_title" = "Free Up Space";
 "cleanup_hero_subtitle %lld" = "We found %lld photos you could delete";

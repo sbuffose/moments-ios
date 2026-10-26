@@ -1,22 +1,51 @@
 /* Moments - Localización Español Argentina */
 
+/* App Tagline */
+"app_tagline" = "Liberá espacio y reviví tus momentos";
+
 /* Tabs */
-"tab_cleanup" = "Limpiar";
+"tab_cleanup" = "Inicio";
 "tab_search" = "Buscar";
-"tab_timeline" = "Línea de Tiempo";
+"tab_timeline" = "Momentos";
 "tab_places" = "Lugares";
 "tab_people" = "Personas";
 
-/* Onboarding */
+/* Onboarding - Page 1: Save Space */
+"onboarding_page1_title" = "Liberá espacio sin perder lo importante";
+"onboarding_page1_subtitle" = "Tu teléfono lleno no es un problema, es una oportunidad.";
+"onboarding_page1_highlight1" = "Detectamos fotos borrosas, duplicadas y capturas";
+"onboarding_page1_highlight2" = "Conservamos las mejores de cada momento";
+"onboarding_page1_highlight3" = "Vos decidís qué borrar, nosotros sugerimos";
+
+/* Onboarding - Page 2: Relive Moments */
+"onboarding_page2_title" = "Reviví tus mejores momentos";
+"onboarding_page2_subtitle" = "Tus fotos cuentan historias. Dejá que las encuentres.";
+"onboarding_page2_highlight1" = "\"Hace un año hoy...\" con fotos de esa fecha";
+"onboarding_page2_highlight2" = "Recordatorios de cumpleaños y aniversarios";
+"onboarding_page2_highlight3" = "Tus viajes organizados automáticamente";
+
+/* Onboarding - Page 3: Privacy */
+"onboarding_page3_title" = "Todo pasa en tu iPhone";
+"onboarding_page3_subtitle" = "Nada sale de tu teléfono. Nunca.";
+"onboarding_page3_highlight1" = "100% procesamiento en el dispositivo";
+"onboarding_page3_highlight2" = "Sin servidores, sin nubes, sin subidas";
+"onboarding_page3_highlight3" = "Tus fotos son tuyas y de nadie más";
+
+/* Onboarding - Navigation */
+"onboarding_continue" = "Continuar";
+"onboarding_skip" = "Saltar";
+"onboarding_allow_access" = "Permitir acceso a Fotos";
+"onboarding_privacy_footer" = "Necesitamos acceso a tus fotos para analizarlas. Todo sucede en tu iPhone.";
+
+/* Legacy onboarding strings (for compatibility) */
 "onboarding_title" = "Moments";
-"onboarding_subtitle" = "Tu biblioteca de fotos, organizada de forma inteligente y privada.";
+"onboarding_subtitle" = "Liberá espacio y reviví tus momentos.";
 "onboarding_feature_cleanup" = "Limpiá fotos duplicadas y borrosas";
 "onboarding_feature_search" = "Buscá por personas, lugares y objetos";
 "onboarding_feature_timeline" = "Organizá tus recuerdos en momentos";
 "onboarding_feature_places" = "Descubrí los lugares que visitaste";
 "onboarding_feature_people" = "Encontrá fotos por personas";
-"onboarding_allow_access" = "Permitir acceso a Fotos";
-"onboarding_privacy_note" = "Todo el análisis se realiza en tu dispositivo. Tus fotos nunca salen de tu iPhone.";
+"onboarding_privacy_note" = "Todo el análisis se realiza en tu dispositivo.";
 
 /* Scanning */
 "scanning_ready" = "Listo para escanear";
@@ -25,7 +54,44 @@
 "scanning_photos_count %lld" = "%lld fotos indexadas";
 "scanning_start_button" = "Comenzar escaneo";
 
-/* Cleanup - Hero */
+/* Home Screen */
+"home_title" = "Moments";
+"home_space_saved_total %@" = "Ya liberaste %@";
+"home_space_can_free" = "podés liberar";
+"home_space_items_count %lld" = "%lld fotos para revisar";
+"home_free_space_cta" = "Liberar espacio";
+"home_all_clean_title" = "¡Todo limpio!";
+"home_all_clean_subtitle" = "No encontramos fotos para eliminar. ¡Bien hecho!";
+
+/* Home - Moments Card */
+"home_moments_title" = "Tus momentos";
+"home_on_this_day" = "Hace un año hoy...";
+"home_on_this_day_count %lld" = "%lld fotos de esta fecha";
+"home_latest_trip" = "Tu último viaje";
+"home_trip_photos %lld" = "%lld fotos";
+"home_moments_empty" = "Tus recuerdos aparecerán acá";
+"home_upcoming_date" = "Fecha próxima";
+"home_date_today %@" = "¡Hoy! %@";
+"home_date_tomorrow %@" = "Mañana: %@";
+"home_date_in_days %lld %@" = "Faltan %lld días: %@";
+"home_turns_years %lld" = "Cumple %lld años";
+"home_birthday" = "Cumpleaños";
+"home_anniversary_years %lld" = "%lldº aniversario";
+"home_anniversary" = "Aniversario";
+"home_special_date" = "Fecha especial";
+
+/* On This Day */
+"on_this_day_title" = "Hace un año hoy";
+
+/* Celebration */
+"celebration_title" = "¡Espacio liberado!";
+"celebration_freed" = "Liberaste";
+"celebration_memory_suggestion" = "Ahora, disfrutá un recuerdo";
+"celebration_on_this_day" = "Mirá lo que pasó en esta fecha";
+"celebration_view_memories" = "Ver fotos";
+"celebration_done" = "Listo";
+
+/* Cleanup - Hero (legacy) */
 "cleanup_title" = "Limpiar";
 "cleanup_hero_title" = "Liberar espacio";
 "cleanup_hero_subtitle %lld" = "Encontramos %lld fotos que podrías eliminar";

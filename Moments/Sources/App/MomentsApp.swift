@@ -119,11 +119,11 @@ class AppState: ObservableObject {
         
         var icon: String {
             switch self {
-            case .cleanup: return "sparkles"
+            case .cleanup: return "house.fill"
             case .search: return "magnifyingglass"
-            case .fechas: return "gift"
-            case .timeline: return "calendar"
-            case .people: return "person.2"
+            case .fechas: return "gift.fill"
+            case .timeline: return "photo.on.rectangle.angled"
+            case .people: return "person.2.fill"
             }
         }
         

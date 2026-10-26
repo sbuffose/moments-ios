@@ -17,6 +17,7 @@ class CleanupViewModel: ObservableObject {
     @Published var showDeleteConfirmation = false
     @Published var errorMessage: String?
     @Published var spaceFreed: Int64 = 0
+    @Published var lastDeletedSize: Int64 = 0
     
     @Published var categories: [CleanupCategoryItem] = []
     @Published var estimatedSpaceFreed: Int64 = 0
@@ -279,6 +280,7 @@ class CleanupViewModel: ObservableObject {
             // Update state
             selectedPhotos.removeAll()
             spaceFreed = sizeFreed
+            lastDeletedSize = sizeFreed
             await loadCleanupSuggestions()
             
         } catch {

@@ -1,5 +1,5 @@
 // CleanupView.swift
-// Vista principal de limpieza - Hero feature "Limpiar"
+// Vista principal - Home con Limpieza + Momentos
 
 import SwiftUI
 import SwiftData
@@ -7,35 +7,67 @@ import SwiftData
 struct CleanupView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel = CleanupViewModel()
+    @StateObject private var importantDatesService = ImportantDatesService.shared
+    
+    @State private var totalSpaceSaved: Int64 = 0
+    @State private var onThisDayPhotos: [PersistedPhoto] = []
+    @State private var upcomingDates: [PersistedImportantDate] = []
+    @State private var latestTrip: PersistedMoment?
+    @State private var showCelebration = false
+    @State private var lastCleanupSize: Int64 = 0
     
     var body: some View {
         NavigationStack {
-            Group {
-                if viewModel.isLoading {
-                    loadingView
-                } else if viewModel.totalCleanupItems == 0 {
-                    emptyStateView
-                } else {
-                    mainCleanupView
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Space Card (Hero)
+                    spaceCard
+                    
+                    // Moments Card
+                    momentsCard
+                    
+                    // Cleanup categories (collapsed by default)
+                    if viewModel.totalCleanupItems > 0 {
+                        categoriesSection
+                    }
                 }
+                .padding()
             }
-            .navigationTitle(Text("cleanup_title"))
+            .navigationTitle(Text("home_title"))
             .toolbar {
-                if viewModel.totalCleanupItems > 0 {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            Task {
-                                await viewModel.loadCleanupSuggestions()
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gear")
                     }
                 }
             }
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
+            importantDatesService.initialize(modelContext: modelContext)
+            loadSpaceSaved()
+            Task {
+                await loadMoments()
+            }
+        }
+        .sheet(isPresented: $showCelebration) {
+            CleanupCelebrationView(
+                spaceSaved: lastCleanupSize,
+                onThisDayPhotos: onThisDayPhotos,
+                onDismiss: {
+                    showCelebration = false
+                }
+            )
+        }
+        .onChange(of: viewModel.lastDeletedSize) { _, newSize in
+            if newSize > 0 {
+                lastCleanupSize = newSize
+                totalSpaceSaved += newSize
+                saveSpaceSaved()
+                showCelebration = true
+            }
         }
         .alert("cleanup_error_title", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") {
@@ -46,119 +78,480 @@ struct CleanupView: View {
         }
     }
     
-    // MARK: - Loading View
+    // MARK: - Space Card
     
-    private var loadingView: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-            Text("cleanup_analyzing")
-                .foregroundStyle(.secondary)
-        }
-    }
-    
-    // MARK: - Empty State View
-    
-    private var emptyStateView: some View {
-        ContentUnavailableView {
-            Label("cleanup_empty_title", systemImage: "sparkles")
-        } description: {
-            Text("cleanup_empty_description")
-        }
-    }
-    
-    // MARK: - Main Cleanup View
-    
-    private var mainCleanupView: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Hero CTA Card
-                heroCTACard
-                
-                // Categories
-                categoriesSection
-            }
-            .padding()
-        }
-    }
-    
-    // MARK: - Hero CTA Card
-    
-    private var heroCTACard: some View {
-        VStack(spacing: 16) {
-            // Icon
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.15))
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: "sparkles")
-                    .font(.system(size: 36))
-                    .foregroundStyle(.tint)
+    private var spaceCard: some View {
+        VStack(spacing: 20) {
+            // Header with running total
+            if totalSpaceSaved > 0 {
+                HStack {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Text("home_space_saved_total \(viewModel.formattedSize(totalSpaceSaved))")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.green)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(20)
             }
             
-            // Title
-            VStack(spacing: 8) {
-                Text("cleanup_hero_title")
-                    .font(.title2)
-                    .fontWeight(.bold)
+            if viewModel.isLoading {
+                ProgressView()
+                    .padding()
+            } else if viewModel.totalCleanupItems > 0 {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.1))
+                        .frame(width: 80, height: 80)
+                    
+                    Image(systemName: "externaldrive.badge.minus")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.blue)
+                }
                 
-                Text("cleanup_hero_subtitle \(viewModel.totalCleanupItems)")
-                    .font(.body)
+                // Space to free
+                VStack(spacing: 4) {
+                    Text(viewModel.formattedSize(viewModel.estimatedSpaceFreed))
+                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .foregroundStyle(.blue)
+                    
+                    Text("home_space_can_free")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Text("home_space_items_count \(viewModel.totalCleanupItems)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                // CTA
+                NavigationLink {
+                    CleanupReviewView(viewModel: viewModel)
+                } label: {
+                    HStack {
+                        Image(systemName: "sparkles")
+                        Text("home_free_space_cta")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .cornerRadius(14)
+                }
+            } else {
+                // All clean state
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.1))
+                        .frame(width: 80, height: 80)
+                    
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.green)
+                }
+                
+                Text("home_all_clean_title")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                
+                Text("home_all_clean_subtitle")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            
-            // Size badge
-            Text(viewModel.formattedSize(viewModel.estimatedSpaceFreed))
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .foregroundStyle(.tint)
-            
-            Text("cleanup_hero_space_label")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            
-            // Main CTA Button
-            NavigationLink {
-                CleanupReviewView(viewModel: viewModel)
-            } label: {
-                HStack {
-                    Image(systemName: "hand.tap")
-                    Text("cleanup_hero_cta")
-                }
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.accentColor)
-                .cornerRadius(14)
-            }
-            .padding(.top, 8)
         }
         .padding(24)
+        .frame(maxWidth: .infinity)
         .background(Color(.systemBackground))
         .cornerRadius(20)
-        .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
     }
     
-    // MARK: - Categories Section
+    // MARK: - Moments Card
+    
+    private var momentsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack {
+                Image(systemName: "heart.text.square.fill")
+                    .foregroundStyle(.pink)
+                Text("home_moments_title")
+                    .font(.headline)
+            }
+            
+            // On This Day
+            if !onThisDayPhotos.isEmpty {
+                NavigationLink {
+                    OnThisDayView(photos: onThisDayPhotos)
+                } label: {
+                    MomentRowView(
+                        icon: "clock.arrow.circlepath",
+                        iconColor: .orange,
+                        title: "home_on_this_day",
+                        subtitle: "home_on_this_day_count \(onThisDayPhotos.count)",
+                        previewPhotos: Array(onThisDayPhotos.prefix(3))
+                    )
+                }
+            }
+            
+            // Upcoming dates
+            if !upcomingDates.isEmpty {
+                NavigationLink {
+                    FechasView()
+                } label: {
+                    if let nextDate = upcomingDates.first {
+                        MomentRowView(
+                            icon: "gift.fill",
+                            iconColor: .pink,
+                            title: upcomingDateTitle(nextDate),
+                            subtitle: upcomingDateSubtitle(nextDate),
+                            previewPhotos: []
+                        )
+                    }
+                }
+            }
+            
+            // Latest trip
+            if let trip = latestTrip {
+                NavigationLink {
+                    TimelineView()
+                } label: {
+                    MomentRowView(
+                        icon: "airplane",
+                        iconColor: .blue,
+                        title: "home_latest_trip",
+                        subtitle: trip.tripDestination ?? trip.locationName ?? "home_trip_photos \(trip.photoIdArray.count)",
+                        previewPhotos: []
+                    )
+                }
+            }
+            
+            // Empty state if no moments
+            if onThisDayPhotos.isEmpty && upcomingDates.isEmpty && latestTrip == nil {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                        Text("home_moments_empty")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 20)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground))
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
+    }
+    
+    // MARK: - Categories Section (collapsible)
+    
+    @State private var showCategories = false
     
     private var categoriesSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("cleanup_categories_header")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation {
+                    showCategories.toggle()
+                }
+            } label: {
+                HStack {
+                    Text("cleanup_categories_header")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: showCategories ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                }
+            }
             
-            ForEach(viewModel.categories) { category in
-                NavigationLink {
-                    CleanupCategoryDetailView(
-                        category: category,
-                        viewModel: viewModel
-                    )
-                } label: {
-                    CleanupCategoryRow(category: category, viewModel: viewModel)
+            if showCategories {
+                ForEach(viewModel.categories) { category in
+                    NavigationLink {
+                        CleanupCategoryDetailView(
+                            category: category,
+                            viewModel: viewModel
+                        )
+                    } label: {
+                        CleanupCategoryRow(category: category, viewModel: viewModel)
+                    }
                 }
             }
         }
+        .padding(20)
+        .background(Color(.systemBackground))
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
+    }
+    
+    // MARK: - Helpers
+    
+    private func loadSpaceSaved() {
+        totalSpaceSaved = Int64(UserDefaults.standard.integer(forKey: "totalSpaceSaved"))
+    }
+    
+    private func saveSpaceSaved() {
+        UserDefaults.standard.set(Int(totalSpaceSaved), forKey: "totalSpaceSaved")
+    }
+    
+    private func loadMoments() async {
+        // Load on this day photos
+        let calendar = Calendar.current
+        let today = Date()
+        let month = calendar.component(.month, from: today)
+        let day = calendar.component(.day, from: today)
+        
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.analysisCompleted && $0.creationDate != nil }
+        )
+        
+        if let photos = try? modelContext.fetch(descriptor) {
+            onThisDayPhotos = photos.filter { photo in
+                guard let date = photo.creationDate else { return false }
+                let photoMonth = calendar.component(.month, from: date)
+                let photoDay = calendar.component(.day, from: date)
+                let photoYear = calendar.component(.year, from: date)
+                let currentYear = calendar.component(.year, from: today)
+                
+                return photoMonth == month && photoDay == day && photoYear < currentYear
+            }
+        }
+        
+        // Load upcoming dates
+        upcomingDates = await importantDatesService.getUpcomingDates(withinDays: 14)
+        
+        // Load latest trip
+        let tripDescriptor = FetchDescriptor<PersistedMoment>(
+            predicate: #Predicate { $0.isTrip },
+            sortBy: [SortDescriptor(\.endDate, order: .reverse)]
+        )
+        latestTrip = try? modelContext.fetch(tripDescriptor).first
+    }
+    
+    private func upcomingDateTitle(_ date: PersistedImportantDate) -> LocalizedStringKey {
+        guard let days = date.daysUntilNext else { return "home_upcoming_date" }
+        
+        if days == 0 {
+            return "home_date_today \(date.displayName)"
+        } else if days == 1 {
+            return "home_date_tomorrow \(date.displayName)"
+        } else {
+            return "home_date_in_days \(days) \(date.displayName)"
+        }
+    }
+    
+    private func upcomingDateSubtitle(_ date: PersistedImportantDate) -> LocalizedStringKey {
+        switch date.dateType {
+        case .birthday, .childBirthday:
+            if let year = date.year {
+                let age = Calendar.current.component(.year, from: Date()) - year
+                let nextAge = (date.daysUntilNext ?? 0) == 0 ? age : age + 1
+                return "home_turns_years \(nextAge)"
+            }
+            return "home_birthday"
+        case .wedding, .anniversary:
+            if let years = date.anniversaryYear {
+                return "home_anniversary_years \(years + 1)"
+            }
+            return "home_anniversary"
+        case .other:
+            return "home_special_date"
+        }
+    }
+}
+
+// MARK: - Moment Row View
+
+struct MomentRowView: View {
+    let icon: String
+    let iconColor: Color
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
+    let previewPhotos: [PersistedPhoto]
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: icon)
+                    .foregroundStyle(iconColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            if !previewPhotos.isEmpty {
+                HStack(spacing: -8) {
+                    ForEach(previewPhotos.prefix(3), id: \.id) { photo in
+                        AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                            .frame(width: 32, height: 32)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                    }
+                }
+            }
+            
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Cleanup Celebration View
+
+struct CleanupCelebrationView: View {
+    let spaceSaved: Int64
+    let onThisDayPhotos: [PersistedPhoto]
+    let onDismiss: () -> Void
+    
+    @State private var showConfetti = false
+    
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+            
+            // Celebration icon
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.15))
+                    .frame(width: 120, height: 120)
+                
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.green)
+            }
+            .scaleEffect(showConfetti ? 1.0 : 0.5)
+            .animation(.spring(response: 0.5, dampingFraction: 0.6), value: showConfetti)
+            
+            // Space freed
+            VStack(spacing: 8) {
+                Text("celebration_title")
+                    .font(.title)
+                    .fontWeight(.bold)
+                
+                HStack(spacing: 4) {
+                    Text("celebration_freed")
+                        .foregroundStyle(.secondary)
+                    Text(formattedSize(spaceSaved))
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.green)
+                }
+            }
+            
+            Divider()
+                .padding(.horizontal, 40)
+            
+            // Suggested memory
+            if !onThisDayPhotos.isEmpty {
+                VStack(spacing: 12) {
+                    Text("celebration_memory_suggestion")
+                        .font(.headline)
+                    
+                    Text("celebration_on_this_day")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    
+                    // Preview photos
+                    HStack(spacing: 8) {
+                        ForEach(onThisDayPhotos.prefix(4), id: \.id) { photo in
+                            AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                    
+                    NavigationLink {
+                        OnThisDayView(photos: onThisDayPhotos)
+                    } label: {
+                        HStack {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Text("celebration_view_memories")
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.tint)
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(16)
+                .padding(.horizontal)
+            }
+            
+            Spacer()
+            
+            Button {
+                onDismiss()
+            } label: {
+                Text("celebration_done")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.accentColor)
+                    .cornerRadius(14)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
+                showConfetti = true
+            }
+        }
+    }
+    
+    private func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - On This Day View
+
+struct OnThisDayView: View {
+    let photos: [PersistedPhoto]
+    
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 2)], spacing: 2) {
+                ForEach(photos, id: \.id) { photo in
+                    AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                        .aspectRatio(1, contentMode: .fill)
+                        .clipped()
+                }
+            }
+        }
+        .navigationTitle(Text("on_this_day_title"))
     }
 }
 
