@@ -112,6 +112,11 @@ struct MomentsTypography {
     static let displayMedium = Font.system(size: 28, weight: .bold, design: .default)
     static let displaySmall = Font.system(size: 24, weight: .bold, design: .default)
     
+    // Title - semantic aliases
+    static let titleLarge = Font.system(size: 28, weight: .bold, design: .default)
+    static let titleMedium = Font.system(size: 22, weight: .semibold, design: .default)
+    static let titleSmall = Font.system(size: 18, weight: .semibold, design: .default)
+    
     // Headlines
     static let headlineLarge = Font.system(size: 20, weight: .semibold, design: .default)
     static let headlineMedium = Font.system(size: 17, weight: .semibold, design: .default)
@@ -126,6 +131,11 @@ struct MomentsTypography {
     static let labelLarge = Font.system(size: 15, weight: .medium, design: .default)
     static let labelMedium = Font.system(size: 13, weight: .medium, design: .default)
     static let labelSmall = Font.system(size: 11, weight: .medium, design: .default)
+    
+    // Buttons
+    static let buttonLarge = Font.system(size: 17, weight: .semibold, design: .default)
+    static let buttonMedium = Font.system(size: 15, weight: .semibold, design: .default)
+    static let buttonSmall = Font.system(size: 13, weight: .semibold, design: .default)
     
     // Monospace for numbers
     static let numberLarge = Font.system(size: 48, weight: .bold, design: .rounded)
@@ -152,6 +162,17 @@ struct MomentsSpacing {
     // Screen margins
     static let screenHorizontal: CGFloat = 20
     static let screenVertical: CGFloat = 16
+}
+
+// MARK: - Corner Radius
+
+struct MomentsCorners {
+    static let small: CGFloat = 8
+    static let medium: CGFloat = 12
+    static let large: CGFloat = 16
+    static let xl: CGFloat = 20
+    static let xxl: CGFloat = 28
+    static let card: CGFloat = 20
 }
 
 // MARK: - Animations
