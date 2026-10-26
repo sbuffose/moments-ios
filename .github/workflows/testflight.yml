@@ -353,33 +353,42 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/screenshots"
           
-          # Try to extract attachments from xcresult bundle
           if [ -d "$RUNNER_TEMP/TestResults.xcresult" ]; then
             echo "Extracting screenshots from test results..."
             
-            # Method 1: Use xcparse if available
+            # Install xcparse for better screenshot extraction
+            brew install chargepoint/xcparse/xcparse 2>/dev/null || true
+            
+            # Use xcparse to extract screenshots
             if command -v xcparse &> /dev/null; then
-              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" || true
+              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" 2>/dev/null || true
             fi
             
-            # Method 2: Manual extraction from xcresult bundle
-            # Find all PNG files in the xcresult bundle
-            find "$RUNNER_TEMP/TestResults.xcresult" -name "*.png" -type f 2>/dev/null | while read png_file; do
-              filename=$(basename "$png_file")
-              cp "$png_file" "$RUNNER_TEMP/screenshots/$filename" 2>/dev/null || true
-            done
+            # Alternative: Use xcresulttool to get attachment info and extract
+            xcrun xcresulttool get --path "$RUNNER_TEMP/TestResults.xcresult" --format json 2>/dev/null > "$RUNNER_TEMP/xcresult.json" || true
             
-            # Method 3: Extract using xcresulttool
+            # Get list of test bundle IDs and try to export attachments
             xcrun xcresulttool export \
               --path "$RUNNER_TEMP/TestResults.xcresult" \
-              --type attachments \
-              --output-path "$RUNNER_TEMP/extracted_attachments" 2>/dev/null || true
+              --output-path "$RUNNER_TEMP/xcexport" \
+              --type file 2>/dev/null || true
             
-            if [ -d "$RUNNER_TEMP/extracted_attachments" ]; then
-              find "$RUNNER_TEMP/extracted_attachments" -name "*.png" -type f -exec cp {} "$RUNNER_TEMP/screenshots/" \; 2>/dev/null || true
+            # Find any exported PNGs
+            if [ -d "$RUNNER_TEMP/xcexport" ]; then
+              find "$RUNNER_TEMP/xcexport" -name "*.png" -type f -exec cp {} "$RUNNER_TEMP/screenshots/" \; 2>/dev/null || true
             fi
             
-            echo "Screenshots extracted: $(ls -1 $RUNNER_TEMP/screenshots/ 2>/dev/null | wc -l)"
+            # Rename screenshots with better names
+            cd "$RUNNER_TEMP/screenshots"
+            i=1
+            for f in *.png; do
+              if [ -f "$f" ] && [ "$f" != "app_state.png" ]; then
+                mv "$f" "$(printf '%02d' $i)_${f}" 2>/dev/null || true
+                i=$((i + 1))
+              fi
+            done
+            
+            echo "Screenshots extracted: $(ls -1 "$RUNNER_TEMP/screenshots/"*.png 2>/dev/null | wc -l)"
             ls -la "$RUNNER_TEMP/screenshots/" || true
           fi
 
