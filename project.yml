@@ -97,11 +97,22 @@ targets:
     sources:
       - path: MomentsUITests
         type: group
+    info:
+      properties:
+        CFBundleDevelopmentRegion: es-AR
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: BNDL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments.uitests
         DEVELOPMENT_TEAM: R56Y2GZ2M9
         CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: "YES"
         TEST_HOST: ""
         BUNDLE_LOADER: ""
     dependencies:
@@ -115,11 +126,22 @@ targets:
       - path: MomentsTests
         type: group
         optional: true
+    info:
+      properties:
+        CFBundleDevelopmentRegion: es-AR
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: BNDL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments.tests
         DEVELOPMENT_TEAM: R56Y2GZ2M9
         CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: "YES"
     dependencies:
       - target: Moments
 
