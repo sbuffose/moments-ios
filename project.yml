@@ -79,6 +79,11 @@ targets:
         NSCalendarsWriteOnlyAccessUsageDescription: "Moments puede agregar fechas importantes a tu calendario para que no las olvides."
         NSUserNotificationsUsageDescription: "Moments puede enviarte recordatorios antes de los cumpleaños y aniversarios de tus amigos."
         ITSAppUsesNonExemptEncryption: false
+        UIBackgroundModes:
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.sbuffose.moments.scan
+          - com.sbuffose.moments.analysis
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments
