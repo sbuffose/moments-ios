@@ -10,6 +10,8 @@ env:
   SCHEME: Moments
   BUNDLE_ID: com.sbuffose.moments
   TEAM_ID: R56Y2GZ2M9
+  PROFILE_NAME: "Moments AppStore GHA"
+  PROFILE_UUID: "e32b0b74-6a42-45fe-9652-75ba4c9d7537"
 
 jobs:
   build-and-deploy:
@@ -33,10 +35,63 @@ jobs:
 
       - name: Generate Xcode project
         run: |
-          # Update build number to GitHub run number
           sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"${{ github.run_number }}\"/" project.yml
           xcodegen generate
           echo "Project generated with build number ${{ github.run_number }}"
+
+      - name: Setup Keychain and Import Certificate
+        env:
+          DIST_CERT_P12: ${{ secrets.DIST_CERT_P12 }}
+          DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          
+          # Decode and import certificate
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$DIST_CERT_P12" | base64 --decode > "$CERT_PATH"
+          
+          security import "$CERT_PATH" \
+            -P "$DIST_CERT_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          
+          rm "$CERT_PATH"
+          
+          # Set keychain partition list for codesign access
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          
+          # Add to search list
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          
+          # Verify certificate imported
+          echo "=== Certificates in keychain ==="
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -5
+          
+          # Store keychain path for later cleanup
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+
+      - name: Install Provisioning Profile
+        env:
+          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+        run: |
+          PROFILE_DIR=~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p "$PROFILE_DIR"
+          
+          PROFILE_PATH="$PROFILE_DIR/${PROFILE_UUID}.mobileprovision"
+          echo "$PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_PATH"
+          
+          echo "=== Provisioning profile installed ==="
+          echo "Path: $PROFILE_PATH"
+          echo "Size: $(wc -c < "$PROFILE_PATH") bytes"
 
       - name: Setup App Store Connect API Key
         env:
@@ -47,53 +102,18 @@ jobs:
           mkdir -p ~/private_keys
           KEY_FILE=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
           
-          # Try multiple approaches to convert the key to proper format
-          # Approach 1: Use awk to replace literal backslash-n with newlines
           echo "$ASC_PRIVATE_KEY" | awk '{gsub(/\\n/,"\n")}1' | tr -d '\r' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           
-          # Validate key file structure (without exposing content)
-          echo "=== Key file validation ==="
-          echo "File size: $(wc -c < "$KEY_FILE") bytes"
-          echo "Line count: $(wc -l < "$KEY_FILE") lines"
-          
-          # Check for proper PEM structure
+          # Validate key file structure
           if head -1 "$KEY_FILE" | grep -q "BEGIN PRIVATE KEY"; then
-            echo "✓ Has BEGIN PRIVATE KEY header"
+            echo "✓ API Key file structure OK"
           else
-            echo "✗ Missing BEGIN PRIVATE KEY header"
-            echo "First line starts with: $(head -1 "$KEY_FILE" | cut -c1-20)..."
+            echo "✗ Invalid API key format"
             exit 1
           fi
-          
-          if tail -1 "$KEY_FILE" | grep -q "END PRIVATE KEY"; then
-            echo "✓ Has END PRIVATE KEY footer"
-          else
-            echo "✗ Missing END PRIVATE KEY footer"
-            exit 1
-          fi
-          
-          # Verify line count is reasonable (should be 5-8 lines for a valid p8 key)
-          LINE_COUNT=$(wc -l < "$KEY_FILE")
-          if [ "$LINE_COUNT" -lt 3 ]; then
-            echo "✗ Key file has too few lines ($LINE_COUNT). Expected multi-line PEM format."
-            echo ""
-            echo "IMPORTANT: The ASC_PRIVATE_KEY secret must be set correctly."
-            echo "Go to: GitHub repo Settings > Secrets > Actions > ASC_PRIVATE_KEY"
-            echo "Delete the current secret and create a new one."
-            echo ""
-            echo "Copy the ENTIRE contents of your AuthKey_XXXXXX.p8 file,"
-            echo "including the -----BEGIN PRIVATE KEY----- and -----END PRIVATE KEY----- lines."
-            echo "Paste it directly into the secret value (GitHub preserves newlines)."
-            exit 1
-          fi
-          
-          echo "=== Key file structure OK ==="
 
       - name: Build and Archive
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           xcodebuild archive \
             -project Moments.xcodeproj \
@@ -101,11 +121,9 @@ jobs:
             -configuration Release \
             -archivePath "$RUNNER_TEMP/Moments.xcarchive" \
             -destination "generic/platform=iOS" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
@@ -121,7 +139,12 @@ jobs:
               <key>teamID</key>
               <string>$TEAM_ID</string>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$BUNDLE_ID</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
               <key>uploadSymbols</key>
               <true/>
               <key>destination</key>
@@ -129,21 +152,15 @@ jobs:
           </dict>
           </plist>
           EOF
+          echo "=== ExportOptions.plist ==="
           cat "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Export IPA
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Moments.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Upload to TestFlight
         env:
@@ -166,6 +183,11 @@ jobs:
             ${{ runner.temp }}/Moments.xcarchive
           retention-days: 14
 
-      - name: Clean up API key
+      - name: Clean up
         if: always()
-        run: rm -rf ~/private_keys
+        run: |
+          rm -rf ~/private_keys
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/${PROFILE_UUID}.mobileprovision
+          if [ -n "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          fi
