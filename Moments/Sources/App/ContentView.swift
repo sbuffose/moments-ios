@@ -142,8 +142,9 @@ struct MomentsListView: View {
             }
             .navigationTitle(Text(String(localized: "tab_moments")))
             .background(MomentsColors.bgPrimary)
-            .accessibilityIdentifier("moments.root")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("moments.root")
     }
 }
 

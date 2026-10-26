@@ -75,6 +75,7 @@ struct FechasView: View {
                 await refreshDates()
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("fechas.root")
     }
     

@@ -52,10 +52,11 @@ struct HomeView: View {
                 }
             }
         }
-        .accessibilityIdentifier("home.root")
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("home.root")
     }
     
     // MARK: - Header Section

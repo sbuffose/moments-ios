@@ -76,6 +76,7 @@ struct CleanupView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("cleanup.root")
     }
     
@@ -654,6 +655,7 @@ struct CleanupReviewView: View {
         }
         .navigationTitle(Text("cleanup_review_title"))
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.root")
         .toolbar {
             if viewModel.selectedCount > 0 {

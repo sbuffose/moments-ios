@@ -58,6 +58,7 @@ struct AssistantView: View {
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("assistant.root")
     }
     
