@@ -75,6 +75,7 @@ struct FechasView: View {
                 await refreshDates()
             }
         }
+        .accessibilityIdentifier("fechas.root")
     }
     
     private var loadingView: some View {

@@ -5,17 +5,22 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
-    @State private var shouldSkipOnboarding: Bool = false
+    
+    private var isTestingMode: Bool {
+        ProcessInfo.processInfo.arguments.contains("-skipOnboarding") ||
+        ProcessInfo.processInfo.environment["UI_TESTING"] == "1" ||
+        ProcessInfo.processInfo.environment["UITEST_MODE"] == "1"
+    }
     
     var body: some View {
         Group {
-            if shouldSkipOnboarding {
-                if !appState.hasCompletedInitialScan {
-                    ScanningView()
-                } else {
-                    MainTabView()
-                }
-            } else if !appState.isLibraryAuthorized {
+            if isTestingMode {
+                MainTabView()
+                    .onAppear {
+                        appState.isLibraryAuthorized = true
+                        appState.hasCompletedInitialScan = true
+                    }
+            } else if !appState.hasCompletedOnboarding {
                 OnboardingView()
             } else if !appState.hasCompletedInitialScan {
                 ScanningView()
@@ -24,20 +29,7 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear {
-            checkLaunchArguments()
-        }
-    }
-    
-    private func checkLaunchArguments() {
-        if CommandLine.arguments.contains("-skipOnboarding") {
-            shouldSkipOnboarding = true
-            appState.isLibraryAuthorized = true
-            appState.hasCompletedInitialScan = true
-        }
-        if CommandLine.arguments.contains("-resetState") {
-            UserDefaults.standard.removeObject(forKey: "hasLaunchedBefore")
-        }
+        .accessibilityIdentifier(isTestingMode ? "app.testing_mode" : "app.root")
     }
 }
 
@@ -53,28 +45,28 @@ struct MainTabView: View {
                     Label(String(localized: "tab_home"), systemImage: AppState.AppTab.home.icon)
                 }
                 .tag(AppState.AppTab.home)
-                .accessibilityIdentifier("home_tab")
+                .accessibilityIdentifier("tab.home")
             
             AssistantView()
                 .tabItem {
                     Label(String(localized: "tab_assistant"), systemImage: AppState.AppTab.assistant.icon)
                 }
                 .tag(AppState.AppTab.assistant)
-                .accessibilityIdentifier("assistant_tab")
+                .accessibilityIdentifier("tab.assistant")
             
             MomentsListView()
                 .tabItem {
                     Label(String(localized: "tab_moments"), systemImage: AppState.AppTab.moments.icon)
                 }
                 .tag(AppState.AppTab.moments)
-                .accessibilityIdentifier("moments_tab")
+                .accessibilityIdentifier("tab.moments")
             
             SettingsView()
                 .tabItem {
                     Label(String(localized: "tab_settings"), systemImage: AppState.AppTab.settings.icon)
                 }
                 .tag(AppState.AppTab.settings)
-                .accessibilityIdentifier("settings_tab")
+                .accessibilityIdentifier("tab.settings")
         }
         .tint(MomentsColors.accent)
         .accessibilityIdentifier("main_tab_view")
@@ -98,6 +90,15 @@ struct MomentsListView: View {
             case .dates: return String(localized: "tab_fechas")
             }
         }
+        
+        var accessibilityId: String {
+            switch self {
+            case .timeline: return "moments.timeline"
+            case .people: return "moments.people"
+            case .places: return "moments.places"
+            case .dates: return "fechas.root"
+            }
+        }
     }
     
     var body: some View {
@@ -115,6 +116,7 @@ struct MomentsListView: View {
                                     }
                                 }
                             )
+                            .accessibilityIdentifier("chip.\(section.rawValue)")
                         }
                     }
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
@@ -125,17 +127,22 @@ struct MomentsListView: View {
                     switch selectedSection {
                     case .timeline:
                         TimelineView()
+                            .accessibilityIdentifier("moments.timeline.content")
                     case .people:
                         PeopleView()
+                            .accessibilityIdentifier("moments.people.content")
                     case .places:
                         PlacesView()
+                            .accessibilityIdentifier("moments.places.content")
                     case .dates:
                         FechasView()
+                            .accessibilityIdentifier("fechas.content")
                     }
                 }
             }
             .navigationTitle(Text(String(localized: "tab_moments")))
             .background(MomentsColors.bgPrimary)
+            .accessibilityIdentifier("moments.root")
         }
     }
 }
@@ -165,6 +172,7 @@ struct OnboardingView: View {
                         ]
                     )
                     .tag(0)
+                    .accessibilityIdentifier("onboarding.page1")
                     
                     OnboardingPageView(
                         iconName: "heart.text.square",
@@ -178,6 +186,7 @@ struct OnboardingView: View {
                         ]
                     )
                     .tag(1)
+                    .accessibilityIdentifier("onboarding.page2")
                     
                     OnboardingPageView(
                         iconName: "lock.iphone",
@@ -191,6 +200,7 @@ struct OnboardingView: View {
                         ]
                     )
                     .tag(2)
+                    .accessibilityIdentifier("onboarding.page3")
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .indexViewStyle(.page(backgroundDisplayMode: .always))
@@ -216,7 +226,7 @@ struct OnboardingView: View {
                                 )
                                 .cornerRadius(MomentsCorners.large)
                         }
-                        .accessibilityIdentifier("onboarding_continue_button")
+                        .accessibilityIdentifier("onboarding.continue")
                         
                         Button {
                             withAnimation {
@@ -227,7 +237,7 @@ struct OnboardingView: View {
                                 .font(MomentsTypography.labelMedium)
                                 .foregroundStyle(MomentsColors.textSecondary)
                         }
-                        .accessibilityIdentifier("onboarding_skip_button")
+                        .accessibilityIdentifier("onboarding.skip")
                     } else {
                         Button {
                             requestAccess()
@@ -257,7 +267,7 @@ struct OnboardingView: View {
                             )
                         )
                         .cornerRadius(MomentsCorners.large)
-                        .accessibilityIdentifier("onboarding_start_button")
+                        .accessibilityIdentifier("onboarding.allowAccess")
                         .disabled(isRequesting)
                         
                         Text(String(localized: "onboarding_privacy_footer"))
@@ -270,12 +280,16 @@ struct OnboardingView: View {
                 .padding(.bottom, MomentsSpacing.xl)
             }
         }
+        .accessibilityIdentifier("onboarding.root")
     }
     
     private func requestAccess() {
         isRequesting = true
         Task {
-            _ = await appState.requestAuthorization()
+            let granted = await appState.requestAuthorization()
+            if granted {
+                appState.completeOnboarding()
+            }
             isRequesting = false
         }
     }
@@ -391,16 +405,19 @@ struct ScanningView: View {
                          : String(localized: "scanning_ready"))
                         .font(MomentsTypography.titleMedium)
                         .foregroundStyle(MomentsColors.textPrimary)
+                        .accessibilityIdentifier(appState.isScanning ? "scanning.inProgress" : "scanning.ready")
                     
                     if appState.isScanning {
                         Text(String(localized: "scanning_photos_count \(appState.totalPhotosIndexed)"))
                             .font(MomentsTypography.bodyMedium)
                             .foregroundStyle(MomentsColors.textSecondary)
+                            .accessibilityIdentifier("scanning.count")
                         
                         ProgressView(value: appState.scanProgress)
                             .progressViewStyle(.linear)
                             .tint(MomentsColors.accent)
                             .padding(.horizontal, MomentsSpacing.xl)
+                            .accessibilityIdentifier("scanning.progress")
                     } else {
                         Text(String(localized: "scanning_description"))
                             .font(MomentsTypography.bodyMedium)
@@ -432,10 +449,11 @@ struct ScanningView: View {
                     }
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
                     .padding(.bottom, MomentsSpacing.xl)
-                    .accessibilityIdentifier("start_scan_button")
+                    .accessibilityIdentifier("scanning.startButton")
                 }
             }
         }
+        .accessibilityIdentifier(appState.hasCompletedInitialScan ? "scanning.complete" : "scanning.root")
     }
 }
 

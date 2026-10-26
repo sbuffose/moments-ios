@@ -37,6 +37,7 @@ struct SearchView: View {
         .onAppear {
             searchService.initialize(modelContext: modelContext)
         }
+        .accessibilityIdentifier("search.root")
         .onChange(of: searchText) { _, newValue in
             Task {
                 await performSearch()
@@ -306,6 +307,7 @@ struct SearchView: View {
             }
             .padding(.top)
         }
+        .accessibilityIdentifier("search.results")
     }
     
     // MARK: - Search
