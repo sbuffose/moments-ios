@@ -115,6 +115,7 @@ class AppState: ObservableObject {
     @Published var hasCompletedOnboarding = false
     @Published var selectedTab: AppTab = .home
     @Published var showProcessingSheet = false
+    @Published var showFirstRunExplanation = false
     @Published var notificationsAuthorized = false
     @Published var estimatedSpaceSavings: Int64 = 0
     
@@ -127,6 +128,7 @@ class AppState: ObservableObject {
     private let onboardingCompletedKey = "com.moments.hasCompletedOnboarding"
     private let notificationPromptShownKey = "com.moments.notificationPromptShown"
     private let analysisCompleteNotificationSentKey = "com.moments.analysisCompleteNotificationSent"
+    private let firstRunExplanationShownKey = "com.moments.firstRunExplanationShown"
     
     // Legacy compatibility - always returns true after onboarding
     var hasCompletedInitialIndexing: Bool { hasCompletedOnboarding }
@@ -139,7 +141,18 @@ class AppState: ObservableObject {
     func completeOnboarding() {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: onboardingCompletedKey)
-        // Start background processing immediately
+        
+        // Show first-run explanation if not shown before
+        if !UserDefaults.standard.bool(forKey: firstRunExplanationShownKey) {
+            showFirstRunExplanation = true
+        } else {
+            startBackgroundIndexingAndAnalysis()
+        }
+    }
+    
+    func dismissFirstRunExplanation() {
+        UserDefaults.standard.set(true, forKey: firstRunExplanationShownKey)
+        showFirstRunExplanation = false
         startBackgroundIndexingAndAnalysis()
     }
     
