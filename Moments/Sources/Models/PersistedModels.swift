@@ -139,6 +139,109 @@ enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
     }
 }
 
+// MARK: - Protection Reason
+
+enum ProtectionReason: String, Codable, CaseIterable, Sendable {
+    case none = "none"
+    case favorite = "favorite"
+    case edited = "edited"
+    case inAlbum = "inAlbum"
+    case sharedOrReceived = "sharedOrReceived"
+    case onlyPhotoOfDay = "onlyPhotoOfDay"
+    case onlyPhotoOfTrip = "onlyPhotoOfTrip"
+    case hasNamedPerson = "hasNamedPerson"
+    case hidden = "hidden"
+    case importantDate = "importantDate"
+    case userProtected = "userProtected"
+    
+    var localizedDescription: String {
+        switch self {
+        case .none: return ""
+        case .favorite: return String(localized: "protection_favorite")
+        case .edited: return String(localized: "protection_edited")
+        case .inAlbum: return String(localized: "protection_in_album")
+        case .sharedOrReceived: return String(localized: "protection_shared")
+        case .onlyPhotoOfDay: return String(localized: "protection_only_of_day")
+        case .onlyPhotoOfTrip: return String(localized: "protection_only_of_trip")
+        case .hasNamedPerson: return String(localized: "protection_named_person")
+        case .hidden: return String(localized: "protection_hidden")
+        case .importantDate: return String(localized: "protection_important_date")
+        case .userProtected: return String(localized: "protection_user_protected")
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .none: return "circle"
+        case .favorite: return "heart.fill"
+        case .edited: return "paintbrush.fill"
+        case .inAlbum: return "rectangle.stack.fill"
+        case .sharedOrReceived: return "person.2.fill"
+        case .onlyPhotoOfDay: return "calendar"
+        case .onlyPhotoOfTrip: return "airplane"
+        case .hasNamedPerson: return "person.fill"
+        case .hidden: return "eye.slash.fill"
+        case .importantDate: return "gift.fill"
+        case .userProtected: return "lock.fill"
+        }
+    }
+}
+
+// MARK: - Cleanup Confidence Tier
+
+enum CleanupConfidenceTier: String, Codable, CaseIterable, Sendable {
+    case veryLikely = "veryLikely"  // "Muy probable"
+    case maybe = "maybe"             // "Quizás"
+    
+    var localizedKey: String {
+        switch self {
+        case .veryLikely: return "confidence_very_likely"
+        case .maybe: return "confidence_maybe"
+        }
+    }
+    
+    var headerText: String {
+        switch self {
+        case .veryLikely: return String(localized: "cleanup_very_likely_header")
+        case .maybe: return String(localized: "cleanup_maybe_header")
+        }
+    }
+}
+
+// MARK: - Similar Group Feedback
+
+enum SimilarGroupFeedback: String, Codable, Sendable {
+    case none = "none"
+    case confirmed = "confirmed"
+    case notSimilar = "notSimilar"
+}
+
+// MARK: - Best Shot Reason
+
+enum BestShotReason: String, Codable, CaseIterable, Sendable {
+    case sharpest = "sharpest"
+    case eyesOpen = "eyesOpen"
+    case smile = "smile"
+    case bestAesthetics = "bestAesthetics"
+    case edited = "edited"
+    case favorited = "favorited"
+    case highestResolution = "highestResolution"
+    case livePhoto = "livePhoto"
+    
+    var localizedDescription: String {
+        switch self {
+        case .sharpest: return String(localized: "best_shot_sharpest")
+        case .eyesOpen: return String(localized: "best_shot_eyes_open")
+        case .smile: return String(localized: "best_shot_smile")
+        case .bestAesthetics: return String(localized: "best_shot_aesthetics")
+        case .edited: return String(localized: "best_shot_edited")
+        case .favorited: return String(localized: "best_shot_favorited")
+        case .highestResolution: return String(localized: "best_shot_resolution")
+        case .livePhoto: return String(localized: "best_shot_live_photo")
+        }
+    }
+}
+
 // MARK: - Cataloging Card Type
 
 enum CatalogingCardType: String, Codable, Sendable {
@@ -273,6 +376,24 @@ final class PersistedPhoto {
     var sourceAppIdentifier: String?
     var placeClusterId: String?
     
+    // Protection status
+    var isProtected: Bool
+    var protectionReasonRaw: String?
+    var protectionReasons: [String]?
+    var isInUserAlbum: Bool
+    var isOnlyPhotoOfDay: Bool
+    var isEdited: Bool
+    var isSharedOrReceived: Bool
+    
+    // Cleanup confidence
+    var cleanupConfidenceTierRaw: String?
+    var bestShotReasons: [String]?
+    var similarGroupFeedbackRaw: String?
+    
+    // Live Photo handling
+    var isLivePhoto: Bool
+    var livePhotoVideoIdentifier: String?
+    
     // Relaciones
     @Relationship(deleteRule: .cascade, inverse: \PersistedFaceDetection.photo)
     var faceDetections: [PersistedFaceDetection]?
@@ -315,6 +436,29 @@ final class PersistedPhoto {
         self.cleanupCategoryRaw = CleanupCategoryType.none.rawValue
         self.isBestInGroup = nil
         self.originRaw = PhotoOrigin.unknown.rawValue
+        self.isProtected = false
+        self.protectionReasonRaw = ProtectionReason.none.rawValue
+        self.isInUserAlbum = false
+        self.isOnlyPhotoOfDay = false
+        self.isEdited = false
+        self.isSharedOrReceived = false
+        self.isLivePhoto = false
+    }
+    
+    // Computed properties for enums
+    var protectionReason: ProtectionReason {
+        get { ProtectionReason(rawValue: protectionReasonRaw ?? "none") ?? .none }
+        set { protectionReasonRaw = newValue.rawValue }
+    }
+    
+    var cleanupConfidenceTier: CleanupConfidenceTier? {
+        get { cleanupConfidenceTierRaw.flatMap { CleanupConfidenceTier(rawValue: $0) } }
+        set { cleanupConfidenceTierRaw = newValue?.rawValue }
+    }
+    
+    var similarGroupFeedback: SimilarGroupFeedback {
+        get { SimilarGroupFeedback(rawValue: similarGroupFeedbackRaw ?? "none") ?? .none }
+        set { similarGroupFeedbackRaw = newValue.rawValue }
     }
     
     // Computed properties
@@ -910,10 +1054,172 @@ final class AnalysisState {
     var workConfidence: Double?
     var version: Int
     
+    // Resumable indexing
+    var lastIndexedPhotoDate: Date?
+    var lastIndexedPhotoId: String?
+    var indexingInProgress: Bool
+    var indexingPausedAt: Date?
+    var totalLibraryCount: Int
+    var indexedCount: Int
+    
     init(id: String = "main") {
         self.id = id
         self.totalPhotosScanned = 0
         self.totalPhotosAnalyzed = 0
         self.version = 1
+        self.indexingInProgress = false
+        self.totalLibraryCount = 0
+        self.indexedCount = 0
+    }
+}
+
+// MARK: - Remember List Item ("Recordá esto")
+
+@Model
+final class RememberListItem {
+    @Attribute(.unique) var id: String
+    var fact: String
+    var category: String
+    var personId: String?
+    var personName: String?
+    var secondPersonId: String?
+    var secondPersonName: String?
+    var relatedPhotoIds: String?
+    var source: String
+    var createdAt: Date
+    var lastUsedAt: Date?
+    var usageCount: Int
+    var isUserEdited: Bool
+    
+    init(
+        id: String = UUID().uuidString,
+        fact: String,
+        category: String = "general",
+        personId: String? = nil,
+        personName: String? = nil,
+        source: String = "cataloging"
+    ) {
+        self.id = id
+        self.fact = fact
+        self.category = category
+        self.personId = personId
+        self.personName = personName
+        self.source = source
+        self.createdAt = Date()
+        self.usageCount = 0
+        self.isUserEdited = false
+    }
+    
+    var relatedPhotoIdArray: [String] {
+        guard let json = relatedPhotoIds else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
+    }
+}
+
+// MARK: - Pending Trash (Final review before deletion)
+
+@Model
+final class PendingTrashItem {
+    @Attribute(.unique) var id: String
+    var photoId: String
+    var localIdentifier: String
+    var addedAt: Date
+    var sourceCategory: String?
+    var previewThumbnailData: Data?
+    var estimatedFileSize: Int64
+    var isSelected: Bool
+    
+    init(
+        id: String = UUID().uuidString,
+        photoId: String,
+        localIdentifier: String,
+        sourceCategory: String? = nil,
+        estimatedFileSize: Int64 = 0
+    ) {
+        self.id = id
+        self.photoId = photoId
+        self.localIdentifier = localIdentifier
+        self.addedAt = Date()
+        self.sourceCategory = sourceCategory
+        self.estimatedFileSize = estimatedFileSize
+        self.isSelected = true
+    }
+}
+
+// MARK: - Similar Group
+
+@Model
+final class SimilarGroup {
+    @Attribute(.unique) var id: String
+    var photoIdsJson: String
+    var bestPhotoId: String?
+    var bestShotReasonsJson: String?
+    var feedbackRaw: String
+    var createdAt: Date
+    var lastUpdatedAt: Date
+    var timeWindowStart: Date?
+    var timeWindowEnd: Date?
+    var averageSimilarity: Double
+    
+    init(
+        id: String = UUID().uuidString,
+        photoIds: [String],
+        bestPhotoId: String? = nil,
+        bestShotReasons: [BestShotReason] = []
+    ) {
+        self.id = id
+        self.photoIdsJson = (try? JSONEncoder().encode(photoIds)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        self.bestPhotoId = bestPhotoId
+        self.bestShotReasonsJson = (try? JSONEncoder().encode(bestShotReasons.map { $0.rawValue })).flatMap { String(data: $0, encoding: .utf8) }
+        self.feedbackRaw = SimilarGroupFeedback.none.rawValue
+        self.createdAt = Date()
+        self.lastUpdatedAt = Date()
+        self.averageSimilarity = 0.0
+    }
+    
+    var photoIds: [String] {
+        guard let data = photoIdsJson.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+    }
+    
+    var bestShotReasons: [BestShotReason] {
+        guard let json = bestShotReasonsJson,
+              let data = json.data(using: .utf8),
+              let rawValues = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return rawValues.compactMap { BestShotReason(rawValue: $0) }
+    }
+    
+    var feedback: SimilarGroupFeedback {
+        get { SimilarGroupFeedback(rawValue: feedbackRaw) ?? .none }
+        set { feedbackRaw = newValue.rawValue }
+    }
+}
+
+// MARK: - Deletion Verification Record
+
+@Model
+final class DeletionRecord {
+    @Attribute(.unique) var id: String
+    var localIdentifier: String
+    var requestedAt: Date
+    var verifiedAt: Date?
+    var wasSuccessful: Bool?
+    var photoId: String
+    var category: String?
+    var fileSize: Int64
+    
+    init(
+        id: String = UUID().uuidString,
+        localIdentifier: String,
+        photoId: String,
+        category: String? = nil,
+        fileSize: Int64 = 0
+    ) {
+        self.id = id
+        self.localIdentifier = localIdentifier
+        self.photoId = photoId
+        self.category = category
+        self.fileSize = fileSize
+        self.requestedAt = Date()
     }
 }
