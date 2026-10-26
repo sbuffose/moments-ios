@@ -24,22 +24,21 @@ struct SearchView: View {
                 VStack(spacing: 0) {
                     // Search bar and filters
                     searchHeader
-                
-                // Content
-                if searchText.isEmpty && selectedFilters.isEmpty {
-                    emptySearchView
-                } else if searchService.isSearching {
-                    loadingView
-                } else if viewModel.results.isEmpty {
-                    noResultsView
-                } else {
-                    resultsView
+                    
+                    // Content
+                    if searchText.isEmpty && selectedFilters.isEmpty {
+                        emptySearchView
+                    } else if searchService.isSearching {
+                        loadingView
+                    } else if viewModel.results.isEmpty {
+                        noResultsView
+                    } else {
+                        resultsView
+                    }
                 }
             }
-                }
-                .navigationTitle(Text("search_title"))
-                .navigationBarTitleDisplayMode(.inline)
-            }
+            .navigationTitle(Text("search_title"))
+            .navigationBarTitleDisplayMode(.inline)
         }
         .onAppear {
             searchService.initialize(modelContext: modelContext)
