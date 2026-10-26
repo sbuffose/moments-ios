@@ -305,9 +305,10 @@ class CleanupViewModel: ObservableObject {
                 photo.cleanupConfidenceTier = defaultConfidence
             }
             
-            // Deduplicate
+            // Deduplicate and sort by deletion likelihood score (highest first)
             let uniquePhotos = Array(Set(photosForCategory.map { $0.id }))
                 .compactMap { id in photosForCategory.first { $0.id == id } }
+                .sorted { $0.deletionLikelihoodScore > $1.deletionLikelihoodScore }
             
             if !uniquePhotos.isEmpty {
                 items.append(CleanupCategoryItem(
@@ -325,12 +326,13 @@ class CleanupViewModel: ObservableObject {
         veryLikelyCategories = items.filter { item in
             item.veryLikelyPhotos.count > 0
         }.map { item in
-            CleanupCategoryItem(
+            let sortedPhotos = item.veryLikelyPhotos.sorted { $0.deletionLikelihoodScore > $1.deletionLikelihoodScore }
+            return CleanupCategoryItem(
                 id: "\(item.id)_veryLikely",
                 category: item.category,
-                count: item.veryLikelyPhotos.count,
-                photos: item.veryLikelyPhotos,
-                estimatedSize: item.veryLikelyPhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) },
+                count: sortedPhotos.count,
+                photos: sortedPhotos,
+                estimatedSize: sortedPhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) },
                 confidenceTier: .veryLikely
             )
         }.filter { $0.count > 0 }
@@ -338,18 +340,29 @@ class CleanupViewModel: ObservableObject {
         maybeCategories = items.filter { item in
             item.maybePhotos.count > 0
         }.map { item in
-            CleanupCategoryItem(
+            let sortedPhotos = item.maybePhotos.sorted { $0.deletionLikelihoodScore > $1.deletionLikelihoodScore }
+            return CleanupCategoryItem(
                 id: "\(item.id)_maybe",
                 category: item.category,
-                count: item.maybePhotos.count,
-                photos: item.maybePhotos,
-                estimatedSize: item.maybePhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) },
+                count: sortedPhotos.count,
+                photos: sortedPhotos,
+                estimatedSize: sortedPhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) },
                 confidenceTier: .maybe
             )
         }.filter { $0.count > 0 }
         
-        // Sort by count (most items first)
-        categories = items.sorted { $0.count > $1.count }
+        // Sort categories by average deletion score (highest first), then by space
+        categories = items.sorted { item1, item2 in
+            let avgScore1 = item1.photos.isEmpty ? 0 : item1.photos.reduce(0) { $0 + $1.deletionLikelihoodScore } / Double(item1.photos.count)
+            let avgScore2 = item2.photos.isEmpty ? 0 : item2.photos.reduce(0) { $0 + $1.deletionLikelihoodScore } / Double(item2.photos.count)
+            
+            // Combine score and space: 60% score, 40% space (normalized)
+            let maxSize = max(item1.estimatedSize, item2.estimatedSize, 1)
+            let sortScore1 = avgScore1 * 0.6 + (Double(item1.estimatedSize) / Double(maxSize)) * 0.4
+            let sortScore2 = avgScore2 * 0.6 + (Double(item2.estimatedSize) / Double(maxSize)) * 0.4
+            
+            return sortScore1 > sortScore2
+        }
     }
     
     private func calculateEstimatedSpace() {
