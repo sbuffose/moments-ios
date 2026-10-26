@@ -72,8 +72,8 @@ class IntentParserService: ObservableObject {
         let normalizedText = text.lowercased()
             .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_AR"))
         
-        // Try Foundation Models first if available
-        if useFoundationModels {
+        // Try Foundation Models first if available (iOS 26+)
+        if #available(iOS 26, *), useFoundationModels {
             if let intent = await parseWithFoundationModels(text) {
                 return intent
             }
