@@ -29,15 +29,12 @@ struct MomentsApp: App {
             DeletionRecord.self
         ])
         
-        // Try to create container, with fallback strategies
         if let persistentContainer = MomentsApp.createContainer(schema: schema, inMemory: false) {
             container = persistentContainer
         } else if let inMemoryContainer = MomentsApp.createContainer(schema: schema, inMemory: true) {
-            // Fallback to in-memory if persistent fails
             container = inMemoryContainer
             print("Warning: Using in-memory container. Data will not persist.")
         } else {
-            // Last resort: create minimal container that won't crash
             container = try! ModelContainer(for: schema)
         }
     }
@@ -53,10 +50,8 @@ struct MomentsApp: App {
         } catch {
             print("Failed to create ModelContainer (inMemory: \(inMemory)): \(error)")
             
-            // If persistent container failed, try deleting the store
             if !inMemory {
                 MomentsApp.deleteExistingStore()
-                // Retry once after deletion
                 do {
                     let config = ModelConfiguration(
                         schema: schema,
@@ -105,20 +100,31 @@ struct MomentsApp: App {
 @MainActor
 class AppState: ObservableObject {
     @Published var isLibraryAuthorized = false
-    @Published var isScanning = false
-    @Published var scanProgress: Double = 0
+    @Published var isIndexing = false
+    @Published var isAnalyzing = false
+    @Published var indexingProgress: Double = 0
+    @Published var analysisProgress: Double = 0
     @Published var totalPhotosIndexed = 0
-    @Published var hasCompletedInitialScan = false
+    @Published var totalPhotosAnalyzed = 0
+    @Published var totalPhotosToAnalyze = 0
+    @Published var hasCompletedInitialIndexing = false
     @Published var hasCompletedOnboarding = false
     @Published var selectedTab: AppTab = .home
     
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
+    private var analysisTask: Task<Void, Never>?
     
     private let onboardingCompletedKey = "com.moments.hasCompletedOnboarding"
+    private let indexingCompletedKey = "com.moments.hasCompletedInitialIndexing"
+    
+    var hasCompletedInitialScan: Bool {
+        hasCompletedInitialIndexing
+    }
     
     init() {
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingCompletedKey)
+        self.hasCompletedInitialIndexing = UserDefaults.standard.bool(forKey: indexingCompletedKey)
     }
     
     func completeOnboarding() {
@@ -128,7 +134,9 @@ class AppState: ObservableObject {
     
     func resetOnboarding() {
         hasCompletedOnboarding = false
+        hasCompletedInitialIndexing = false
         UserDefaults.standard.removeObject(forKey: onboardingCompletedKey)
+        UserDefaults.standard.removeObject(forKey: indexingCompletedKey)
     }
     
     enum AppTab: String, CaseIterable, Sendable {
@@ -157,6 +165,10 @@ class AppState: ObservableObject {
         
         Task {
             await checkAuthorizationStatus()
+            
+            if hasCompletedInitialIndexing && isLibraryAuthorized {
+                startBackgroundAnalysis()
+            }
         }
     }
     
@@ -165,10 +177,6 @@ class AppState: ObservableObject {
         let status = await service.checkAuthorizationStatus()
         
         self.isLibraryAuthorized = (status == .authorized || status == .limited)
-        
-        if self.isLibraryAuthorized {
-            self.loadAnalysisState()
-        }
     }
     
     func requestAuthorization() async -> Bool {
@@ -181,37 +189,49 @@ class AppState: ObservableObject {
     }
     
     func startScan() {
-        guard let photoService = photoLibraryService,
-              let analysisService = analysisService else { return }
+        guard let photoService = photoLibraryService else { return }
         
-        isScanning = true
-        scanProgress = 0
+        isIndexing = true
+        indexingProgress = 0
         
         Task { @MainActor in
             await photoService.scanLibrary { progress, indexed in
                 Task { @MainActor in
-                    self.scanProgress = progress * 0.5
+                    self.indexingProgress = progress
                     self.totalPhotosIndexed = indexed
                 }
             }
             
-            await analysisService.analyzeAllPhotos { progress in
-                Task { @MainActor in
-                    self.scanProgress = 0.5 + (progress * 0.5)
-                }
-            }
+            self.isIndexing = false
+            self.hasCompletedInitialIndexing = true
+            UserDefaults.standard.set(true, forKey: self.indexingCompletedKey)
             
-            self.isScanning = false
-            self.hasCompletedInitialScan = true
-            self.saveAnalysisState()
+            self.startBackgroundAnalysis()
         }
     }
     
-    private func loadAnalysisState() {
-        // Se carga desde SwiftData
+    func startBackgroundAnalysis() {
+        guard let analysisService = analysisService else { return }
+        
+        analysisTask?.cancel()
+        
+        analysisTask = Task { @MainActor in
+            self.isAnalyzing = true
+            
+            await analysisService.analyzePhotosInBackground { analyzed, total, progress in
+                Task { @MainActor in
+                    self.totalPhotosAnalyzed = analyzed
+                    self.totalPhotosToAnalyze = total
+                    self.analysisProgress = progress
+                }
+            }
+            
+            self.isAnalyzing = false
+        }
     }
     
-    private func saveAnalysisState() {
-        // Se guarda en SwiftData
+    func pauseAnalysis() {
+        analysisTask?.cancel()
+        isAnalyzing = false
     }
 }

@@ -1,5 +1,6 @@
 // HomeView.swift
 // Home feed with proactive cards - space savings, moments, cataloging
+// Shows metadata-based categories immediately, updates live during analysis
 
 import SwiftUI
 import SwiftData
@@ -7,6 +8,7 @@ import SwiftData
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var appState: AppState
     
     @StateObject private var viewModel = HomeViewModel()
     
@@ -21,22 +23,28 @@ struct HomeView: View {
                 
                 ScrollView {
                     VStack(spacing: MomentsSpacing.lg) {
-                        // Header
                         headerSection
                         
-                        // Space card
-                        if viewModel.canFreeSpace > 0 {
+                        if appState.isAnalyzing {
+                            analysisProgressPill
+                        }
+                        
+                        if viewModel.canFreeSpace > 0 || !viewModel.metadataCategories.isEmpty {
                             spaceCard
                         }
                         
-                        // Proactive cards feed
                         ForEach(viewModel.feedCards) { card in
                             FeedCardView(card: card, viewModel: viewModel)
+                        }
+                        
+                        if viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty && viewModel.metadataCategories.isEmpty {
+                            emptyStateView
                         }
                     }
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
                     .padding(.vertical, MomentsSpacing.md)
                 }
+                .accessibilityIdentifier("home.scrollView")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -58,6 +66,11 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
+        }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            if appState.isAnalyzing {
+                viewModel.refreshCategories()
+            }
         }
     }
     
@@ -91,25 +104,55 @@ struct HomeView: View {
         }
     }
     
+    // MARK: - Analysis Progress Pill
+    
+    private var analysisProgressPill: some View {
+        HStack(spacing: MomentsSpacing.sm) {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .scaleEffect(0.7)
+                .tint(MomentsColors.accent)
+            
+            Text("Analizando \(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)")
+                .font(MomentsTypography.labelSmall)
+                .foregroundStyle(MomentsColors.textSecondary)
+        }
+        .padding(.horizontal, MomentsSpacing.md)
+        .padding(.vertical, MomentsSpacing.xs)
+        .background(MomentsColors.bgSecondary)
+        .cornerRadius(MomentsCorners.full)
+        .accessibilityIdentifier("home.analysisPill")
+    }
+    
     // MARK: - Space Card
     
     private var spaceCard: some View {
         VStack(spacing: MomentsSpacing.md) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: MomentsSpacing.xs) {
-                    Text("Liberá espacio")
-                        .font(MomentsTypography.headlineMedium)
-                        .foregroundStyle(MomentsColors.textPrimary)
-                    
-                    Text("\(viewModel.cleanupItemCount) elementos para revisar")
-                        .font(MomentsTypography.bodySmall)
-                        .foregroundStyle(MomentsColors.textSecondary)
+                    if viewModel.canFreeSpace > 0 {
+                        Text("Podés liberar")
+                            .font(MomentsTypography.headlineMedium)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                        
+                        Text("\(viewModel.cleanupItemCount) elementos para revisar")
+                            .font(MomentsTypography.bodySmall)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    } else {
+                        Text("Liberá espacio")
+                            .font(MomentsTypography.headlineMedium)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                        
+                        Text("\(viewModel.totalMetadataItems) elementos detectados")
+                            .font(MomentsTypography.bodySmall)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    }
                 }
                 
                 Spacer()
                 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(viewModel.formattedCanFree)
+                    Text(viewModel.canFreeSpace > 0 ? viewModel.formattedCanFree : viewModel.formattedMetadataSize)
                         .font(MomentsTypography.numberMedium)
                         .foregroundStyle(MomentsColors.accent)
                     
@@ -119,7 +162,29 @@ struct HomeView: View {
                 }
             }
             
-            // Preview thumbnails
+            if !viewModel.metadataCategories.isEmpty {
+                VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
+                    ForEach(viewModel.metadataCategories.prefix(4)) { category in
+                        HStack {
+                            Image(systemName: category.icon)
+                                .foregroundStyle(MomentsColors.accent)
+                                .frame(width: 24)
+                            
+                            Text(category.title)
+                                .font(MomentsTypography.bodyMedium)
+                                .foregroundStyle(MomentsColors.textPrimary)
+                            
+                            Spacer()
+                            
+                            Text("\(category.count)")
+                                .font(MomentsTypography.labelMedium)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                        }
+                    }
+                }
+                .padding(.top, MomentsSpacing.xs)
+            }
+            
             if !viewModel.cleanupPreviewPhotos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -137,12 +202,42 @@ struct HomeView: View {
             } label: {
                 HStack {
                     Image(systemName: "sparkles")
-                    Text("Revisar ahora")
+                    Text("Revisar \(viewModel.cleanupItemCount > 0 ? "\(viewModel.cleanupItemCount) fotos" : "ahora")")
                 }
             }
             .momentsAccentButton()
+            .accessibilityIdentifier("home.reviewButton")
         }
+        .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
+    }
+    
+    // MARK: - Empty State
+    
+    private var emptyStateView: some View {
+        VStack(spacing: MomentsSpacing.lg) {
+            Spacer()
+            
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 64))
+                .foregroundStyle(MomentsColors.textTertiary)
+            
+            VStack(spacing: MomentsSpacing.xs) {
+                Text("Tu biblioteca está impecable")
+                    .font(MomentsTypography.headlineMedium)
+                    .foregroundStyle(MomentsColors.textPrimary)
+                
+                Text("No encontramos fotos para limpiar. ¡Bien hecho!")
+                    .font(MomentsTypography.bodyMedium)
+                    .foregroundStyle(MomentsColors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, MomentsSpacing.xl)
+        .accessibilityIdentifier("home.emptyState")
     }
 }
 
@@ -205,6 +300,16 @@ struct FeedCardView: View {
     }
 }
 
+// MARK: - Metadata Category
+
+struct MetadataCategory: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+    let count: Int
+    let estimatedSize: Int64
+}
+
 // MARK: - Home View Model
 
 @MainActor
@@ -214,6 +319,9 @@ class HomeViewModel: ObservableObject {
     @Published var totalSpaceSaved: Int64 = 0
     @Published var cleanupItemCount: Int = 0
     @Published var cleanupPreviewPhotos: [PersistedPhoto] = []
+    @Published var metadataCategories: [MetadataCategory] = []
+    @Published var totalMetadataItems: Int = 0
+    @Published var metadataSize: Int64 = 0
     
     var cleanupViewModel = CleanupViewModel()
     
@@ -228,20 +336,117 @@ class HomeViewModel: ObservableObject {
         ByteCountFormatter.string(fromByteCount: totalSpaceSaved, countStyle: .file)
     }
     
+    var formattedMetadataSize: String {
+        ByteCountFormatter.string(fromByteCount: metadataSize, countStyle: .file)
+    }
+    
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
         cleanupViewModel.initialize(modelContext: modelContext)
         importantDatesService.initialize(modelContext: modelContext)
         
         loadSpaceSaved()
+        loadMetadataCategories()
         
         Task {
             await loadFeedCards()
         }
     }
     
+    func refreshCategories() {
+        loadMetadataCategories()
+        
+        canFreeSpace = cleanupViewModel.estimatedSpaceFreed
+        cleanupItemCount = cleanupViewModel.totalCleanupItems
+        cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
+    }
+    
     private func loadSpaceSaved() {
         totalSpaceSaved = Int64(UserDefaults.standard.integer(forKey: "totalSpaceSaved"))
+    }
+    
+    private func loadMetadataCategories() {
+        guard let context = modelContext else { return }
+        
+        var categories: [MetadataCategory] = []
+        
+        let screenshotDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.mediaSubtypesRaw.contains("screenshot") }
+        )
+        if let screenshots = try? context.fetch(screenshotDescriptor), !screenshots.isEmpty {
+            let size = screenshots.reduce(0) { $0 + ($1.estimatedFileSize ?? 50_000) }
+            categories.append(MetadataCategory(
+                id: "screenshots",
+                title: "Capturas de pantalla",
+                icon: "rectangle.on.rectangle",
+                count: screenshots.count,
+                estimatedSize: size
+            ))
+        }
+        
+        let burstDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.burstIdentifier != nil && !$0.representsBurst }
+        )
+        if let bursts = try? context.fetch(burstDescriptor), !bursts.isEmpty {
+            let size = bursts.reduce(0) { $0 + ($1.estimatedFileSize ?? 2_000_000) }
+            categories.append(MetadataCategory(
+                id: "bursts",
+                title: "Ráfagas duplicadas",
+                icon: "square.stack.3d.up",
+                count: bursts.count,
+                estimatedSize: size
+            ))
+        }
+        
+        let livePhotoDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.isLivePhoto }
+        )
+        if let livePhotos = try? context.fetch(livePhotoDescriptor), !livePhotos.isEmpty {
+            let size = livePhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 3_000_000) }
+            categories.append(MetadataCategory(
+                id: "livePhotos",
+                title: "Live Photos",
+                icon: "livephoto",
+                count: livePhotos.count,
+                estimatedSize: size
+            ))
+        }
+        
+        let downloadedDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.origin.rawValue == "whatsapp" || $0.origin.rawValue == "telegram" || $0.origin.rawValue == "instagram" }
+        )
+        if let downloaded = try? context.fetch(downloadedDescriptor), !downloaded.isEmpty {
+            let size = downloaded.reduce(0) { $0 + ($1.estimatedFileSize ?? 500_000) }
+            categories.append(MetadataCategory(
+                id: "downloaded",
+                title: "Descargas de apps",
+                icon: "arrow.down.circle",
+                count: downloaded.count,
+                estimatedSize: size
+            ))
+        }
+        
+        let videoDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.mediaTypeRaw == "video" && ($0.estimatedFileSize ?? 0) > 100_000_000 }
+        )
+        if let largeVideos = try? context.fetch(videoDescriptor), !largeVideos.isEmpty {
+            let size = largeVideos.reduce(0) { $0 + ($1.estimatedFileSize ?? 100_000_000) }
+            categories.append(MetadataCategory(
+                id: "largeVideos",
+                title: "Videos grandes (+100 MB)",
+                icon: "film",
+                count: largeVideos.count,
+                estimatedSize: size
+            ))
+        }
+        
+        metadataCategories = categories.sorted { $0.estimatedSize > $1.estimatedSize }
+        totalMetadataItems = categories.reduce(0) { $0 + $1.count }
+        metadataSize = categories.reduce(0) { $0 + $1.estimatedSize }
+        
+        canFreeSpace = cleanupViewModel.estimatedSpaceFreed
+        cleanupItemCount = cleanupViewModel.totalCleanupItems
+        cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
     }
     
     private func loadFeedCards() async {
@@ -249,12 +454,10 @@ class HomeViewModel: ObservableObject {
         
         var cards: [HomeFeedCard] = []
         
-        // Update cleanup stats
         canFreeSpace = cleanupViewModel.estimatedSpaceFreed
         cleanupItemCount = cleanupViewModel.totalCleanupItems
         cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
         
-        // On This Day
         let calendar = Calendar.current
         let today = Date()
         let month = calendar.component(.month, from: today)
@@ -282,7 +485,6 @@ class HomeViewModel: ObservableObject {
             }
         }
         
-        // Upcoming dates
         let upcoming = await importantDatesService.getUpcomingDates(withinDays: 14)
         for date in upcoming.prefix(2) {
             let photoIds = date.photoIdArray
@@ -295,7 +497,6 @@ class HomeViewModel: ObservableObject {
             ))
         }
         
-        // Latest trip
         let tripDescriptor = FetchDescriptor<PersistedMoment>(
             predicate: #Predicate { $0.isTrip },
             sortBy: [SortDescriptor(\.endDate, order: .reverse)]
@@ -316,7 +517,6 @@ class HomeViewModel: ObservableObject {
             ))
         }
         
-        // Cataloging questions
         let catalogingService = CatalogingService()
         catalogingService.initialize(modelContext: context)
         await catalogingService.generateCatalogingCards()
@@ -427,4 +627,5 @@ struct HomeFeedCard: Identifiable {
     HomeView()
         .preferredColorScheme(.dark)
         .modelContainer(for: PersistedPhoto.self)
+        .environmentObject(AppState())
 }

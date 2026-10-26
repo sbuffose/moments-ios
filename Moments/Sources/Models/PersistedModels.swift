@@ -397,6 +397,9 @@ final class PersistedPhoto {
     var isLivePhoto: Bool
     var livePhotoVideoIdentifier: String?
     
+    // iCloud status
+    var isPendingICloud: Bool
+    
     // Relaciones
     @Relationship(deleteRule: .cascade, inverse: \PersistedFaceDetection.photo)
     var faceDetections: [PersistedFaceDetection]?
@@ -446,6 +449,7 @@ final class PersistedPhoto {
         self.isEdited = false
         self.isSharedOrReceived = false
         self.isLivePhoto = false
+        self.isPendingICloud = false
     }
     
     // Computed properties for enums

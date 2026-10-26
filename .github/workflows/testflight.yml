@@ -232,56 +232,55 @@ jobs:
             exit 1
           fi
 
-      - name: Generate and Seed Test Photos
+      - name: Generate and Seed Test Photos (2000+)
         run: |
-          echo "Generating test photos..."
+          echo "Generating 2000+ test photos for large library testing..."
           mkdir -p "$RUNNER_TEMP/test_photos"
           
-          # Generate varied test images using sips and ImageMagick-like operations
-          # Since swift scripts may not have access to AppKit on CI, we'll use simpler methods
+          # Create a valid 100x100 JPEG template for fast duplication
+          TEMPLATE="$RUNNER_TEMP/template.jpg"
+          if [ -f "/System/Library/Desktop Pictures/Solid Colors/Black.png" ]; then
+            sips -z 100 100 -s format jpeg "/System/Library/Desktop Pictures/Solid Colors/Black.png" --out "$TEMPLATE" 2>/dev/null || true
+          fi
           
-          # Create screenshots (PNG, typical iPhone size)
-          for i in $(seq 1 20); do
-            convert -size 1170x2532 xc:"#$(printf '%06X' $((RANDOM * RANDOM % 16777215)))" \
-              -gravity center -pointsize 72 -fill white -annotate 0 "Screenshot $i" \
-              "$RUNNER_TEMP/test_photos/screenshot_$(printf '%03d' $i).png" 2>/dev/null || \
-            sips -z 2532 1170 -s format png /System/Library/Desktop\ Pictures/*.heic -o "$RUNNER_TEMP/test_photos/screenshot_$(printf '%03d' $i).png" 2>/dev/null || \
-            # Fallback: create with sips from a solid color
-            printf '\x89PNG\r\n\x1a\n' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%03d' $i).png"
+          # Fallback: create a minimal valid JPEG if template failed
+          if [ ! -f "$TEMPLATE" ] || [ ! -s "$TEMPLATE" ]; then
+            printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x64\x00\x64\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$TEMPLATE"
+          fi
+          
+          # Generate 100 screenshots (PNG)
+          echo "Creating 100 screenshots..."
+          for i in $(seq 1 100); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png" 2>/dev/null || \
+            printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png"
           done
           
-          # Create test images using built-in macOS tools
-          # Use screencapture or Preview to create test images
-          for i in $(seq 1 150); do
-            # Create simple colored JPEG files
-            FILE="$RUNNER_TEMP/test_photos/test_$(printf '%03d' $i).jpg"
-            
-            # Use sips to create from system images or create minimal valid JPEG
-            if [ -f "/System/Library/Desktop Pictures/Solid Colors/Black.png" ]; then
-              cp "/System/Library/Desktop Pictures/Solid Colors/Black.png" "$FILE.tmp"
-              sips -s format jpeg "$FILE.tmp" --out "$FILE" 2>/dev/null || true
-              rm -f "$FILE.tmp"
-            fi
-            
-            # If no image yet, create minimal JPEG
-            if [ ! -f "$FILE" ] || [ ! -s "$FILE" ]; then
-              # Minimal valid 1x1 JPEG
-              printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04\x04\x00\x00\x01}\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br\x82\t\n\x16\x17\x18\x19\x1a%&\x27()*456789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$FILE"
-            fi
+          # Generate 1900+ regular photos
+          echo "Creating 1900 photos..."
+          for i in $(seq 1 1900); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/photo_$(printf '%04d' $i).jpg" 2>/dev/null || true
           done
           
-          echo "Created $(ls -1 $RUNNER_TEMP/test_photos/ | wc -l) test photos"
+          # Create some burst photos (simulate burst with same prefix)
+          echo "Creating 50 burst photos..."
+          for i in $(seq 1 50); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/burst_A_$(printf '%02d' $i).jpg" 2>/dev/null || true
+          done
           
-          # Add photos to simulator
+          TOTAL=$(ls -1 "$RUNNER_TEMP/test_photos/" 2>/dev/null | wc -l | tr -d ' ')
+          echo "Created $TOTAL test photos"
+          
+          # Add photos to simulator in batches to avoid timeout
           echo "Adding photos to simulator..."
-          xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP/test_photos"/* 2>/dev/null || true
+          cd "$RUNNER_TEMP/test_photos"
+          ls *.jpg *.png 2>/dev/null | xargs -n 100 xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
           
           # Grant photo library permission
           echo "Granting photo permissions..."
           xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
           xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
           
-          echo "✓ Test photos seeded and permissions granted"
+          echo "✓ $TOTAL test photos seeded and permissions granted"
 
       - name: Configure Simulator for Spanish
         run: |

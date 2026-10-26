@@ -16,14 +16,21 @@ struct ContentView: View {
     var body: some View {
         Group {
             if isTestingMode {
-                MainTabView()
-                    .onAppear {
-                        appState.isLibraryAuthorized = true
-                        appState.hasCompletedInitialScan = true
-                    }
+                if !appState.hasCompletedInitialIndexing {
+                    ScanningView()
+                        .onAppear {
+                            appState.isLibraryAuthorized = true
+                            appState.hasCompletedOnboarding = true
+                            if !appState.isIndexing {
+                                appState.startScan()
+                            }
+                        }
+                } else {
+                    MainTabView()
+                }
             } else if !appState.hasCompletedOnboarding {
                 OnboardingView()
-            } else if !appState.hasCompletedInitialScan {
+            } else if !appState.hasCompletedInitialIndexing {
                 ScanningView()
             } else {
                 MainTabView()
@@ -393,7 +400,7 @@ struct ScanningView: View {
                         .fill(MomentsColors.accent.opacity(0.15))
                         .frame(width: 160, height: 160)
                     
-                    if appState.isScanning {
+                    if appState.isIndexing {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .scaleEffect(2)
@@ -406,20 +413,20 @@ struct ScanningView: View {
                 }
                 
                 VStack(spacing: MomentsSpacing.sm) {
-                    Text(appState.isScanning 
+                    Text(appState.isIndexing 
                          ? String(localized: "scanning_in_progress") 
                          : String(localized: "scanning_ready"))
                         .font(MomentsTypography.titleMedium)
                         .foregroundStyle(MomentsColors.textPrimary)
-                        .accessibilityIdentifier(appState.isScanning ? "scanning.inProgress" : "scanning.ready")
+                        .accessibilityIdentifier(appState.isIndexing ? "scanning.inProgress" : "scanning.ready")
                     
-                    if appState.isScanning {
+                    if appState.isIndexing {
                         Text(String(localized: "scanning_photos_count \(appState.totalPhotosIndexed)"))
                             .font(MomentsTypography.bodyMedium)
                             .foregroundStyle(MomentsColors.textSecondary)
                             .accessibilityIdentifier("scanning.count")
                         
-                        ProgressView(value: appState.scanProgress)
+                        ProgressView(value: appState.indexingProgress)
                             .progressViewStyle(.linear)
                             .tint(MomentsColors.accent)
                             .padding(.horizontal, MomentsSpacing.xl)
@@ -435,7 +442,7 @@ struct ScanningView: View {
                 
                 Spacer()
                 
-                if !appState.isScanning {
+                if !appState.isIndexing {
                     Button {
                         appState.startScan()
                     } label: {
@@ -459,7 +466,8 @@ struct ScanningView: View {
                 }
             }
         }
-        .accessibilityIdentifier(appState.hasCompletedInitialScan ? "scanning.complete" : "scanning.root")
+        .preferredColorScheme(.dark)
+        .accessibilityIdentifier(appState.hasCompletedInitialIndexing ? "scanning.complete" : "scanning.root")
     }
 }
 
