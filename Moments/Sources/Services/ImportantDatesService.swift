@@ -86,13 +86,93 @@ class ImportantDatesService: ObservableObject {
         // Phase 4: Detect child-growing patterns
         let childPatterns = await detectChildGrowingPatterns(photos: photos, personMap: personMap)
         candidateDates.append(contentsOf: childPatterns)
-        analysisProgress = 0.9
+        analysisProgress = 0.85
         
-        // Phase 5: Persist candidates as ImportantDates
+        // Phase 5: Detect friend birthdays (non-family recurring dates)
+        let friendDates = await detectFriendBirthdays(photos: photos, personMap: personMap, existingDates: candidateDates)
+        candidateDates.append(contentsOf: friendDates)
+        analysisProgress = 0.95
+        
+        // Phase 6: Persist candidates as ImportantDates
         await persistCandidates(candidateDates)
         analysisProgress = 1.0
         
         await loadDetectedDates()
+    }
+    
+    // MARK: - Detect Friend Birthdays
+    
+    private func detectFriendBirthdays(
+        photos: [PersistedPhoto],
+        personMap: [String: PersistedPerson],
+        existingDates: [CandidateDate]
+    ) async -> [CandidateDate] {
+        var candidates: [CandidateDate] = []
+        let calendar = Calendar.current
+        
+        // Get person IDs already detected as family (children, parents, partners)
+        var familyPersonIds = Set<String>()
+        for date in existingDates {
+            if date.dateType == .childBirthday {
+                familyPersonIds.insert(date.personId)
+                if let parentId = date.childOfPersonId {
+                    familyPersonIds.insert(parentId)
+                }
+            }
+        }
+        
+        // Also check relationship data from PersistedPerson
+        for person in personMap.values {
+            if person.partnerId != nil || !person.parentIdArray.isEmpty || !person.childIdArray.isEmpty {
+                familyPersonIds.insert(person.id)
+            }
+        }
+        
+        // Look for recurring patterns with non-family persons showing birthday cues
+        // These are likely friend birthdays
+        for pattern in findRecurringPatterns(groups: groupPhotosByPersonAndDate(photos: photos, personMap: personMap)) {
+            // Skip if already detected or is family
+            if familyPersonIds.contains(pattern.personId) { continue }
+            if existingDates.contains(where: { $0.personId == pattern.personId && $0.month == pattern.month && $0.day == pattern.day }) { continue }
+            
+            // Check for birthday visual cues
+            var birthdayScore = 0.0
+            for photo in pattern.photos {
+                let labels = photo.labelsArray.map { $0.lowercased() }
+                let matchedBirthday = labels.filter { birthdayLabels.contains($0) }
+                birthdayScore += Double(matchedBirthday.count) * 0.2
+                
+                if let ocr = photo.ocrText?.lowercased() {
+                    for birthdayPattern in birthdayOcrPatterns {
+                        if ocr.contains(birthdayPattern) {
+                            birthdayScore += 0.5
+                        }
+                    }
+                }
+            }
+            
+            // If we have at least 2 years and some birthday cues, mark as friend birthday
+            if pattern.years.count >= 2 && birthdayScore > 0.2 {
+                let confidence = min(0.3 * Double(pattern.years.count) + birthdayScore, 1.0)
+                
+                candidates.append(CandidateDate(
+                    personId: pattern.personId,
+                    secondPersonId: nil,
+                    childOfPersonId: nil,
+                    month: pattern.month,
+                    day: pattern.day,
+                    year: nil,
+                    dateType: .friendBirthday,
+                    confidence: confidence,
+                    yearsDetected: pattern.years.count,
+                    photoIds: pattern.photos.map { $0.id },
+                    detectedLabels: [],
+                    detectedOcrText: nil
+                ))
+            }
+        }
+        
+        return candidates
     }
     
     // MARK: - Group Photos by Person and Date
