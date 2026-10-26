@@ -52,6 +52,9 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           
+          # Set as default keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
+          
           # Decode and import certificate
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           echo "$DIST_CERT_P12" | base64 --decode > "$CERT_PATH"
@@ -68,15 +71,16 @@ jobs:
           # Set keychain partition list for codesign access
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           
-          # Add to search list
+          # Add to search list (make sure our keychain is first)
           security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
           
           # Verify certificate imported
           echo "=== Certificates in keychain ==="
           security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -5
           
-          # Store keychain path for later cleanup
+          # Store keychain path for later steps (mask password in logs)
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
 
       - name: Install Provisioning Profile
@@ -157,6 +161,10 @@ jobs:
 
       - name: Export IPA
         run: |
+          # Ensure keychain is unlocked for export
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Moments.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
