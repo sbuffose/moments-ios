@@ -82,6 +82,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - package: MomentsEngine
+    entitlements:
+      path: Moments/Moments.entitlements
 
 schemes:
   Moments:
