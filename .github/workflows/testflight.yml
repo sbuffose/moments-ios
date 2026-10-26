@@ -45,18 +45,35 @@ jobs:
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
         run: |
           mkdir -p ~/private_keys
-          # Handle both real newlines and literal \n in the secret
-          echo "$ASC_PRIVATE_KEY" | sed 's/\\n/\n/g' > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
-          chmod 600 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          KEY_FILE=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
           
-          # Verify key file
-          if [ -s ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 ]; then
-            echo "API key file created successfully"
-            head -1 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          # Write key using printf to properly handle escape sequences
+          # This handles: real newlines, literal \n, and removes any \r
+          printf '%s\n' "$ASC_PRIVATE_KEY" | sed 's/\\n/\n/g' | tr -d '\r' > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          
+          # Validate key file structure (without exposing content)
+          echo "=== Key file validation ==="
+          echo "File size: $(wc -c < "$KEY_FILE") bytes"
+          echo "Line count: $(wc -l < "$KEY_FILE") lines"
+          
+          # Check for proper PEM structure
+          if head -1 "$KEY_FILE" | grep -q "BEGIN PRIVATE KEY"; then
+            echo "✓ Has BEGIN PRIVATE KEY header"
           else
-            echo "Error: API key file is empty"
+            echo "✗ Missing BEGIN PRIVATE KEY header"
+            echo "First line starts with: $(head -1 "$KEY_FILE" | cut -c1-20)..."
             exit 1
           fi
+          
+          if tail -1 "$KEY_FILE" | grep -q "END PRIVATE KEY"; then
+            echo "✓ Has END PRIVATE KEY footer"
+          else
+            echo "✗ Missing END PRIVATE KEY footer"
+            exit 1
+          fi
+          
+          echo "=== Key file structure OK ==="
 
       - name: Build and Archive
         env:
