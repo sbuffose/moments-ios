@@ -47,9 +47,9 @@ jobs:
           mkdir -p ~/private_keys
           KEY_FILE=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
           
-          # Write key using printf to properly handle escape sequences
-          # This handles: real newlines, literal \n, and removes any \r
-          printf '%s\n' "$ASC_PRIVATE_KEY" | sed 's/\\n/\n/g' | tr -d '\r' > "$KEY_FILE"
+          # Convert literal \n to actual newlines using bash parameter expansion
+          # This handles the case where GitHub stores the secret with \n as two characters
+          echo "${ASC_PRIVATE_KEY//\\n/$'\n'}" | tr -d '\r' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           
           # Validate key file structure (without exposing content)
@@ -70,6 +70,13 @@ jobs:
             echo "✓ Has END PRIVATE KEY footer"
           else
             echo "✗ Missing END PRIVATE KEY footer"
+            exit 1
+          fi
+          
+          # Verify line count is reasonable (should be 5-8 lines for a valid p8 key)
+          LINE_COUNT=$(wc -l < "$KEY_FILE")
+          if [ "$LINE_COUNT" -lt 3 ]; then
+            echo "✗ Key file has too few lines ($LINE_COUNT). Expected multi-line PEM format."
             exit 1
           fi
           
