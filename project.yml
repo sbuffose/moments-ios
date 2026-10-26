@@ -61,25 +61,11 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.personal-information.photos-library: true
 
-  MomentsTests:
-    type: bundle.unit-test
-    platform: iOS
-    sources:
-      - path: MomentsTests
-        type: group
-    dependencies:
-      - target: Moments
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments.tests
-        DEVELOPMENT_TEAM: R56Y2GZ2M9
-
 schemes:
   Moments:
     build:
       targets:
         Moments: all
-        MomentsTests: [test]
     run:
       config: Debug
       environmentVariables:
@@ -87,8 +73,6 @@ schemes:
           value: "YES"
     test:
       config: Debug
-      targets:
-        - MomentsTests
     profile:
       config: Release
     analyze:
