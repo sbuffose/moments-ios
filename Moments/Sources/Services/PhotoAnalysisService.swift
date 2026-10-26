@@ -25,6 +25,7 @@ class PhotoAnalysisService: ObservableObject {
     
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        DeletionScoringService.shared.configure(modelContext: modelContext)
     }
     
     // MARK: - Background Analysis (Non-blocking)
@@ -241,6 +242,11 @@ class PhotoAnalysisService: ObservableObject {
         }
         
         await determineCleanupCategory(photo: photo, textAnalysis: textAnalysis, qualityMetrics: qualityMetrics)
+        
+        // Calculate deletion likelihood score
+        await MainActor.run {
+            photo.deletionLikelihoodScore = DeletionScoringService.shared.calculateScore(for: photo)
+        }
         
         for faceData in faces {
             await MainActor.run {
