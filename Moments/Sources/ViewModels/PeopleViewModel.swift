@@ -103,14 +103,17 @@ class PeopleViewModel: ObservableObject {
         isLoading = true
         
         do {
-            let descriptor = FetchDescriptor<PersistedPerson>(
-                sortBy: [
-                    SortDescriptor(\.isFavorite, order: .reverse),
-                    SortDescriptor(\.faceCount, order: .reverse)
-                ]
-            )
+            let descriptor = FetchDescriptor<PersistedPerson>()
             
-            let persistedPeople = try context.fetch(descriptor)
+            var persistedPeople = try context.fetch(descriptor)
+            
+            // Sort: favorites first, then by face count descending
+            persistedPeople.sort { p1, p2 in
+                if p1.isFavorite != p2.isFavorite {
+                    return p1.isFavorite && !p2.isFavorite
+                }
+                return p1.faceCount > p2.faceCount
+            }
             
             if persistedPeople.isEmpty {
                 await generatePeople()
@@ -242,11 +245,10 @@ class PeopleViewModel: ObservableObject {
         guard let context = modelContext else { return }
         
         do {
-            let descriptor = FetchDescriptor<PersistedRecurringEvent>(
-                sortBy: [SortDescriptor(\.confidence, order: .reverse)]
-            )
+            let descriptor = FetchDescriptor<PersistedRecurringEvent>()
             
-            let events = try context.fetch(descriptor)
+            var events = try context.fetch(descriptor)
+            events.sort { $0.confidence > $1.confidence }
             
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "es_AR")

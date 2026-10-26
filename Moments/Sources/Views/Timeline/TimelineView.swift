@@ -344,12 +344,13 @@ struct MomentDetailView: View {
     private func loadPhotos() async {
         let ids = moment.photoIds
         let descriptor = FetchDescriptor<PersistedPhoto>(
-            predicate: #Predicate { ids.contains($0.id) },
-            sortBy: [SortDescriptor(\.creationDate, order: .ascending)]
+            predicate: #Predicate { ids.contains($0.id) }
         )
         
         do {
-            photos = try modelContext.fetch(descriptor)
+            var fetchedPhotos = try modelContext.fetch(descriptor)
+            fetchedPhotos.sort { ($0.creationDate ?? .distantPast) < ($1.creationDate ?? .distantPast) }
+            photos = fetchedPhotos
         } catch {
             print("Error loading moment photos: \(error)")
         }

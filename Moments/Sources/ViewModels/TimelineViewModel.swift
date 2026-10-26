@@ -87,11 +87,10 @@ class TimelineViewModel: ObservableObject {
         isLoading = true
         
         do {
-            let momentDescriptor = FetchDescriptor<PersistedMoment>(
-                sortBy: [SortDescriptor(\.startDate, order: .reverse)]
-            )
+            let momentDescriptor = FetchDescriptor<PersistedMoment>()
             
-            let persistedMoments = try context.fetch(momentDescriptor)
+            var persistedMoments = try context.fetch(momentDescriptor)
+            persistedMoments.sort { $0.startDate > $1.startDate }
             
             if persistedMoments.isEmpty {
                 await generateMoments()
@@ -180,11 +179,11 @@ class TimelineViewModel: ObservableObject {
         
         do {
             let photoDescriptor = FetchDescriptor<PersistedPhoto>(
-                predicate: #Predicate { $0.creationDate != nil },
-                sortBy: [SortDescriptor(\.creationDate, order: .ascending)]
+                predicate: #Predicate { $0.creationDate != nil }
             )
             
-            let photos = try context.fetch(photoDescriptor)
+            var photos = try context.fetch(photoDescriptor)
+            photos.sort { ($0.creationDate ?? .distantPast) < ($1.creationDate ?? .distantPast) }
             
             // Convertir a PhotoMetadata para el análisis
             let photoMetadata = photos.map { photo -> PhotoMetadata in
