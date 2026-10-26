@@ -16,6 +16,7 @@ class CleanupViewModel: ObservableObject {
     @Published var isDeleting = false
     @Published var showDeleteConfirmation = false
     @Published var errorMessage: String?
+    @Published var spaceFreed: Int64 = 0
     
     @Published var categories: [CleanupCategoryItem] = []
     @Published var estimatedSpaceFreed: Int64 = 0
@@ -29,7 +30,7 @@ class CleanupViewModel: ObservableObject {
     
     struct CleanupCategoryItem: Identifiable {
         let id: String
-        let category: CleanupCategory
+        let category: CleanupCategoryType
         let count: Int
         let photos: [PersistedPhoto]
         let estimatedSize: Int64
@@ -38,36 +39,10 @@ class CleanupViewModel: ObservableObject {
         var localizedKey: String { category.localizedKey }
     }
     
-    enum CleanupCategory: String, CaseIterable {
-        case screenshots
-        case screenRecordings
-        case blurry
-        case overexposed
-        case underexposed
-        case duplicates
-        case bursts
-        case accidentalShots
-        case documents
-        case largeVideos
-        
-        var iconName: String {
-            switch self {
-            case .screenshots: return "rectangle.on.rectangle"
-            case .screenRecordings: return "record.circle"
-            case .blurry: return "camera.metering.unknown"
-            case .overexposed: return "sun.max.fill"
-            case .underexposed: return "moon.fill"
-            case .duplicates: return "doc.on.doc.fill"
-            case .bursts: return "square.stack.3d.up.fill"
-            case .accidentalShots: return "hand.raised.slash"
-            case .documents: return "doc.text"
-            case .largeVideos: return "film"
-            }
-        }
-        
-        var localizedKey: String {
-            "cleanup_category_\(rawValue)"
-        }
+    // MARK: - Computed Properties
+    
+    var totalCleanupItems: Int {
+        categories.reduce(0) { $0 + $1.count }
     }
     
     // MARK: - Initialization
@@ -112,155 +87,135 @@ class CleanupViewModel: ObservableObject {
     private func buildCategories() {
         var items: [CleanupCategoryItem] = []
         
-        // Screenshots
-        let screenshots = allPhotos.filter { $0.mediaSubtypesRaw.contains("screenshot") }
-        if !screenshots.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "screenshots",
-                category: .screenshots,
-                count: screenshots.count,
-                photos: screenshots,
-                estimatedSize: screenshots.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
+        // Group photos by cleanup category
+        let categoryGroups = Dictionary(grouping: allPhotos) { $0.cleanupCategory }
         
-        // Screen Recordings
-        let recordings = allPhotos.filter { 
-            $0.mediaTypeRaw == "video" && $0.mediaSubtypesRaw.contains("screenRecording") 
-        }
-        if !recordings.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "screenRecordings",
-                category: .screenRecordings,
-                count: recordings.count,
-                photos: recordings,
-                estimatedSize: recordings.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
-        
-        // Blurry
-        let blurry = allPhotos.filter { 
-            $0.mediaTypeRaw == "image" && ($0.sharpnessScore ?? 1.0) < 0.3 
-        }
-        if !blurry.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "blurry",
-                category: .blurry,
-                count: blurry.count,
-                photos: blurry,
-                estimatedSize: blurry.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
-        
-        // Overexposed
-        let overexposed = allPhotos.filter { 
-            $0.mediaTypeRaw == "image" && ($0.exposureScore ?? 0.5) > 0.85 
-        }
-        if !overexposed.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "overexposed",
-                category: .overexposed,
-                count: overexposed.count,
-                photos: overexposed,
-                estimatedSize: overexposed.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
-        
-        // Underexposed
-        let underexposed = allPhotos.filter { 
-            $0.mediaTypeRaw == "image" && ($0.exposureScore ?? 0.5) < 0.15 
-        }
-        if !underexposed.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "underexposed",
-                category: .underexposed,
-                count: underexposed.count,
-                photos: underexposed,
-                estimatedSize: underexposed.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
-        
-        // Bursts (no-representative)
-        let burstPhotos = allPhotos.filter { 
-            $0.burstIdentifier != nil && !$0.representsBurst 
-        }
-        if !burstPhotos.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "bursts",
-                category: .bursts,
-                count: burstPhotos.count,
-                photos: burstPhotos,
-                estimatedSize: burstPhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
-        
-        // Accidental Shots (very dark + no faces)
-        let accidental = allPhotos.filter { photo in
-            guard photo.mediaTypeRaw == "image" else { return false }
+        // Create category items for each non-empty category
+        for categoryType in CleanupCategoryType.allCases {
+            guard categoryType != .none else { continue }
             
-            // Muy oscura
-            if let exposure = photo.exposureScore, exposure < 0.05 {
-                return true
+            var photosForCategory: [PersistedPhoto]
+            
+            // For some categories, use the stored cleanupCategory
+            // For others, calculate on the fly for backwards compatibility
+            switch categoryType {
+            case .screenshot:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .screenshot || $0.mediaSubtypesRaw.contains("screenshot") 
+                }
+            case .screenRecording:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .screenRecording || 
+                    ($0.mediaTypeRaw == "video" && $0.mediaSubtypesRaw.contains("screenRecording"))
+                }
+            case .blurry:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .blurry || 
+                    ($0.mediaTypeRaw == "image" && ($0.sharpnessScore ?? 1.0) < 0.3)
+                }
+            case .overexposed:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .overexposed || 
+                    ($0.mediaTypeRaw == "image" && ($0.exposureScore ?? 0.5) > 0.85)
+                }
+            case .underexposed:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .underexposed || 
+                    ($0.mediaTypeRaw == "image" && ($0.exposureScore ?? 0.5) < 0.15)
+                }
+            case .burst:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .burst || 
+                    ($0.burstIdentifier != nil && !$0.representsBurst)
+                }
+            case .nearDuplicate:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .nearDuplicate && $0.isBestInGroup != true
+                }
+            case .duplicate:
+                photosForCategory = categoryGroups[.duplicate] ?? []
+            case .accidental:
+                photosForCategory = allPhotos.filter { photo in
+                    if photo.cleanupCategory == .accidental { return true }
+                    guard photo.mediaTypeRaw == "image" else { return false }
+                    
+                    // Very dark with no faces
+                    if let exposure = photo.exposureScore, exposure < 0.05 {
+                        if let faces = photo.facesDetected, faces == 0 {
+                            return true
+                        }
+                    }
+                    
+                    // Very blurry without faces
+                    if let sharpness = photo.sharpnessScore, sharpness < 0.1 {
+                        if let faces = photo.facesDetected, faces == 0 {
+                            return true
+                        }
+                    }
+                    
+                    return false
+                }
+            case .document:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .document || ($0.isDocument == true && $0.cleanupCategory != .receipt)
+                }
+            case .receipt:
+                photosForCategory = categoryGroups[.receipt] ?? []
+            case .qrCode:
+                photosForCategory = categoryGroups[.qrCode] ?? []
+            case .largeVideo:
+                photosForCategory = allPhotos.filter { 
+                    $0.cleanupCategory == .largeVideo || 
+                    ($0.mediaTypeRaw == "video" && ($0.estimatedFileSize ?? 0) > 100_000_000)
+                }.sorted { ($0.estimatedFileSize ?? 0) > ($1.estimatedFileSize ?? 0) }
+            case .none:
+                continue
             }
             
-            // Muy borrosa sin rostros
-            if let sharpness = photo.sharpnessScore, sharpness < 0.1,
-               let faces = photo.facesDetected, faces == 0 {
-                return true
-            }
+            // Deduplicate
+            let uniquePhotos = Array(Set(photosForCategory.map { $0.id }))
+                .compactMap { id in photosForCategory.first { $0.id == id } }
             
-            return false
-        }
-        if !accidental.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "accidentalShots",
-                category: .accidentalShots,
-                count: accidental.count,
-                photos: accidental,
-                estimatedSize: accidental.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
-        
-        // Documents
-        let documents = allPhotos.filter { $0.isDocument == true }
-        if !documents.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "documents",
-                category: .documents,
-                count: documents.count,
-                photos: documents,
-                estimatedSize: documents.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
+            if !uniquePhotos.isEmpty {
+                items.append(CleanupCategoryItem(
+                    id: categoryType.rawValue,
+                    category: categoryType,
+                    count: uniquePhotos.count,
+                    photos: uniquePhotos,
+                    estimatedSize: uniquePhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+                ))
+            }
         }
         
-        // Large Videos (> 100 MB)
-        let largeVideos = allPhotos.filter { 
-            $0.mediaTypeRaw == "video" && ($0.estimatedFileSize ?? 0) > 100_000_000 
-        }.sorted { ($0.estimatedFileSize ?? 0) > ($1.estimatedFileSize ?? 0) }
-        
-        if !largeVideos.isEmpty {
-            items.append(CleanupCategoryItem(
-                id: "largeVideos",
-                category: .largeVideos,
-                count: largeVideos.count,
-                photos: largeVideos,
-                estimatedSize: largeVideos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
-            ))
-        }
-        
-        // Ordenar por cantidad
+        // Sort by count (most items first)
         categories = items.sorted { $0.count > $1.count }
     }
     
     private func calculateEstimatedSpace() {
-        estimatedSpaceFreed = categories.reduce(0) { $0 + $1.estimatedSize }
+        // Sum sizes but avoid double-counting photos in multiple categories
+        var countedPhotoIds: Set<String> = []
+        var totalSize: Int64 = 0
+        
+        for category in categories {
+            for photo in category.photos {
+                if !countedPhotoIds.contains(photo.id) {
+                    countedPhotoIds.insert(photo.id)
+                    totalSize += photo.estimatedFileSize ?? 0
+                }
+            }
+        }
+        
+        estimatedSpaceFreed = totalSize
     }
     
     // MARK: - Selection
     
     func selectAll(in category: CleanupCategoryItem) {
         for photo in category.photos {
-            selectedPhotos.insert(photo.id)
+            // Don't auto-select the "best" photo in duplicate groups
+            if photo.isBestInGroup != true {
+                selectedPhotos.insert(photo.id)
+            }
         }
     }
     
@@ -287,8 +242,7 @@ class CleanupViewModel: ObservableObject {
     }
     
     var selectedSize: Int64 {
-        guard let category = selectedCategory else { return 0 }
-        return category.photos
+        allPhotos
             .filter { selectedPhotos.contains($0.id) }
             .reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
     }
@@ -303,6 +257,7 @@ class CleanupViewModel: ObservableObject {
         
         let photosToDelete = allPhotos.filter { selectedPhotos.contains($0.id) }
         let identifiers = photosToDelete.map { $0.localIdentifier }
+        let sizeFreed = selectedSize
         
         let assets = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
         
@@ -311,14 +266,15 @@ class CleanupViewModel: ObservableObject {
                 PHAssetChangeRequest.deleteAssets(assets)
             }
             
-            // Eliminar de SwiftData
+            // Remove from SwiftData
             for photo in photosToDelete {
                 context.delete(photo)
             }
             try context.save()
             
-            // Actualizar UI
+            // Update state
             selectedPhotos.removeAll()
+            spaceFreed = sizeFreed
             await loadCleanupSuggestions()
             
         } catch {

@@ -1,5 +1,5 @@
 // CleanupView.swift
-// Vista principal de limpieza
+// Vista principal de limpieza - Hero feature "Limpiar"
 
 import SwiftUI
 import SwiftData
@@ -13,15 +13,15 @@ struct CleanupView: View {
             Group {
                 if viewModel.isLoading {
                     loadingView
-                } else if viewModel.categories.isEmpty {
+                } else if viewModel.totalCleanupItems == 0 {
                     emptyStateView
                 } else {
-                    categoriesListView
+                    mainCleanupView
                 }
             }
             .navigationTitle(Text("cleanup_title"))
             .toolbar {
-                if !viewModel.categories.isEmpty {
+                if viewModel.totalCleanupItems > 0 {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             Task {
@@ -46,7 +46,7 @@ struct CleanupView: View {
         }
     }
     
-    // MARK: - Subviews
+    // MARK: - Loading View
     
     private var loadingView: some View {
         VStack(spacing: 16) {
@@ -56,6 +56,8 @@ struct CleanupView: View {
         }
     }
     
+    // MARK: - Empty State View
+    
     private var emptyStateView: some View {
         ContentUnavailableView {
             Label("cleanup_empty_title", systemImage: "sparkles")
@@ -64,54 +66,302 @@ struct CleanupView: View {
         }
     }
     
-    private var categoriesListView: some View {
-        List {
-            Section {
-                summaryCard
+    // MARK: - Main Cleanup View
+    
+    private var mainCleanupView: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Hero CTA Card
+                heroCTACard
+                
+                // Categories
+                categoriesSection
             }
-            
-            Section {
-                ForEach(viewModel.categories) { category in
-                    NavigationLink {
-                        CleanupCategoryDetailView(
-                            category: category,
-                            viewModel: viewModel
-                        )
-                    } label: {
-                        CleanupCategoryRow(category: category, viewModel: viewModel)
-                    }
-                }
-            } header: {
-                Text("cleanup_categories_header")
-            }
+            .padding()
         }
     }
     
-    private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "sparkles")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
+    // MARK: - Hero CTA Card
+    
+    private var heroCTACard: some View {
+        VStack(spacing: 16) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.15))
+                    .frame(width: 80, height: 80)
                 
-                VStack(alignment: .leading) {
-                    Text("cleanup_summary_title")
-                        .font(.headline)
-                    
-                    Text("cleanup_summary_space \(viewModel.formattedSize(viewModel.estimatedSpaceFreed))")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.tint)
+            }
+            
+            // Title
+            VStack(spacing: 8) {
+                Text("cleanup_hero_title")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text("cleanup_hero_subtitle \(viewModel.totalCleanupItems)")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            // Size badge
+            Text(viewModel.formattedSize(viewModel.estimatedSpaceFreed))
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .foregroundStyle(.tint)
+            
+            Text("cleanup_hero_space_label")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            // Main CTA Button
+            NavigationLink {
+                CleanupReviewView(viewModel: viewModel)
+            } label: {
+                HStack {
+                    Image(systemName: "hand.tap")
+                    Text("cleanup_hero_cta")
+                }
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.accentColor)
+                .cornerRadius(14)
+            }
+            .padding(.top, 8)
+        }
+        .padding(24)
+        .background(Color(.systemBackground))
+        .cornerRadius(20)
+        .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 4)
+    }
+    
+    // MARK: - Categories Section
+    
+    private var categoriesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("cleanup_categories_header")
+                .font(.headline)
+            
+            ForEach(viewModel.categories) { category in
+                NavigationLink {
+                    CleanupCategoryDetailView(
+                        category: category,
+                        viewModel: viewModel
+                    )
+                } label: {
+                    CleanupCategoryRow(category: category, viewModel: viewModel)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Cleanup Review View (All categories combined)
+
+struct CleanupReviewView: View {
+    @ObservedObject var viewModel: CleanupViewModel
+    @State private var currentIndex = 0
+    @State private var showDeleteConfirmation = false
+    @Environment(\.dismiss) private var dismiss
+    
+    private var allPhotos: [PersistedPhoto] {
+        viewModel.categories.flatMap { $0.photos }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            if currentIndex < allPhotos.count {
+                // Progress indicator
+                ProgressView(value: Double(currentIndex), total: Double(allPhotos.count))
+                    .padding(.horizontal)
+                    .padding(.top)
+                
+                Text("cleanup_review_progress \(currentIndex + 1) \(allPhotos.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                
+                // Current photo category
+                if let category = categoryFor(photo: allPhotos[currentIndex]) {
+                    Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                        .padding(.top, 4)
                 }
                 
                 Spacer()
+                
+                // Swipeable card
+                SwipeablePhotoCard(
+                    photo: allPhotos[currentIndex],
+                    onKeep: {
+                        withAnimation {
+                            viewModel.selectedPhotos.remove(allPhotos[currentIndex].id)
+                            currentIndex += 1
+                        }
+                    },
+                    onDelete: {
+                        withAnimation {
+                            viewModel.selectedPhotos.insert(allPhotos[currentIndex].id)
+                            currentIndex += 1
+                        }
+                    }
+                )
+                .padding()
+                
+                // Action buttons
+                HStack(spacing: 60) {
+                    // Keep button
+                    Button {
+                        withAnimation {
+                            viewModel.selectedPhotos.remove(allPhotos[currentIndex].id)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        VStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(.green)
+                            Text("cleanup_keep")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    // Delete button
+                    Button {
+                        withAnimation {
+                            viewModel.selectedPhotos.insert(allPhotos[currentIndex].id)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        VStack {
+                            Image(systemName: "trash.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(.red)
+                            Text("cleanup_delete")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.bottom, 40)
+                
+            } else {
+                // Review complete
+                reviewCompleteView
+            }
+        }
+        .navigationTitle(Text("cleanup_review_title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if viewModel.selectedCount > 0 {
+                ToolbarItem(placement: .bottomBar) {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("cleanup_delete_selected \(viewModel.selectedCount)")
+                        }
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "cleanup_delete_confirmation_title",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("cleanup_delete_confirm \(viewModel.selectedCount)", role: .destructive) {
+                Task {
+                    await viewModel.deleteSelectedPhotos()
+                    dismiss()
+                }
+            }
+            Button("cleanup_cancel", role: .cancel) {}
+        } message: {
+            Text("cleanup_delete_confirmation_message \(viewModel.formattedSize(viewModel.selectedSize))")
+        }
+    }
+    
+    private func categoryFor(photo: PersistedPhoto) -> CleanupCategoryType? {
+        return photo.cleanupCategory != .none ? photo.cleanupCategory : nil
+    }
+    
+    private var reviewCompleteView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.15))
+                    .frame(width: 100, height: 100)
+                
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.green)
             }
             
-            let totalItems = viewModel.categories.reduce(0) { $0 + $1.count }
-            Text("cleanup_summary_items \(totalItems)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                Text("cleanup_review_complete_title")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                if viewModel.selectedCount > 0 {
+                    Text("cleanup_review_complete_selected \(viewModel.selectedCount)")
+                        .foregroundStyle(.secondary)
+                    
+                    Text(viewModel.formattedSize(viewModel.selectedSize))
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.tint)
+                } else {
+                    Text("cleanup_review_complete_none")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            if viewModel.selectedCount > 0 {
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    HStack {
+                        Image(systemName: "trash")
+                        Text("cleanup_delete_selected \(viewModel.selectedCount)")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red)
+                    .cornerRadius(14)
+                }
+                .padding(.horizontal)
+            }
+            
+            Button {
+                dismiss()
+            } label: {
+                Text("cleanup_done")
+                    .font(.headline)
+                    .foregroundStyle(.tint)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(14)
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 32)
         }
-        .padding(.vertical, 4)
     }
 }
 
@@ -123,28 +373,37 @@ struct CleanupCategoryRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: category.icon)
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 32)
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: category.icon)
+                    .font(.title3)
+                    .foregroundStyle(.tint)
+            }
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(LocalizedStringKey(category.localizedKey))
                     .font(.body)
+                    .foregroundStyle(.primary)
                 
-                Text("\(category.count) elementos · \(viewModel.formattedSize(category.estimatedSize))")
+                Text("cleanup_category_count \(category.count) \(viewModel.formattedSize(category.estimatedSize))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             
             Spacer()
             
-            Text("\(category.count)")
-                .font(.callout)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
     }
 }
 
@@ -164,7 +423,7 @@ struct CleanupCategoryDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Selector de modo
+            // Mode selector
             Picker("Modo", selection: $displayMode) {
                 Label("Cuadrícula", systemImage: "square.grid.2x2").tag(DisplayMode.grid)
                 Label("Deslizar", systemImage: "hand.draw").tag(DisplayMode.swipe)
@@ -237,6 +496,7 @@ struct CleanupCategoryDetailView: View {
                     CleanupPhotoCell(
                         photo: photo,
                         isSelected: viewModel.isSelected(photo),
+                        isBest: photo.isBestInGroup == true,
                         onTap: {
                             viewModel.toggleSelection(for: photo)
                         }
@@ -314,6 +574,7 @@ struct CleanupCategoryDetailView: View {
 struct CleanupPhotoCell: View {
     let photo: PersistedPhoto
     let isSelected: Bool
+    var isBest: Bool = false
     let onTap: () -> Void
     
     var body: some View {
@@ -326,6 +587,15 @@ struct CleanupPhotoCell: View {
                     .foregroundStyle(isSelected ? .white : .white.opacity(0.8))
                     .shadow(radius: 2)
                     .padding(6)
+            }
+            .overlay(alignment: .topLeading) {
+                if isBest {
+                    Image(systemName: "star.fill")
+                        .font(.caption)
+                        .foregroundStyle(.yellow)
+                        .shadow(radius: 2)
+                        .padding(6)
+                }
             }
             .overlay {
                 if isSelected {

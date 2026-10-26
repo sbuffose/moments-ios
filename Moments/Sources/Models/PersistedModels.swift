@@ -4,6 +4,48 @@
 import Foundation
 import SwiftData
 
+// MARK: - Cleanup Category Enum
+
+enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
+    case none = "none"
+    case screenshot = "screenshot"
+    case screenRecording = "screenRecording"
+    case blurry = "blurry"
+    case overexposed = "overexposed"
+    case underexposed = "underexposed"
+    case duplicate = "duplicate"
+    case nearDuplicate = "nearDuplicate"
+    case burst = "burst"
+    case accidental = "accidental"
+    case document = "document"
+    case receipt = "receipt"
+    case qrCode = "qrCode"
+    case largeVideo = "largeVideo"
+    
+    var localizedKey: String {
+        "cleanup_category_\(rawValue)"
+    }
+    
+    var iconName: String {
+        switch self {
+        case .none: return "photo"
+        case .screenshot: return "rectangle.on.rectangle"
+        case .screenRecording: return "record.circle"
+        case .blurry: return "camera.metering.unknown"
+        case .overexposed: return "sun.max.fill"
+        case .underexposed: return "moon.fill"
+        case .duplicate: return "doc.on.doc.fill"
+        case .nearDuplicate: return "square.on.square"
+        case .burst: return "square.stack.3d.up.fill"
+        case .accidental: return "hand.raised.slash"
+        case .document: return "doc.text"
+        case .receipt: return "receipt"
+        case .qrCode: return "qrcode"
+        case .largeVideo: return "film"
+        }
+    }
+}
+
 // MARK: - Foto Persistida
 
 @Model
@@ -25,7 +67,7 @@ final class PersistedPhoto {
     var burstIdentifier: String?
     var representsBurst: Bool
     
-    // Análisis
+    // Análisis de calidad
     var sharpnessScore: Double?
     var exposureScore: Double?
     var facesDetected: Int?
@@ -35,6 +77,21 @@ final class PersistedPhoto {
     var imageFeaturePrintData: Data?
     var analysisCompleted: Bool
     var lastAnalyzedAt: Date?
+    
+    // Search index fields
+    var visionLabels: String?
+    var visionLabelsConfidence: String?
+    var ocrText: String?
+    var placeName: String?
+    var placeCity: String?
+    var placeCountry: String?
+    var cleanupCategoryRaw: String?
+    var duplicateGroupId: String?
+    var isBestInGroup: Bool?
+    var hasBarcode: Bool?
+    var deviceTilt: Double?
+    var detailScore: Double?
+    var facesOpenScore: Double?
     
     // Relaciones
     @Relationship(deleteRule: .cascade, inverse: \PersistedFaceDetection.photo)
@@ -75,6 +132,34 @@ final class PersistedPhoto {
         self.burstIdentifier = burstIdentifier
         self.representsBurst = representsBurst
         self.analysisCompleted = false
+        self.cleanupCategoryRaw = CleanupCategoryType.none.rawValue
+        self.isBestInGroup = nil
+    }
+    
+    // Computed properties for cleanup category
+    var cleanupCategory: CleanupCategoryType {
+        get {
+            CleanupCategoryType(rawValue: cleanupCategoryRaw ?? "none") ?? .none
+        }
+        set {
+            cleanupCategoryRaw = newValue.rawValue
+        }
+    }
+    
+    // Parse vision labels as array
+    var labelsArray: [String] {
+        visionLabels?.components(separatedBy: "|") ?? []
+    }
+    
+    // Searchable text combining all indexed content
+    var searchableText: String {
+        var parts: [String] = []
+        if let labels = visionLabels { parts.append(labels) }
+        if let ocr = ocrText { parts.append(ocr) }
+        if let place = placeName { parts.append(place) }
+        if let city = placeCity { parts.append(city) }
+        if let country = placeCountry { parts.append(country) }
+        return parts.joined(separator: " ").lowercased()
     }
 }
 

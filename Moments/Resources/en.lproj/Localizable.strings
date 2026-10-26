@@ -1,16 +1,17 @@
 /* Moments - English Localization */
 
 /* Tabs */
-"tab_timeline" = "Timeline";
 "tab_cleanup" = "Cleanup";
+"tab_search" = "Search";
+"tab_timeline" = "Timeline";
 "tab_places" = "Places";
 "tab_people" = "People";
-"tab_settings" = "Settings";
 
 /* Onboarding */
 "onboarding_title" = "Moments";
 "onboarding_subtitle" = "Your photo library, intelligently and privately organized.";
 "onboarding_feature_cleanup" = "Clean up duplicate and blurry photos";
+"onboarding_feature_search" = "Search by people, places and objects";
 "onboarding_feature_timeline" = "Organize your memories into moments";
 "onboarding_feature_places" = "Discover the places you've visited";
 "onboarding_feature_people" = "Find photos by people";
@@ -24,41 +25,89 @@
 "scanning_photos_count %lld" = "%lld photos indexed";
 "scanning_start_button" = "Start Scan";
 
-/* Cleanup */
+/* Cleanup - Hero */
 "cleanup_title" = "Cleanup";
+"cleanup_hero_title" = "Free Up Space";
+"cleanup_hero_subtitle %lld" = "We found %lld photos you could delete";
+"cleanup_hero_space_label" = "space you can recover";
+"cleanup_hero_cta" = "Review Photos";
+
+/* Cleanup - General */
 "cleanup_analyzing" = "Analyzing photos...";
 "cleanup_empty_title" = "All Clean";
 "cleanup_empty_description" = "We didn't find any photos you might want to delete.";
 "cleanup_categories_header" = "Categories";
-"cleanup_summary_title" = "Space you can free up";
-"cleanup_summary_space %@" = "Approximately %@";
-"cleanup_summary_items %lld" = "%lld items to review";
+"cleanup_category_count %lld %@" = "%lld items · %@";
 
-"cleanup_category_screenshots" = "Screenshots";
-"cleanup_category_screen_recordings" = "Screen Recordings";
+/* Cleanup Categories */
+"cleanup_category_none" = "Uncategorized";
+"cleanup_category_screenshot" = "Screenshots";
+"cleanup_category_screenRecording" = "Screen Recordings";
 "cleanup_category_blurry" = "Blurry Photos";
 "cleanup_category_overexposed" = "Overexposed Photos";
 "cleanup_category_underexposed" = "Underexposed Photos";
-"cleanup_category_duplicates" = "Duplicates";
-"cleanup_category_near_duplicates" = "Near Duplicates";
-"cleanup_category_bursts" = "Bursts";
+"cleanup_category_duplicate" = "Exact Duplicates";
+"cleanup_category_nearDuplicate" = "Near Duplicates";
+"cleanup_category_burst" = "Bursts";
 "cleanup_category_accidental" = "Accidental Shots";
-"cleanup_category_documents" = "Documents";
-"cleanup_category_large_videos" = "Large Videos";
+"cleanup_category_document" = "Documents";
+"cleanup_category_receipt" = "Receipts & Tickets";
+"cleanup_category_qrCode" = "QR Codes";
+"cleanup_category_largeVideo" = "Large Videos";
 
+/* Cleanup Actions */
 "cleanup_select_all" = "Select All";
 "cleanup_delete" = "Delete";
+"cleanup_keep" = "Keep";
+"cleanup_done" = "Done";
 "cleanup_selected %lld" = "%lld selected";
+"cleanup_delete_selected %lld" = "Delete %lld selected";
 "cleanup_delete_confirmation_title" = "Delete photos?";
 "cleanup_delete_confirmation_message %@" = "This will free up approximately %@. Photos will be moved to Recently Deleted.";
 "cleanup_delete_confirm %lld" = "Delete %lld photos";
 "cleanup_cancel" = "Cancel";
 "cleanup_error_title" = "Error";
 
+/* Cleanup Review */
+"cleanup_review_title" = "Review Photos";
+"cleanup_review_progress %lld %lld" = "%lld of %lld";
+"cleanup_review_complete_title" = "Review Complete";
+"cleanup_review_complete_selected %lld" = "You selected %lld photos to delete";
+"cleanup_review_complete_none" = "You didn't select any photos to delete";
+
 /* Swipe Review */
 "swipe_progress %lld %lld" = "%lld of %lld";
 "swipe_complete_title" = "Review Complete";
 "swipe_complete_description %lld" = "You selected %lld photos for deletion";
+
+/* Search */
+"search_title" = "Search";
+"search_placeholder" = "Search photos...";
+"search_searching" = "Searching...";
+"search_suggestions_title" = "Suggestions";
+"search_recent_title" = "Recent Searches";
+"search_clear_recent" = "Clear";
+"search_no_results_title" = "No Results";
+"search_no_results_description %@" = "We couldn't find photos for \"%@\"";
+"search_results_count %lld" = "%lld results";
+
+/* Search Filters */
+"search_filter_today" = "Today";
+"search_filter_this_week" = "This Week";
+"search_filter_this_month" = "This Month";
+"search_filter_this_year" = "This Year";
+"search_filter_photos" = "Photos";
+"search_filter_videos" = "Videos";
+"search_filter_screenshots" = "Screenshots";
+"search_filter_documents" = "Documents";
+
+/* Search Suggestions */
+"search_suggestion_beach" = "Beach";
+"search_suggestion_food" = "Food";
+"search_suggestion_family" = "Family";
+"search_suggestion_travel" = "Travel";
+"search_suggestion_receipts" = "Receipts";
+"search_suggestion_pets" = "Pets";
 
 /* Timeline */
 "timeline_title" = "Timeline";
@@ -120,3 +169,7 @@
 "visit_frequency_quarterly" = "Quarterly";
 "visit_frequency_yearly" = "Yearly";
 "visit_frequency_rare" = "Rare";
+
+/* Battery/Processing */
+"processing_paused_battery" = "Analysis paused due to low battery";
+"processing_paused_low_power" = "Analysis paused due to Low Power Mode";

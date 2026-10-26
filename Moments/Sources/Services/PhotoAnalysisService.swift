@@ -7,12 +7,14 @@ import Photos
 import Vision
 import CoreImage
 import UIKit
+import Accelerate
 
 @MainActor
 class PhotoAnalysisService: ObservableObject {
     private let modelContext: ModelContext
     private let imageAnalyzer = ImageAnalyzer()
     private let faceAnalyzer = FaceAnalyzer()
+    private let geocodingService = GeocodingService.shared
     
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -33,17 +35,33 @@ class PhotoAnalysisService: ObservableObject {
             
             let batchSize = 20
             
+            // Check battery state before processing
+            let backgroundService = BackgroundProcessingService.shared
+            
             for (index, photo) in photosToAnalyze.enumerated() {
+                // Respect battery constraints
+                if await backgroundService.shouldPauseForBattery {
+                    // Wait for better conditions
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    if Task.isCancelled { return }
+                }
+                
                 await analyzePhoto(photo)
                 
                 if (index + 1) % batchSize == 0 {
                     try? modelContext.save()
                     await progressHandler(Double(index + 1) / Double(total))
+                    
+                    // Yield to allow other tasks
+                    try? await Task.sleep(nanoseconds: 100_000_000)
                 }
             }
             
             try modelContext.save()
             await progressHandler(1.0)
+            
+            // After initial analysis, detect duplicates
+            await detectDuplicates()
             
         } catch {
             print("Error fetching photos for analysis: \(error)")
@@ -65,11 +83,33 @@ class PhotoAnalysisService: ObservableObject {
         let qualityMetrics = await imageAnalyzer.analyzeQuality(image: image)
         photo.sharpnessScore = qualityMetrics.sharpness
         photo.exposureScore = qualityMetrics.exposure
+        photo.detailScore = qualityMetrics.detail
+        photo.deviceTilt = qualityMetrics.tilt
         
         // Detección de texto/documentos
         let textAnalysis = await imageAnalyzer.analyzeText(image: image)
         photo.hasText = textAnalysis.hasText
         photo.isDocument = textAnalysis.isDocument
+        photo.ocrText = textAnalysis.detectedText
+        
+        // Vision labels (clasificación de imagen)
+        let labels = await imageAnalyzer.classifyImage(image: image)
+        if !labels.isEmpty {
+            let labelStrings = labels.map { $0.label }
+            let confidences = labels.map { String(format: "%.2f", $0.confidence) }
+            photo.visionLabels = SpanishSynonyms.addSpanishSynonyms(to: labelStrings.joined(separator: "|"))
+            photo.visionLabelsConfidence = confidences.joined(separator: "|")
+        }
+        
+        // Barcode/QR detection
+        let barcodeResult = await imageAnalyzer.detectBarcodes(image: image)
+        photo.hasBarcode = barcodeResult.hasBarcode
+        if barcodeResult.hasQR {
+            photo.cleanupCategory = .qrCode
+        }
+        
+        // Determine cleanup category
+        await determineCleanupCategory(photo: photo, textAnalysis: textAnalysis, qualityMetrics: qualityMetrics)
         
         // Feature print para duplicados
         if let featurePrint = await imageAnalyzer.generateFeaturePrint(image: image) {
@@ -79,6 +119,11 @@ class PhotoAnalysisService: ObservableObject {
         // Detección de rostros
         let faces = await faceAnalyzer.detectFaces(in: image, photoId: photo.id)
         photo.facesDetected = faces.count
+        
+        // Calculate faces open score (for burst best-selection)
+        if !faces.isEmpty {
+            photo.facesOpenScore = faces.reduce(0.0) { $0 + $1.quality } / Double(faces.count)
+        }
         
         for faceData in faces {
             let detection = PersistedFaceDetection(
@@ -94,12 +139,220 @@ class PhotoAnalysisService: ObservableObject {
             modelContext.insert(detection)
         }
         
+        // Reverse geocoding for location
+        if let lat = photo.latitude, let lon = photo.longitude {
+            if let locationInfo = await geocodingService.getLocationName(latitude: lat, longitude: lon) {
+                photo.placeName = locationInfo.name
+                photo.placeCity = locationInfo.city
+                photo.placeCountry = locationInfo.country
+            }
+        }
+        
         // Tamaño de archivo
         let resourceInfo = await getResourceInfo(for: asset)
         photo.estimatedFileSize = resourceInfo.fileSize
         
         photo.analysisCompleted = true
         photo.lastAnalyzedAt = Date()
+    }
+    
+    private func determineCleanupCategory(photo: PersistedPhoto, textAnalysis: ImageAnalyzer.TextAnalysis, qualityMetrics: ImageAnalyzer.QualityMetrics) async {
+        // Already categorized
+        if photo.cleanupCategory != .none { return }
+        
+        // Screenshots
+        if photo.mediaSubtypesRaw.contains("screenshot") {
+            photo.cleanupCategory = .screenshot
+            return
+        }
+        
+        // Screen recordings
+        if photo.mediaTypeRaw == "video" && photo.mediaSubtypesRaw.contains("screenRecording") {
+            photo.cleanupCategory = .screenRecording
+            return
+        }
+        
+        // Large videos (> 100 MB)
+        if photo.mediaTypeRaw == "video" && (photo.estimatedFileSize ?? 0) > 100_000_000 {
+            photo.cleanupCategory = .largeVideo
+            return
+        }
+        
+        // Non-representative burst photos
+        if photo.burstIdentifier != nil && !photo.representsBurst {
+            photo.cleanupCategory = .burst
+            return
+        }
+        
+        // Receipts (document with specific text patterns)
+        if textAnalysis.isReceipt {
+            photo.cleanupCategory = .receipt
+            return
+        }
+        
+        // Documents
+        if textAnalysis.isDocument {
+            photo.cleanupCategory = .document
+            return
+        }
+        
+        // Blurry photos
+        if let sharpness = photo.sharpnessScore, sharpness < 0.3, photo.mediaTypeRaw == "image" {
+            photo.cleanupCategory = .blurry
+            return
+        }
+        
+        // Overexposed
+        if let exposure = photo.exposureScore, exposure > 0.85, photo.mediaTypeRaw == "image" {
+            photo.cleanupCategory = .overexposed
+            return
+        }
+        
+        // Underexposed
+        if let exposure = photo.exposureScore, exposure < 0.15, photo.mediaTypeRaw == "image" {
+            photo.cleanupCategory = .underexposed
+            return
+        }
+        
+        // Accidental shots (pocket/floor shots)
+        if await isAccidentalShot(photo: photo, qualityMetrics: qualityMetrics) {
+            photo.cleanupCategory = .accidental
+            return
+        }
+    }
+    
+    private func isAccidentalShot(photo: PersistedPhoto, qualityMetrics: ImageAnalyzer.QualityMetrics) async -> Bool {
+        guard photo.mediaTypeRaw == "image" else { return false }
+        
+        // Very dark with no faces
+        if let exposure = photo.exposureScore, exposure < 0.05 {
+            if let faces = photo.facesDetected, faces == 0 {
+                return true
+            }
+        }
+        
+        // Very blurry with no content
+        if let sharpness = photo.sharpnessScore, sharpness < 0.1 {
+            if let faces = photo.facesDetected, faces == 0 {
+                if let detail = photo.detailScore, detail < 0.1 {
+                    return true
+                }
+            }
+        }
+        
+        // Extreme tilt (pocket shot indicator)
+        if let tilt = photo.deviceTilt {
+            // Unusual angles suggest accidental capture
+            if abs(tilt) > 60 || abs(tilt - 180) < 30 {
+                if let detail = photo.detailScore, detail < 0.2 {
+                    if let faces = photo.facesDetected, faces == 0 {
+                        return true
+                    }
+                }
+            }
+        }
+        
+        return false
+    }
+    
+    // MARK: - Duplicate Detection
+    
+    func detectDuplicates() async {
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.analysisCompleted && $0.imageFeaturePrintData != nil }
+        )
+        
+        do {
+            var photos = try modelContext.fetch(descriptor)
+            photos.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
+            
+            guard photos.count > 1 else { return }
+            
+            var processedIds: Set<String> = []
+            var groupId = 0
+            
+            for (i, photo) in photos.enumerated() {
+                if processedIds.contains(photo.id) { continue }
+                guard let featurePrint1 = photo.imageFeaturePrintData else { continue }
+                
+                var duplicateGroup: [PersistedPhoto] = [photo]
+                
+                for j in (i + 1)..<photos.count {
+                    let otherPhoto = photos[j]
+                    if processedIds.contains(otherPhoto.id) { continue }
+                    guard let featurePrint2 = otherPhoto.imageFeaturePrintData else { continue }
+                    
+                    let distance = await imageAnalyzer.compareFeaturePrints(featurePrint1, featurePrint2)
+                    
+                    // Near-duplicate threshold
+                    if let dist = distance, dist < 0.15 {
+                        duplicateGroup.append(otherPhoto)
+                    }
+                }
+                
+                if duplicateGroup.count > 1 {
+                    let currentGroupId = "dup_\(groupId)"
+                    groupId += 1
+                    
+                    // Find the best photo in the group
+                    let bestPhoto = selectBestPhoto(from: duplicateGroup)
+                    
+                    for dupPhoto in duplicateGroup {
+                        processedIds.insert(dupPhoto.id)
+                        dupPhoto.duplicateGroupId = currentGroupId
+                        dupPhoto.isBestInGroup = (dupPhoto.id == bestPhoto.id)
+                        
+                        if dupPhoto.id != bestPhoto.id {
+                            dupPhoto.cleanupCategory = .nearDuplicate
+                        }
+                    }
+                }
+            }
+            
+            try? modelContext.save()
+            
+        } catch {
+            print("Error detecting duplicates: \(error)")
+        }
+    }
+    
+    private func selectBestPhoto(from photos: [PersistedPhoto]) -> PersistedPhoto {
+        // Score each photo based on multiple criteria
+        var scores: [(PersistedPhoto, Double)] = []
+        
+        for photo in photos {
+            var score: Double = 0
+            
+            // Sharpness is most important
+            if let sharpness = photo.sharpnessScore {
+                score += sharpness * 40
+            }
+            
+            // Good exposure
+            if let exposure = photo.exposureScore {
+                let exposureScore = 1.0 - abs(exposure - 0.5) * 2
+                score += exposureScore * 20
+            }
+            
+            // Faces with eyes open
+            if let facesOpen = photo.facesOpenScore {
+                score += facesOpen * 30
+            }
+            
+            // Has faces
+            if let faces = photo.facesDetected, faces > 0 {
+                score += 10
+            }
+            
+            // Represents burst (already selected as best)
+            if photo.representsBurst {
+                score += 5
+            }
+            
+            scores.append((photo, score))
+        }
+        
+        return scores.max(by: { $0.1 < $1.1 })?.0 ?? photos[0]
     }
     
     // MARK: - Helpers
@@ -160,55 +413,70 @@ final class ImageAnalyzer: Sendable {
     struct QualityMetrics: Sendable {
         let sharpness: Double
         let exposure: Double
+        let detail: Double
+        let tilt: Double?
     }
     
     struct TextAnalysis: Sendable {
         let hasText: Bool
         let isDocument: Bool
+        let isReceipt: Bool
         let detectedText: String?
+    }
+    
+    struct LabelResult: Sendable {
+        let label: String
+        let confidence: Float
+    }
+    
+    struct BarcodeResult: Sendable {
+        let hasBarcode: Bool
+        let hasQR: Bool
+        let barcodeTypes: [String]
     }
     
     func analyzeQuality(image: UIImage) async -> QualityMetrics {
         guard let ciImage = CIImage(image: image) else {
-            return QualityMetrics(sharpness: 0.5, exposure: 0.5)
+            return QualityMetrics(sharpness: 0.5, exposure: 0.5, detail: 0.5, tilt: nil)
         }
         
-        let sharpness = calculateSharpness(ciImage)
+        let sharpness = calculateLaplacianVariance(ciImage)
         let exposure = calculateExposure(ciImage)
+        let detail = calculateDetailScore(ciImage)
+        let tilt = extractDeviceTilt(from: image)
         
-        return QualityMetrics(sharpness: sharpness, exposure: exposure)
+        return QualityMetrics(sharpness: sharpness, exposure: exposure, detail: detail, tilt: tilt)
     }
     
-    private func calculateSharpness(_ image: CIImage) -> Double {
+    private func calculateLaplacianVariance(_ image: CIImage) -> Double {
         let context = CIContext()
         
-        // Use edge detection as a proxy for sharpness
-        guard let sobelFilter = CIFilter(name: "CIConvolution3X3") else { return 0.5 }
+        // Laplacian kernel for blur detection
+        guard let laplacianFilter = CIFilter(name: "CIConvolution3X3") else { return 0.5 }
         
-        // Sobel kernel for edge detection (horizontal)
-        let sobelKernel: [CGFloat] = [
-            -1, 0, 1,
-            -2, 0, 2,
-            -1, 0, 1
+        let laplacianKernel: [CGFloat] = [
+            0,  1, 0,
+            1, -4, 1,
+            0,  1, 0
         ]
         
-        sobelFilter.setValue(image, forKey: kCIInputImageKey)
-        sobelFilter.setValue(CIVector(values: sobelKernel, count: 9), forKey: "inputWeights")
-        sobelFilter.setValue(0, forKey: "inputBias")
+        laplacianFilter.setValue(image, forKey: kCIInputImageKey)
+        laplacianFilter.setValue(CIVector(values: laplacianKernel, count: 9), forKey: "inputWeights")
+        laplacianFilter.setValue(0, forKey: "inputBias")
         
-        guard let output = sobelFilter.outputImage else { return 0.5 }
-        
-        // Calculate statistics on the edge-detected image
-        guard let statsFilter = CIFilter(name: "CIAreaAverage") else { return 0.5 }
+        guard let output = laplacianFilter.outputImage else { return 0.5 }
         
         let extent = output.extent
         guard extent.width > 0 && extent.height > 0 && !extent.isInfinite else { return 0.5 }
         
+        // Calculate variance of Laplacian
+        guard let statsFilter = CIFilter(name: "CIAreaAverage") else { return 0.5 }
+        
         let sampleRect = CGRect(
-            x: extent.midX - 100,
-            y: extent.midY - 100,
-            width: 200,
-            height: 200
+            x: extent.midX - 150,
+            y: extent.midY - 150,
+            width: 300,
+            height: 300
         ).intersection(extent)
         
         guard !sampleRect.isEmpty else { return 0.5 }
@@ -228,9 +496,9 @@ final class ImageAnalyzer: Sendable {
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
         
-        // Higher edge values = sharper image
-        let edgeStrength = Double(pixel[0]) / 255.0
-        return min(max(edgeStrength * 3, 0), 1) // Scale and clamp
+        // Higher variance = sharper image
+        let variance = Double(pixel[0]) / 255.0
+        return min(max(variance * 4, 0), 1)
     }
     
     private func calculateExposure(_ image: CIImage) -> Double {
@@ -263,16 +531,75 @@ final class ImageAnalyzer: Sendable {
         return luminance
     }
     
+    private func calculateDetailScore(_ image: CIImage) -> Double {
+        let context = CIContext()
+        
+        // Use histogram to measure detail/variation
+        guard let histogramFilter = CIFilter(name: "CIAreaHistogram") else { return 0.5 }
+        
+        let extent = image.extent
+        guard extent.width > 0 && extent.height > 0 && !extent.isInfinite else { return 0.5 }
+        
+        let sampleRect = CGRect(
+            x: extent.midX - 200,
+            y: extent.midY - 200,
+            width: 400,
+            height: 400
+        ).intersection(extent)
+        
+        guard !sampleRect.isEmpty else { return 0.5 }
+        
+        histogramFilter.setValue(image, forKey: kCIInputImageKey)
+        histogramFilter.setValue(CIVector(cgRect: sampleRect), forKey: kCIInputExtentKey)
+        histogramFilter.setValue(64, forKey: "inputCount")
+        histogramFilter.setValue(1.0, forKey: "inputScale")
+        
+        guard let output = histogramFilter.outputImage else { return 0.5 }
+        
+        var histogramData = [UInt8](repeating: 0, count: 64 * 4)
+        context.render(
+            output,
+            toBitmap: &histogramData,
+            rowBytes: 64 * 4,
+            bounds: CGRect(x: 0, y: 0, width: 64, height: 1),
+            format: .RGBA8,
+            colorSpace: CGColorSpaceCreateDeviceRGB()
+        )
+        
+        // Calculate entropy as a measure of detail
+        var nonZeroCount = 0
+        for i in stride(from: 0, to: histogramData.count, by: 4) {
+            if histogramData[i] > 5 {
+                nonZeroCount += 1
+            }
+        }
+        
+        return Double(nonZeroCount) / 64.0
+    }
+    
+    private func extractDeviceTilt(from image: UIImage) -> Double? {
+        guard let cgImage = image.cgImage,
+              let metadata = cgImage.properties(using: nil) else { return nil }
+        
+        // Try to extract EXIF orientation/tilt data
+        if let exif = metadata[kCGImagePropertyExifDictionary as String] as? [String: Any] {
+            // Device orientation data if available
+            return nil
+        }
+        
+        return nil
+    }
+    
     func analyzeText(image: UIImage) async -> TextAnalysis {
         guard let cgImage = image.cgImage else {
-            return TextAnalysis(hasText: false, isDocument: false, detectedText: nil)
+            return TextAnalysis(hasText: false, isDocument: false, isReceipt: false, detectedText: nil)
         }
         
         return await withCheckedContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 guard let observations = request.results as? [VNRecognizedTextObservation],
                       error == nil else {
-                    continuation.resume(returning: TextAnalysis(hasText: false, isDocument: false, detectedText: nil))
+                    continuation.resume(returning: TextAnalysis(hasText: false, isDocument: false, isReceipt: false, detectedText: nil))
                     return
                 }
                 
@@ -284,22 +611,128 @@ final class ImageAnalyzer: Sendable {
                     .compactMap { $0.topCandidates(1).first?.string }
                     .joined(separator: "\n")
                 
+                // Check for receipt patterns
+                let isReceipt = self.detectReceiptPattern(in: allText)
+                
                 continuation.resume(returning: TextAnalysis(
                     hasText: hasText,
                     isDocument: isDocument,
-                    detectedText: allText.isEmpty ? nil : allText
+                    isReceipt: isReceipt,
+                    detectedText: allText.isEmpty ? nil : String(allText.prefix(2000))
                 ))
             }
             
-            request.recognitionLevel = .fast
-            request.usesLanguageCorrection = false
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["es", "en"]
+            request.usesLanguageCorrection = true
             
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             
             do {
                 try handler.perform([request])
             } catch {
-                continuation.resume(returning: TextAnalysis(hasText: false, isDocument: false, detectedText: nil))
+                continuation.resume(returning: TextAnalysis(hasText: false, isDocument: false, isReceipt: false, detectedText: nil))
+            }
+        }
+    }
+    
+    private func detectReceiptPattern(in text: String) -> Bool {
+        let lowercased = text.lowercased()
+        
+        // Common receipt indicators
+        let receiptPatterns = [
+            "total", "subtotal", "iva", "descuento",
+            "factura", "ticket", "comprobante", "recibo",
+            "efectivo", "tarjeta", "cambio", "vuelto",
+            "precio", "cant", "cantidad", "unidad",
+            "$", "ars", "usd", "pesos",
+            "fecha:", "hora:", "cuit:", "sucursal"
+        ]
+        
+        var matches = 0
+        for pattern in receiptPatterns {
+            if lowercased.contains(pattern) {
+                matches += 1
+            }
+        }
+        
+        // Also check for price patterns like "$123.45" or "123,45"
+        let priceRegex = try? NSRegularExpression(pattern: "\\$?\\d+[,.]\\d{2}", options: [])
+        let priceMatches = priceRegex?.numberOfMatches(in: text, options: [], range: NSRange(text.startIndex..., in: text)) ?? 0
+        
+        return matches >= 3 || (matches >= 2 && priceMatches >= 2)
+    }
+    
+    func classifyImage(image: UIImage) async -> [LabelResult] {
+        guard let cgImage = image.cgImage else { return [] }
+        
+        return await withCheckedContinuation { continuation in
+            var hasResumed = false
+            let request = VNClassifyImageRequest { request, error in
+                guard !hasResumed else { return }
+                guard let observations = request.results as? [VNClassificationObservation],
+                      error == nil else {
+                    hasResumed = true
+                    continuation.resume(returning: [])
+                    return
+                }
+                
+                // Filter to high-confidence labels
+                let topLabels = observations
+                    .filter { $0.confidence > 0.3 }
+                    .prefix(10)
+                    .map { LabelResult(label: $0.identifier, confidence: $0.confidence) }
+                
+                hasResumed = true
+                continuation.resume(returning: Array(topLabels))
+            }
+            
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            
+            do {
+                try handler.perform([request])
+            } catch {
+                if !hasResumed {
+                    hasResumed = true
+                    continuation.resume(returning: [])
+                }
+            }
+        }
+    }
+    
+    func detectBarcodes(image: UIImage) async -> BarcodeResult {
+        guard let cgImage = image.cgImage else {
+            return BarcodeResult(hasBarcode: false, hasQR: false, barcodeTypes: [])
+        }
+        
+        return await withCheckedContinuation { continuation in
+            var hasResumed = false
+            let request = VNDetectBarcodesRequest { request, error in
+                guard !hasResumed else { return }
+                guard let observations = request.results as? [VNBarcodeObservation],
+                      error == nil else {
+                    hasResumed = true
+                    continuation.resume(returning: BarcodeResult(hasBarcode: false, hasQR: false, barcodeTypes: []))
+                    return
+                }
+                
+                let hasBarcode = !observations.isEmpty
+                let hasQR = observations.contains { $0.symbology == .qr }
+                let types = observations.map { $0.symbology.rawValue }
+                
+                hasResumed = true
+                continuation.resume(returning: BarcodeResult(hasBarcode: hasBarcode, hasQR: hasQR, barcodeTypes: types))
+            }
+            
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            
+            do {
+                try handler.perform([request])
+            } catch {
+                if !hasResumed {
+                    hasResumed = true
+                    continuation.resume(returning: BarcodeResult(hasBarcode: false, hasQR: false, barcodeTypes: []))
+                }
             }
         }
     }
@@ -318,7 +751,6 @@ final class ImageAnalyzer: Sendable {
                     return
                 }
                 
-                // Serialize the feature print to Data
                 do {
                     let data = try NSKeyedArchiver.archivedData(withRootObject: observation, requiringSecureCoding: true)
                     hasResumed = true
@@ -341,6 +773,21 @@ final class ImageAnalyzer: Sendable {
             }
         }
     }
+    
+    func compareFeaturePrints(_ data1: Data, _ data2: Data) async -> Float? {
+        do {
+            guard let fp1 = try NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data1),
+                  let fp2 = try NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data2) else {
+                return nil
+            }
+            
+            var distance: Float = 0
+            try fp1.computeDistance(&distance, to: fp2)
+            return distance
+        } catch {
+            return nil
+        }
+    }
 }
 
 // MARK: - Face Analyzer
@@ -360,7 +807,7 @@ final class FaceAnalyzer: Sendable {
             var hasResumed = false
             var faceDataArray: [FaceData] = []
             
-            let faceDetectionRequest = VNDetectFaceRectanglesRequest { request, error in
+            let faceDetectionRequest = VNDetectFaceCaptureQualityRequest { request, error in
                 guard !hasResumed else { return }
                 guard let observations = request.results as? [VNFaceObservation],
                       error == nil else {
@@ -370,7 +817,8 @@ final class FaceAnalyzer: Sendable {
                 }
                 
                 for observation in observations {
-                    let quality = Double(observation.confidence)
+                    // Use face capture quality as quality score
+                    let quality = Double(observation.faceCaptureQuality ?? observation.confidence)
                     
                     let faceData = FaceData(
                         boundingBox: observation.boundingBox,

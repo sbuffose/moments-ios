@@ -38,17 +38,24 @@ struct MainTabView: View {
     
     var body: some View {
         TabView(selection: $appState.selectedTab) {
-            TimelineView()
-                .tabItem {
-                    Label(String(localized: "tab_timeline"), systemImage: AppState.AppTab.timeline.icon)
-                }
-                .tag(AppState.AppTab.timeline)
-            
+            // Limpiar is now the hero/home tab
             CleanupView()
                 .tabItem {
                     Label(String(localized: "tab_cleanup"), systemImage: AppState.AppTab.cleanup.icon)
                 }
                 .tag(AppState.AppTab.cleanup)
+            
+            SearchView()
+                .tabItem {
+                    Label(String(localized: "tab_search"), systemImage: AppState.AppTab.search.icon)
+                }
+                .tag(AppState.AppTab.search)
+            
+            TimelineView()
+                .tabItem {
+                    Label(String(localized: "tab_timeline"), systemImage: AppState.AppTab.timeline.icon)
+                }
+                .tag(AppState.AppTab.timeline)
             
             PlacesView()
                 .tabItem {
@@ -61,12 +68,6 @@ struct MainTabView: View {
                     Label(String(localized: "tab_people"), systemImage: AppState.AppTab.people.icon)
                 }
                 .tag(AppState.AppTab.people)
-            
-            SettingsView()
-                .tabItem {
-                    Label(String(localized: "tab_settings"), systemImage: AppState.AppTab.settings.icon)
-                }
-                .tag(AppState.AppTab.settings)
         }
         .tint(.primary)
     }
@@ -100,6 +101,7 @@ struct OnboardingView: View {
             
             VStack(spacing: 12) {
                 FeatureRow(icon: "sparkles", title: "onboarding_feature_cleanup")
+                FeatureRow(icon: "magnifyingglass", title: "onboarding_feature_search")
                 FeatureRow(icon: "calendar", title: "onboarding_feature_timeline")
                 FeatureRow(icon: "map", title: "onboarding_feature_places")
                 FeatureRow(icon: "person.2", title: "onboarding_feature_people")
