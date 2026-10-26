@@ -401,6 +401,7 @@ struct MomentsChip: View {
             )
             .cornerRadius(20)
         }
+        .accessibilityIdentifier(label)
         .buttonStyle(.plain)
     }
 }

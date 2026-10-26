@@ -189,6 +189,7 @@ jobs:
             DEVICE_ID=$(xcrun simctl create "iPhone 16 Test" "iPhone 16")
           fi
           
+          echo "DEVICE_ID=$DEVICE_ID" >> $GITHUB_ENV
           echo "Using simulator: $DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
           
@@ -227,8 +228,130 @@ jobs:
             
             exit 1
           fi
+
+      - name: Generate and Seed Test Photos
+        run: |
+          echo "Generating test photos..."
+          mkdir -p "$RUNNER_TEMP/test_photos"
           
-          # Shutdown simulator
+          # Generate varied test images using sips and ImageMagick-like operations
+          # Since swift scripts may not have access to AppKit on CI, we'll use simpler methods
+          
+          # Create screenshots (PNG, typical iPhone size)
+          for i in $(seq 1 20); do
+            convert -size 1170x2532 xc:"#$(printf '%06X' $((RANDOM * RANDOM % 16777215)))" \
+              -gravity center -pointsize 72 -fill white -annotate 0 "Screenshot $i" \
+              "$RUNNER_TEMP/test_photos/screenshot_$(printf '%03d' $i).png" 2>/dev/null || \
+            sips -z 2532 1170 -s format png /System/Library/Desktop\ Pictures/*.heic -o "$RUNNER_TEMP/test_photos/screenshot_$(printf '%03d' $i).png" 2>/dev/null || \
+            # Fallback: create with sips from a solid color
+            printf '\x89PNG\r\n\x1a\n' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%03d' $i).png"
+          done
+          
+          # Create test images using built-in macOS tools
+          # Use screencapture or Preview to create test images
+          for i in $(seq 1 150); do
+            # Create simple colored JPEG files
+            FILE="$RUNNER_TEMP/test_photos/test_$(printf '%03d' $i).jpg"
+            
+            # Use sips to create from system images or create minimal valid JPEG
+            if [ -f "/System/Library/Desktop Pictures/Solid Colors/Black.png" ]; then
+              cp "/System/Library/Desktop Pictures/Solid Colors/Black.png" "$FILE.tmp"
+              sips -s format jpeg "$FILE.tmp" --out "$FILE" 2>/dev/null || true
+              rm -f "$FILE.tmp"
+            fi
+            
+            # If no image yet, create minimal JPEG
+            if [ ! -f "$FILE" ] || [ ! -s "$FILE" ]; then
+              # Minimal valid 1x1 JPEG
+              printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04\x04\x00\x00\x01}\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br\x82\t\n\x16\x17\x18\x19\x1a%&\x27()*456789:CDEFGHIJSTUVWXYZcdefghijstuvwxyz\x83\x84\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$FILE"
+            fi
+          done
+          
+          echo "Created $(ls -1 $RUNNER_TEMP/test_photos/ | wc -l) test photos"
+          
+          # Add photos to simulator
+          echo "Adding photos to simulator..."
+          xcrun simctl addmedia "$DEVICE_ID" "$RUNNER_TEMP/test_photos"/* 2>/dev/null || true
+          
+          # Grant photo library permission
+          echo "Granting photo permissions..."
+          xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
+          xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
+          
+          echo "✓ Test photos seeded and permissions granted"
+
+      - name: Run UI Tests
+        id: ui_tests
+        continue-on-error: true
+        run: |
+          # Create screenshots directory
+          mkdir -p "$RUNNER_TEMP/screenshots"
+          
+          echo "Running UI tests..."
+          xcodebuild test \
+            -project Moments.xcodeproj \
+            -scheme Moments \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -testPlan MomentsUITests \
+            -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/ui_test_output.log" || true
+          
+          # Extract test results
+          echo "=== UI Test Summary ==="
+          grep -E "(Test Suite|Test Case|passed|failed)" "$RUNNER_TEMP/ui_test_output.log" | tail -50
+
+      - name: Extract Screenshots from Test Results
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/screenshots"
+          
+          # Extract screenshots from xcresult bundle
+          if [ -d "$RUNNER_TEMP/TestResults.xcresult" ]; then
+            echo "Extracting screenshots from test results..."
+            
+            # Use xcresulttool to extract attachments
+            xcrun xcresulttool get --path "$RUNNER_TEMP/TestResults.xcresult" \
+              --format json > "$RUNNER_TEMP/test_results.json" 2>/dev/null || true
+            
+            # Try to export screenshots using xcparse if available
+            if command -v xcparse &> /dev/null; then
+              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" || true
+            fi
+            
+            # Fallback: manually capture current simulator state
+            echo "Capturing simulator screenshots..."
+            xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/final_state.png" 2>/dev/null || true
+          fi
+          
+          echo "Screenshots captured: $(ls -1 $RUNNER_TEMP/screenshots/ 2>/dev/null | wc -l)"
+
+      - name: Run MomentsEngine Unit Tests
+        continue-on-error: true
+        run: |
+          echo "Running MomentsEngine unit tests..."
+          cd MomentsEngine
+          swift test 2>&1 | tee "$RUNNER_TEMP/unit_test_output.log" || true
+          
+          echo "=== Unit Test Summary ==="
+          grep -E "(Test Suite|Test Case|passed|failed|error)" "$RUNNER_TEMP/unit_test_output.log" | tail -30
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TestResults-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/TestResults.xcresult
+            ${{ runner.temp }}/screenshots/
+            ${{ runner.temp }}/ui_test_output.log
+            ${{ runner.temp }}/unit_test_output.log
+          retention-days: 14
+
+      - name: Shutdown Simulator
+        if: always()
+        run: |
           xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
 
       - name: Create ExportOptions.plist

@@ -90,11 +90,46 @@ targets:
     entitlements:
       path: Moments/Moments.entitlements
 
+  MomentsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: MomentsUITests
+        type: group
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments.uitests
+        DEVELOPMENT_TEAM: R56Y2GZ2M9
+        CODE_SIGN_STYLE: Automatic
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+    dependencies:
+      - target: Moments
+
+  MomentsTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: MomentsTests
+        type: group
+        optional: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments.tests
+        DEVELOPMENT_TEAM: R56Y2GZ2M9
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: Moments
+
 schemes:
   Moments:
     build:
       targets:
         Moments: all
+        MomentsUITests: [test]
+        MomentsTests: [test]
     run:
       config: Debug
       environmentVariables:
@@ -102,6 +137,13 @@ schemes:
           value: "YES"
     test:
       config: Debug
+      gatherCoverageData: true
+      targets:
+        - name: MomentsUITests
+          parallelizable: false
+          randomExecutionOrder: false
+        - name: MomentsTests
+          parallelizable: true
     profile:
       config: Release
     analyze:

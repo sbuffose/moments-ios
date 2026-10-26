@@ -42,32 +42,37 @@ struct MainTabView: View {
             // Home feed with proactive cards
             HomeView()
                 .tabItem {
-                    Label(String(localized: "tab_home"), systemImage: AppState.AppTab.home.icon)
+                    Label("Inicio", systemImage: AppState.AppTab.home.icon)
                 }
                 .tag(AppState.AppTab.home)
+                .accessibilityIdentifier("home_tab")
             
             // Conversational assistant
             AssistantView()
                 .tabItem {
-                    Label(String(localized: "tab_assistant"), systemImage: AppState.AppTab.assistant.icon)
+                    Label("Asistente", systemImage: AppState.AppTab.assistant.icon)
                 }
                 .tag(AppState.AppTab.assistant)
+                .accessibilityIdentifier("assistant_tab")
             
             // Moments/Timeline
             MomentsListView()
                 .tabItem {
-                    Label(String(localized: "tab_moments"), systemImage: AppState.AppTab.moments.icon)
+                    Label("Momentos", systemImage: AppState.AppTab.moments.icon)
                 }
                 .tag(AppState.AppTab.moments)
+                .accessibilityIdentifier("moments_tab")
             
             // Settings
             SettingsView()
                 .tabItem {
-                    Label(String(localized: "tab_settings"), systemImage: AppState.AppTab.settings.icon)
+                    Label("Ajustes", systemImage: AppState.AppTab.settings.icon)
                 }
                 .tag(AppState.AppTab.settings)
+                .accessibilityIdentifier("settings_tab")
         }
         .tint(MomentsColors.accent)
+        .accessibilityIdentifier("main_tab_view")
     }
 }
 
@@ -189,7 +194,7 @@ struct OnboardingView: View {
                             currentPage += 1
                         }
                     } label: {
-                        Text("onboarding_continue")
+                        Text("Continuar")
                             .font(.headline)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -197,16 +202,18 @@ struct OnboardingView: View {
                             .background(Color.accentColor)
                             .cornerRadius(14)
                     }
+                    .accessibilityIdentifier("onboarding_continue_button")
                     
                     Button {
                         withAnimation {
                             currentPage = 2
                         }
                     } label: {
-                        Text("onboarding_skip")
+                        Text("Saltar")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
+                    .accessibilityIdentifier("onboarding_skip_button")
                 } else {
                     Button {
                         requestAccess()
@@ -220,7 +227,7 @@ struct OnboardingView: View {
                         } else {
                             HStack {
                                 Image(systemName: "photo.on.rectangle.angled")
-                                Text("onboarding_allow_access")
+                                Text("Comenzar")
                             }
                             .font(.headline)
                             .foregroundStyle(.white)
@@ -230,6 +237,7 @@ struct OnboardingView: View {
                             .cornerRadius(14)
                         }
                     }
+                    .accessibilityIdentifier("onboarding_start_button")
                     .disabled(isRequesting)
                     
                     Text("onboarding_privacy_footer")
