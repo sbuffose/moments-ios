@@ -81,7 +81,7 @@ struct SearchView: View {
                     showFilters.toggle()
                 } label: {
                     Image(systemName: selectedFilters.isEmpty ? "slider.horizontal.3" : "slider.horizontal.3")
-                        .foregroundStyle(selectedFilters.isEmpty ? .secondary : .tint)
+                        .foregroundColor(selectedFilters.isEmpty ? .secondary : .accentColor)
                 }
             }
             .padding(.horizontal)
@@ -297,7 +297,7 @@ struct SearchView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 2)], spacing: 2) {
                     ForEach(viewModel.results) { result in
                         NavigationLink {
-                            PhotoDetailView(photo: result.photo)
+                            SearchPhotoDetailView(photo: result.photo)
                         } label: {
                             SearchResultCell(result: result)
                         }
@@ -412,27 +412,44 @@ struct SearchSuggestionButton: View {
     }
 }
 
-// MARK: - Photo Detail View (placeholder)
+// MARK: - Search Photo Detail View
 
-struct PhotoDetailView: View {
+struct SearchPhotoDetailView: View {
     let photo: PersistedPhoto
     
     var body: some View {
-        VStack {
-            AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 600, height: 600))
-                .aspectRatio(contentMode: .fit)
-            
-            if let date = photo.creationDate {
-                Text(date, style: .date)
-                    .foregroundStyle(.secondary)
-            }
-            
-            if let placeName = photo.placeName {
-                Label(placeName, systemImage: "mappin")
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(spacing: 16) {
+                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 600, height: 600))
+                    .aspectRatio(contentMode: .fit)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    if let date = photo.creationDate {
+                        Label(date.formatted(date: .long, time: .shortened), systemImage: "calendar")
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    if let placeName = photo.placeName {
+                        Label(placeName, systemImage: "mappin")
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    if let labels = photo.visionLabels {
+                        let labelArray = labels.components(separatedBy: "|").prefix(5)
+                        HStack {
+                            Image(systemName: "tag")
+                                .foregroundStyle(.secondary)
+                            Text(labelArray.joined(separator: ", "))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
             }
         }
-        .navigationTitle("Foto")
+        .navigationTitle("search_photo_detail")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

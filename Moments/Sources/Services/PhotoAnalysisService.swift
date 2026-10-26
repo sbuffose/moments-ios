@@ -578,15 +578,9 @@ final class ImageAnalyzer: Sendable {
     }
     
     private func extractDeviceTilt(from image: UIImage) -> Double? {
-        guard let cgImage = image.cgImage,
-              let metadata = cgImage.properties(using: nil) else { return nil }
-        
-        // Try to extract EXIF orientation/tilt data
-        if let exif = metadata[kCGImagePropertyExifDictionary as String] as? [String: Any] {
-            // Device orientation data if available
-            return nil
-        }
-        
+        // Device tilt is not directly available from UIImage
+        // Would need to be captured at photo time via CMMotionManager
+        // Return nil for now - can be enhanced with Core Motion data in future
         return nil
     }
     

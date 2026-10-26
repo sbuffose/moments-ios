@@ -173,3 +173,6 @@
 /* Battery/Processing */
 "processing_paused_battery" = "Analysis paused due to low battery";
 "processing_paused_low_power" = "Analysis paused due to Low Power Mode";
+
+/* Photo Detail */
+"search_photo_detail" = "Detail";
