@@ -349,6 +349,7 @@ final class PersistedPhoto {
     var hasText: Bool?
     var isDocument: Bool?
     var imageFeaturePrintData: Data?
+    var imageDHash: Int64?
     var analysisCompleted: Bool
     var lastAnalyzedAt: Date?
     
@@ -1172,6 +1173,7 @@ final class SimilarGroup {
     var timeWindowStart: Date?
     var timeWindowEnd: Date?
     var averageSimilarity: Double
+    var isExactDuplicate: Bool
     
     init(
         id: String = UUID().uuidString,
@@ -1187,6 +1189,7 @@ final class SimilarGroup {
         self.createdAt = Date()
         self.lastUpdatedAt = Date()
         self.averageSimilarity = 0.0
+        self.isExactDuplicate = false
     }
     
     var photoIds: [String] {

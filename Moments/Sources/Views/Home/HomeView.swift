@@ -252,7 +252,7 @@ struct FeedCardView: View {
         case .onThisDay(let photos):
             PhotoGridCard(
                 title: "Hace un año hoy...",
-                subtitle: "\(photos.count) fotos de esta fecha",
+                subtitle: "\(MomentsPluralization.photos(photos.count)) de esta fecha",
                 photos: photos,
                 action: { viewModel.showOnThisDay() }
             )

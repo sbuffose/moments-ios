@@ -168,6 +168,7 @@ class PhotoAnalysisService: ObservableObject {
         let labels = await imageAnalyzer.classifyImage(image: analysisImage)
         let barcodeResult = await imageAnalyzer.detectBarcodes(image: analysisImage)
         let featurePrint = await imageAnalyzer.generateFeaturePrint(image: analysisImage)
+        let dHash = imageAnalyzer.generateDHash(image: analysisImage)
         let faces = await faceAnalyzer.detectFaces(in: analysisImage, photoId: photo.id)
         
         let resourceInfo = await getResourceInfo(for: asset)
@@ -203,6 +204,10 @@ class PhotoAnalysisService: ObservableObject {
             
             if let fp = featurePrint {
                 photo.imageFeaturePrintData = fp
+            }
+            
+            if let hash = dHash {
+                photo.imageDHash = Int64(bitPattern: hash)
             }
             
             photo.facesDetected = faces.count
@@ -515,8 +520,93 @@ class PhotoAnalysisService: ObservableObject {
             
             try? modelContext.save()
             
+            // Run exact duplicate detection with dHash (across any time window)
+            await detectExactDuplicatesWithDHash()
+            
         } catch {
             print("Error detecting duplicates: \(error)")
+        }
+    }
+    
+    // MARK: - Exact Duplicate Detection with dHash
+    
+    private func detectExactDuplicatesWithDHash() async {
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.analysisCompleted && $0.imageDHash != nil && $0.duplicateGroupId == nil }
+        )
+        
+        do {
+            var photos = try modelContext.fetch(descriptor)
+            photos.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
+            
+            guard photos.count > 1 else { return }
+            
+            var processedIds: Set<String> = []
+            var exactDuplicateGroupId = 0
+            
+            for (i, photo) in photos.enumerated() {
+                if Task.isCancelled { break }
+                if processedIds.contains(photo.id) { continue }
+                guard let hash1 = photo.imageDHash else { continue }
+                
+                var exactGroup: [PersistedPhoto] = [photo]
+                
+                for j in (i + 1)..<photos.count {
+                    let otherPhoto = photos[j]
+                    if processedIds.contains(otherPhoto.id) { continue }
+                    guard let hash2 = otherPhoto.imageDHash else { continue }
+                    
+                    // Skip Live Photo paired videos
+                    if photo.isLivePhoto && otherPhoto.localIdentifier == photo.livePhotoVideoIdentifier {
+                        continue
+                    }
+                    if otherPhoto.isLivePhoto && photo.localIdentifier == otherPhoto.livePhotoVideoIdentifier {
+                        continue
+                    }
+                    
+                    // dHash comparison - threshold of 5 bits difference for exact copies
+                    let uint64Hash1 = UInt64(bitPattern: hash1)
+                    let uint64Hash2 = UInt64(bitPattern: hash2)
+                    
+                    if ImageAnalyzer.areDHashSimilar(uint64Hash1, uint64Hash2, threshold: 5) {
+                        exactGroup.append(otherPhoto)
+                    }
+                }
+                
+                if exactGroup.count > 1 {
+                    let currentGroupId = "exact_\(exactDuplicateGroupId)"
+                    exactDuplicateGroupId += 1
+                    
+                    let (bestPhoto, reasons) = selectBestPhotoWithReasons(from: exactGroup)
+                    
+                    let similarGroup = SimilarGroup(
+                        photoIds: exactGroup.map { $0.id },
+                        bestPhotoId: bestPhoto.id,
+                        bestShotReasons: reasons
+                    )
+                    similarGroup.timeWindowStart = exactGroup.compactMap { $0.creationDate }.min()
+                    similarGroup.timeWindowEnd = exactGroup.compactMap { $0.creationDate }.max()
+                    similarGroup.isExactDuplicate = true
+                    modelContext.insert(similarGroup)
+                    
+                    for dupPhoto in exactGroup {
+                        processedIds.insert(dupPhoto.id)
+                        dupPhoto.duplicateGroupId = currentGroupId
+                        dupPhoto.isBestInGroup = (dupPhoto.id == bestPhoto.id)
+                        dupPhoto.bestShotReasons = reasons.map { $0.rawValue }
+                        
+                        if dupPhoto.id != bestPhoto.id {
+                            dupPhoto.cleanupCategory = .duplicate
+                            dupPhoto.cleanupConfidenceTier = .veryLikely
+                        }
+                    }
+                }
+            }
+            
+            try? modelContext.save()
+            
+        } catch {
+            print("Error detecting exact duplicates with dHash: \(error)")
         }
     }
     
@@ -1076,6 +1166,93 @@ final class ImageAnalyzer: Sendable {
         } catch {
             return nil
         }
+    }
+    
+    // MARK: - dHash (Difference Hash) for Exact Duplicate Detection
+    
+    func generateDHash(image: UIImage) -> UInt64? {
+        guard let cgImage = image.cgImage else { return nil }
+        
+        let context = CIContext()
+        let ciImage = CIImage(cgImage: cgImage)
+        
+        guard let resizedImage = resizeForDHash(ciImage, context: context),
+              let grayscaleImage = convertToGrayscale(resizedImage, context: context) else {
+            return nil
+        }
+        
+        guard let pixelData = extractPixelData(from: grayscaleImage, context: context) else {
+            return nil
+        }
+        
+        return computeDHashFromPixels(pixelData)
+    }
+    
+    private func resizeForDHash(_ image: CIImage, context: CIContext) -> CIImage? {
+        let targetWidth: CGFloat = 9
+        let targetHeight: CGFloat = 8
+        
+        let extent = image.extent
+        guard extent.width > 0 && extent.height > 0 else { return nil }
+        
+        let scaleX = targetWidth / extent.width
+        let scaleY = targetHeight / extent.height
+        
+        return image.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+    }
+    
+    private func convertToGrayscale(_ image: CIImage, context: CIContext) -> CIImage? {
+        guard let filter = CIFilter(name: "CIColorControls") else { return nil }
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(0.0, forKey: kCIInputSaturationKey)
+        return filter.outputImage
+    }
+    
+    private func extractPixelData(from image: CIImage, context: CIContext) -> [UInt8]? {
+        let width = 9
+        let height = 8
+        var pixelData = [UInt8](repeating: 0, count: width * height)
+        
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        context.render(
+            image,
+            toBitmap: &pixelData,
+            rowBytes: width,
+            bounds: CGRect(x: 0, y: 0, width: width, height: height),
+            format: .L8,
+            colorSpace: colorSpace
+        )
+        
+        return pixelData
+    }
+    
+    private func computeDHashFromPixels(_ pixels: [UInt8]) -> UInt64 {
+        var hash: UInt64 = 0
+        let width = 9
+        let height = 8
+        
+        for y in 0..<height {
+            for x in 0..<(width - 1) {
+                let leftPixel = pixels[y * width + x]
+                let rightPixel = pixels[y * width + x + 1]
+                
+                if leftPixel > rightPixel {
+                    let bitPosition = y * 8 + x
+                    hash |= (1 << bitPosition)
+                }
+            }
+        }
+        
+        return hash
+    }
+    
+    static func hammingDistance(_ hash1: UInt64, _ hash2: UInt64) -> Int {
+        let xor = hash1 ^ hash2
+        return xor.nonzeroBitCount
+    }
+    
+    static func areDHashSimilar(_ hash1: UInt64, _ hash2: UInt64, threshold: Int = 5) -> Bool {
+        return hammingDistance(hash1, hash2) <= threshold
     }
 }
 

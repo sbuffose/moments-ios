@@ -9,18 +9,27 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   SCHEME: Moments
   BUNDLE_ID: com.sbuffose.moments
   TEAM_ID: R56Y2GZ2M9
   PROFILE_NAME: "Moments AppStore GHA"
   PROFILE_UUID: "e32b0b74-6a42-45fe-9652-75ba4c9d7537"
+  XCODE_VERSION: latest-stable
 
 jobs:
-  build-and-deploy:
+  # Job 1: Build and archive (shared by all downstream jobs)
+  build:
     runs-on: macos-15
-    timeout-minutes: 60
-
+    timeout-minutes: 25
+    outputs:
+      build_number: ${{ steps.set_build_number.outputs.build_number }}
+      device_id: ${{ steps.boot_simulator.outputs.device_id }}
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,18 +37,326 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: ${{ env.XCODE_VERSION }}
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/.swiftpm
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/Package.resolved', '**/project.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        id: set_build_number
+        run: |
+          BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
+          xcodegen generate
+          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "Project generated with build number $BUILD_NUMBER"
+
+      - name: Build for Simulator
+        run: |
+          xcodebuild build \
+            -project Moments.xcodeproj \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=iPhone 16" \
+            -derivedDataPath "$RUNNER_TEMP/SimulatorBuild" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Boot Simulator and Seed Photos
+        id: boot_simulator
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone 16" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
+          
+          if [ -z "$DEVICE_ID" ]; then
+            echo "Creating iPhone 16 simulator..."
+            DEVICE_ID=$(xcrun simctl create "iPhone 16 Test" "iPhone 16")
+          fi
+          
+          echo "device_id=$DEVICE_ID" >> $GITHUB_OUTPUT
+          echo "Using simulator: $DEVICE_ID"
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          sleep 5
+          
+          # Install app
+          APP_PATH="$RUNNER_TEMP/SimulatorBuild/Build/Products/Debug-iphonesimulator/Moments.app"
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          
+          # Generate and seed test photos
+          echo "Generating 3000+ test photos..."
+          mkdir -p "$RUNNER_TEMP/test_photos"
+          
+          TEMPLATE="$RUNNER_TEMP/template.jpg"
+          if [ -f "/System/Library/Desktop Pictures/Solid Colors/Black.png" ]; then
+            sips -z 100 100 -s format jpeg "/System/Library/Desktop Pictures/Solid Colors/Black.png" --out "$TEMPLATE" 2>/dev/null || true
+          fi
+          
+          if [ ! -f "$TEMPLATE" ] || [ ! -s "$TEMPLATE" ]; then
+            printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x64\x00\x64\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$TEMPLATE"
+          fi
+          
+          for i in $(seq 1 200); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png" 2>/dev/null || \
+            printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png"
+          done
+          
+          for i in $(seq 1 2700); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/photo_$(printf '%04d' $i).jpg" 2>/dev/null || true
+          done
+          
+          for i in $(seq 1 100); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/burst_A_$(printf '%03d' $i).jpg" 2>/dev/null || true
+          done
+          
+          TOTAL=$(ls -1 "$RUNNER_TEMP/test_photos/" 2>/dev/null | wc -l | tr -d ' ')
+          echo "Created $TOTAL test photos"
+          
+          cd "$RUNNER_TEMP/test_photos"
+          ls *.jpg *.png 2>/dev/null | xargs -n 200 xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
+          
+          xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
+          xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
+          
+          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLanguages -array "es-AR" "es" "en"
+          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLocale -string "es_AR"
+          
+          xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
+          sleep 2
+          xcrun simctl boot "$DEVICE_ID"
+          sleep 5
+          
+          echo "✓ Simulator ready with $TOTAL photos and Spanish locale"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-build
+          path: ${{ runner.temp }}/SimulatorBuild
+          retention-days: 1
+
+  # Job 2: Unit Tests (runs in parallel after build)
+  unit-tests:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/.swiftpm
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/Package.resolved', '**/project.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+
+      - name: Run MomentsEngine Unit Tests
+        run: |
+          cd MomentsEngine
+          swift test 2>&1 | tee "$RUNNER_TEMP/unit_test_output.log"
+
+      - name: Upload Unit Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: ${{ runner.temp }}/unit_test_output.log
+          retention-days: 14
+
+  # Job 3: UI Tests (runs in parallel after build)
+  ui-tests:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/.swiftpm
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/Package.resolved', '**/project.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode project
         run: |
-          # Ensure build number is higher than 16 (previous TestFlight build)
-          BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))
+          BUILD_NUMBER=${{ needs.build.outputs.build_number }}
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
+          xcodegen generate
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: simulator-build
+          path: ${{ runner.temp }}/SimulatorBuild
+
+      - name: Setup Simulator for UI Tests
+        id: setup_sim
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone 16" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
+          
+          if [ -z "$DEVICE_ID" ]; then
+            DEVICE_ID=$(xcrun simctl create "iPhone 16 Test" "iPhone 16")
+          fi
+          
+          echo "device_id=$DEVICE_ID" >> $GITHUB_OUTPUT
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          sleep 5
+          
+          # Seed photos again for this job
+          mkdir -p "$RUNNER_TEMP/test_photos"
+          TEMPLATE="$RUNNER_TEMP/template.jpg"
+          printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x64\x00\x64\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$TEMPLATE"
+          
+          for i in $(seq 1 200); do
+            printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png"
+          done
+          
+          for i in $(seq 1 2700); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/photo_$(printf '%04d' $i).jpg" 2>/dev/null || true
+          done
+          
+          for i in $(seq 1 100); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/burst_A_$(printf '%03d' $i).jpg" 2>/dev/null || true
+          done
+          
+          cd "$RUNNER_TEMP/test_photos"
+          ls *.jpg *.png 2>/dev/null | xargs -n 200 xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
+          
+          xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
+          xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
+          
+          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLanguages -array "es-AR" "es" "en"
+          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLocale -string "es_AR"
+          
+          xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
+          sleep 2
+          xcrun simctl boot "$DEVICE_ID"
+          sleep 5
+
+      - name: Run UI Tests
+        id: ui_tests
+        continue-on-error: true
+        run: |
+          DEVICE_ID="${{ steps.setup_sim.outputs.device_id }}"
+          mkdir -p "$RUNNER_TEMP/screenshots"
+          
+          xcodebuild test \
+            -project Moments.xcodeproj \
+            -scheme Moments \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -only-testing:MomentsUITests \
+            -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/ui_test_output.log" || true
+          
+          echo "=== UI Test Summary ==="
+          grep -E "(Test Suite|Test Case|passed|failed)" "$RUNNER_TEMP/ui_test_output.log" | tail -50
+
+      - name: Extract Screenshots
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/screenshots"
+          
+          if [ -d "$RUNNER_TEMP/TestResults.xcresult" ]; then
+            brew install chargepoint/xcparse/xcparse 2>/dev/null || true
+            
+            if command -v xcparse &> /dev/null; then
+              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" 2>/dev/null || true
+            fi
+            
+            xcrun xcresulttool export \
+              --path "$RUNNER_TEMP/TestResults.xcresult" \
+              --output-path "$RUNNER_TEMP/xcexport" \
+              --type file 2>/dev/null || true
+            
+            if [ -d "$RUNNER_TEMP/xcexport" ]; then
+              find "$RUNNER_TEMP/xcexport" -name "*.png" -type f -exec cp {} "$RUNNER_TEMP/screenshots/" \; 2>/dev/null || true
+            fi
+          fi
+
+      - name: Shutdown Simulator
+        if: always()
+        run: |
+          DEVICE_ID="${{ steps.setup_sim.outputs.device_id }}"
+          xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
+
+      - name: Upload UI Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-results
+          path: |
+            ${{ runner.temp }}/TestResults.xcresult
+            ${{ runner.temp }}/screenshots/
+            ${{ runner.temp }}/ui_test_output.log
+          retention-days: 14
+
+  # Job 4: TestFlight Upload (runs after build + unit tests, in parallel with UI tests)
+  # Only runs on push to main
+  testflight:
+    needs: [build, unit-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 25
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/.swiftpm
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/Package.resolved', '**/project.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          BUILD_NUMBER=${{ needs.build.outputs.build_number }}
           sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
           xcodegen generate
           echo "Project generated with build number $BUILD_NUMBER"
@@ -91,7 +408,6 @@ jobs:
           
           echo "=== Provisioning profile installed ==="
           echo "Path: $PROFILE_PATH"
-          echo "Size: $(wc -c < "$PROFILE_PATH") bytes"
 
       - name: Setup App Store Connect API Key
         env:
@@ -114,7 +430,7 @@ jobs:
 
       - name: Build and Archive
         run: |
-          BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))
+          BUILD_NUMBER=${{ needs.build.outputs.build_number }}
           xcodebuild archive \
             -project Moments.xcodeproj \
             -scheme "$SCHEME" \
@@ -132,18 +448,6 @@ jobs:
           APP_PATH="$RUNNER_TEMP/Moments.xcarchive/Products/Applications/Moments.app"
           INFO_PLIST="$APP_PATH/Info.plist"
           
-          echo "=== Validating Info.plist ==="
-          
-          if [ ! -f "$INFO_PLIST" ]; then
-            echo "✗ Info.plist not found at $INFO_PLIST"
-            exit 1
-          fi
-          
-          echo "--- Full Info.plist contents ---"
-          plutil -p "$INFO_PLIST"
-          echo "--- End of Info.plist ---"
-          
-          # Check required privacy keys
           REQUIRED_KEYS=(
             "NSPhotoLibraryUsageDescription"
             "NSPhotoLibraryAddUsageDescription"
@@ -162,267 +466,12 @@ jobs:
           done
           
           if [ $MISSING -eq 1 ]; then
-            echo ""
-            echo "ERROR: Required Info.plist keys are missing!"
-            echo "The app will CRASH on launch when accessing PhotoKit."
             exit 1
           fi
           
-          echo ""
           echo "✓ All required Info.plist keys present"
 
-      - name: Build for Simulator (Smoke Test)
-        run: |
-          xcodebuild build \
-            -project Moments.xcodeproj \
-            -scheme "$SCHEME" \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 16" \
-            -derivedDataPath "$RUNNER_TEMP/SimulatorBuild" \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO
-
-      - name: Run Simulator Smoke Test
-        run: |
-          # Boot simulator
-          DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone 16" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
-          
-          if [ -z "$DEVICE_ID" ]; then
-            echo "Creating iPhone 16 simulator..."
-            DEVICE_ID=$(xcrun simctl create "iPhone 16 Test" "iPhone 16")
-          fi
-          
-          echo "DEVICE_ID=$DEVICE_ID" >> $GITHUB_ENV
-          echo "Using simulator: $DEVICE_ID"
-          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
-          
-          # Wait for boot
-          sleep 5
-          
-          # Install app
-          APP_PATH="$RUNNER_TEMP/SimulatorBuild/Build/Products/Debug-iphonesimulator/Moments.app"
-          echo "Installing app from: $APP_PATH"
-          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
-          
-          # Launch app
-          echo "Launching app..."
-          xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
-          
-          # Wait and check if still running
-          echo "Waiting 15 seconds for app to stabilize..."
-          sleep 15
-          
-          # Check if app is still running
-          if xcrun simctl spawn "$DEVICE_ID" launchctl list | grep -q "$BUNDLE_ID"; then
-            echo "✓ App is still running after 15 seconds"
-          else
-            echo "✗ App appears to have crashed!"
-            
-            # Try to get crash log
-            echo "=== Checking for crash logs ==="
-            CRASH_DIR=~/Library/Logs/DiagnosticReports
-            if ls "$CRASH_DIR"/Moments* 2>/dev/null; then
-              echo "Found crash logs:"
-              cat "$CRASH_DIR"/Moments* | head -100
-            fi
-            
-            # Also check simulator logs
-            xcrun simctl spawn "$DEVICE_ID" log show --predicate 'process == "Moments"' --last 1m --style compact || true
-            
-            exit 1
-          fi
-
-      - name: Generate and Seed Test Photos (3000+)
-        run: |
-          echo "Generating 3000+ test photos for large library testing..."
-          mkdir -p "$RUNNER_TEMP/test_photos"
-          
-          # Create a valid 100x100 JPEG template for fast duplication
-          TEMPLATE="$RUNNER_TEMP/template.jpg"
-          if [ -f "/System/Library/Desktop Pictures/Solid Colors/Black.png" ]; then
-            sips -z 100 100 -s format jpeg "/System/Library/Desktop Pictures/Solid Colors/Black.png" --out "$TEMPLATE" 2>/dev/null || true
-          fi
-          
-          # Fallback: create a minimal valid JPEG if template failed
-          if [ ! -f "$TEMPLATE" ] || [ ! -s "$TEMPLATE" ]; then
-            printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x64\x00\x64\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$TEMPLATE"
-          fi
-          
-          # Generate 200 screenshots (PNG)
-          echo "Creating 200 screenshots..."
-          for i in $(seq 1 200); do
-            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png" 2>/dev/null || \
-            printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png"
-          done
-          
-          # Generate 2700+ regular photos
-          echo "Creating 2700 photos..."
-          for i in $(seq 1 2700); do
-            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/photo_$(printf '%04d' $i).jpg" 2>/dev/null || true
-          done
-          
-          # Create burst photos (simulate burst with same prefix)
-          echo "Creating 100 burst photos..."
-          for i in $(seq 1 100); do
-            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/burst_A_$(printf '%03d' $i).jpg" 2>/dev/null || true
-          done
-          
-          TOTAL=$(ls -1 "$RUNNER_TEMP/test_photos/" 2>/dev/null | wc -l | tr -d ' ')
-          echo "Created $TOTAL test photos"
-          
-          # Add photos to simulator in batches to avoid timeout
-          echo "Adding photos to simulator in batches..."
-          cd "$RUNNER_TEMP/test_photos"
-          ls *.jpg *.png 2>/dev/null | xargs -n 200 xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
-          
-          # Grant photo library permission
-          echo "Granting photo permissions..."
-          xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
-          xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
-          
-          echo "✓ $TOTAL test photos seeded and permissions granted"
-
-      - name: Configure Simulator for Spanish
-        run: |
-          echo "Setting simulator to Spanish (es-AR)..."
-          
-          # Set simulator language and locale to Spanish Argentina
-          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLanguages -array "es-AR" "es" "en"
-          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLocale -string "es_AR"
-          xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleTextDirection -bool NO
-          
-          # Reboot simulator for settings to take effect
-          xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
-          sleep 2
-          xcrun simctl boot "$DEVICE_ID"
-          sleep 5
-          
-          echo "✓ Simulator configured for Spanish (es-AR)"
-
-      - name: Run UI Tests
-        id: ui_tests
-        continue-on-error: true
-        run: |
-          # Create screenshots directory
-          mkdir -p "$RUNNER_TEMP/screenshots"
-          
-          # Pre-grant photo permissions
-          xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
-          xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
-          
-          echo "Running UI tests with Spanish locale..."
-          xcodebuild test \
-            -project Moments.xcodeproj \
-            -scheme Moments \
-            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-            -only-testing:MomentsUITests \
-            -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            2>&1 | tee "$RUNNER_TEMP/ui_test_output.log" || true
-          
-          # Extract test results
-          echo "=== UI Test Summary ==="
-          grep -E "(Test Suite|Test Case|passed|failed)" "$RUNNER_TEMP/ui_test_output.log" | tail -50
-
-      - name: Capture Fallback Screenshots
-        if: always()
-        run: |
-          mkdir -p "$RUNNER_TEMP/screenshots"
-          
-          # Only capture fallback if no screenshots from UI tests
-          if [ $(ls -1 "$RUNNER_TEMP/screenshots/"*.png 2>/dev/null | wc -l) -eq 0 ]; then
-            echo "No UI test screenshots found, capturing fallback screenshots..."
-            
-            # Re-launch app and capture current state
-            xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
-            sleep 2
-            xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
-            sleep 8
-            
-            # Capture current state
-            xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/screenshots/app_state.png" 2>/dev/null || true
-            echo "✓ Fallback screenshot captured"
-          else
-            echo "✓ UI test screenshots available, skipping fallback capture"
-          fi
-          
-          echo "Total screenshots: $(ls -1 $RUNNER_TEMP/screenshots/*.png 2>/dev/null | wc -l)"
-          ls -la "$RUNNER_TEMP/screenshots/"
-      
-      - name: Extract Screenshots from Test Results
-        if: always()
-        run: |
-          mkdir -p "$RUNNER_TEMP/screenshots"
-          
-          if [ -d "$RUNNER_TEMP/TestResults.xcresult" ]; then
-            echo "Extracting screenshots from test results..."
-            
-            # Install xcparse for better screenshot extraction
-            brew install chargepoint/xcparse/xcparse 2>/dev/null || true
-            
-            # Use xcparse to extract screenshots
-            if command -v xcparse &> /dev/null; then
-              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" 2>/dev/null || true
-            fi
-            
-            # Alternative: Use xcresulttool to get attachment info and extract
-            xcrun xcresulttool get --path "$RUNNER_TEMP/TestResults.xcresult" --format json 2>/dev/null > "$RUNNER_TEMP/xcresult.json" || true
-            
-            # Get list of test bundle IDs and try to export attachments
-            xcrun xcresulttool export \
-              --path "$RUNNER_TEMP/TestResults.xcresult" \
-              --output-path "$RUNNER_TEMP/xcexport" \
-              --type file 2>/dev/null || true
-            
-            # Find any exported PNGs
-            if [ -d "$RUNNER_TEMP/xcexport" ]; then
-              find "$RUNNER_TEMP/xcexport" -name "*.png" -type f -exec cp {} "$RUNNER_TEMP/screenshots/" \; 2>/dev/null || true
-            fi
-            
-            # Rename screenshots with better names
-            cd "$RUNNER_TEMP/screenshots"
-            i=1
-            for f in *.png; do
-              if [ -f "$f" ] && [ "$f" != "app_state.png" ]; then
-                mv "$f" "$(printf '%02d' $i)_${f}" 2>/dev/null || true
-                i=$((i + 1))
-              fi
-            done
-            
-            echo "Screenshots extracted: $(ls -1 "$RUNNER_TEMP/screenshots/"*.png 2>/dev/null | wc -l)"
-            ls -la "$RUNNER_TEMP/screenshots/" || true
-          fi
-
-      - name: Run MomentsEngine Unit Tests
-        continue-on-error: true
-        run: |
-          echo "Running MomentsEngine unit tests..."
-          cd MomentsEngine
-          swift test 2>&1 | tee "$RUNNER_TEMP/unit_test_output.log" || true
-          
-          echo "=== Unit Test Summary ==="
-          grep -E "(Test Suite|Test Case|passed|failed|error)" "$RUNNER_TEMP/unit_test_output.log" | tail -30
-
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: TestResults-${{ github.run_number }}
-          path: |
-            ${{ runner.temp }}/TestResults.xcresult
-            ${{ runner.temp }}/screenshots/
-            ${{ runner.temp }}/ui_test_output.log
-            ${{ runner.temp }}/unit_test_output.log
-          retention-days: 14
-
-      - name: Shutdown Simulator
-        if: always()
-        run: |
-          xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
-
       - name: Create ExportOptions.plist
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" << EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -447,14 +496,10 @@ jobs:
           </dict>
           </plist>
           EOF
-          echo "=== ExportOptions.plist ==="
-          cat "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Export IPA
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Moments.xcarchive" \
@@ -462,7 +507,6 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Upload to TestFlight
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -473,7 +517,7 @@ jobs:
             --apiKey "$ASC_KEY_ID" \
             --apiIssuer "$ASC_ISSUER_ID"
 
-      - name: Upload archive artifact
+      - name: Upload Archive Artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -453,13 +453,13 @@ class MemoryTitleGenerator {
         var parts: [String] = []
         
         if photoCount > 0 {
-            parts.append("\(photoCount) foto\(photoCount == 1 ? "" : "s")")
+            parts.append(MomentsPluralization.photos(photoCount))
         }
         if videoCount > 0 {
-            parts.append("\(videoCount) video\(videoCount == 1 ? "" : "s")")
+            parts.append(String(localized: "^[\(videoCount) video](inflect: true)"))
         }
         if peopleCount > 0 {
-            parts.append("\(peopleCount) persona\(peopleCount == 1 ? "" : "s")")
+            parts.append(MomentsPluralization.people(peopleCount))
         }
         
         return parts.joined(separator: " · ")

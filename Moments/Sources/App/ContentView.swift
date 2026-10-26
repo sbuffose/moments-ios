@@ -249,7 +249,7 @@ struct ProcessingStatusSheet: View {
                                 .font(MomentsTypography.titleMedium)
                                 .foregroundStyle(MomentsColors.textPrimary)
                             
-                            Text("\(appState.totalPhotosIndexed) fotos encontradas")
+                            Text("\(MomentsPluralization.photos(appState.totalPhotosIndexed)) encontradas")
                                 .font(MomentsTypography.bodyMedium)
                                 .foregroundStyle(MomentsColors.textSecondary)
                         } else if appState.isAnalyzing {
@@ -748,7 +748,7 @@ struct ScanningView: View {
                             .font(MomentsTypography.titleMedium)
                             .foregroundStyle(MomentsColors.textPrimary)
                         
-                        Text("\(appState.totalPhotosIndexed) fotos encontradas")
+                        Text("\(MomentsPluralization.photos(appState.totalPhotosIndexed)) encontradas")
                             .font(MomentsTypography.bodyMedium)
                             .foregroundStyle(MomentsColors.textSecondary)
                             .accessibilityIdentifier("scanning.count")

@@ -796,7 +796,7 @@ struct CleanupReviewView: View {
                     .fontWeight(.bold)
                 
                 if photosToDelete.count > 0 {
-                    Text("Seleccionaste \(photosToDelete.count) fotos para eliminar")
+                    Text("Seleccionaste \(MomentsPluralization.photos(photosToDelete.count)) para eliminar")
                         .foregroundStyle(.secondary)
                     
                     Text(viewModel.formattedSize(deletionSize))
@@ -817,7 +817,7 @@ struct CleanupReviewView: View {
                 } label: {
                     HStack {
                         Image(systemName: "trash")
-                        Text("Eliminar \(photosToDelete.count) fotos")
+                        Text(MomentsPluralization.deletePhotos(photosToDelete.count))
                     }
                     .font(.headline)
                     .foregroundStyle(.white)
@@ -895,7 +895,7 @@ struct ReviewSummarySheet: View {
                     }
                     
                     VStack(spacing: 8) {
-                        Text("Eliminar \(photosToDelete.count) fotos")
+                        Text(MomentsPluralization.deletePhotos(photosToDelete.count))
                             .font(.title2)
                             .fontWeight(.bold)
                         
@@ -943,7 +943,7 @@ struct ReviewSummarySheet: View {
                         } label: {
                             HStack {
                                 Image(systemName: "trash")
-                                Text("Eliminar \(photosToDelete.count) fotos")
+                                Text(MomentsPluralization.deletePhotos(photosToDelete.count))
                             }
                             .font(.headline)
                             .foregroundStyle(.white)
@@ -1502,7 +1502,7 @@ struct SimilarPhotosGroupView: View {
                     }
             }
             
-            Text("\(photos.count) fotos similares")
+            Text("\(MomentsPluralization.photos(photos.count)) similares")
                 .font(.headline)
                 .padding(.bottom, 8)
             
@@ -1545,7 +1545,7 @@ struct SimilarPhotosGroupView: View {
                     } label: {
                         HStack {
                             Image(systemName: "trash")
-                            Text("Borrar las otras \(photosToDelete.count) (\(formattedSize(deletionSize)))")
+                            Text("\(MomentsPluralization.deleteOthers(photosToDelete.count)) (\(formattedSize(deletionSize)))")
                         }
                         .font(.headline)
                         .foregroundStyle(.white)
@@ -1580,11 +1580,11 @@ struct SimilarPhotosGroupView: View {
             }
         }
         .confirmationDialog(
-            "Eliminar \(photosToDelete.count) fotos",
+            MomentsPluralization.deletePhotos(photosToDelete.count),
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Eliminar \(photosToDelete.count) fotos", role: .destructive) {
+            Button(MomentsPluralization.deletePhotos(photosToDelete.count), role: .destructive) {
                 Task {
                     // Mark photos for deletion
                     for photo in photosToDelete {
