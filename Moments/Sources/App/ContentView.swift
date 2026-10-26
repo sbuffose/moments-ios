@@ -8,6 +8,7 @@ struct ContentView: View {
     
     private var isTestingMode: Bool {
         ProcessInfo.processInfo.arguments.contains("-skipOnboarding") ||
+        ProcessInfo.processInfo.arguments.contains("--uitesting") ||
         ProcessInfo.processInfo.environment["UI_TESTING"] == "1" ||
         ProcessInfo.processInfo.environment["UITEST_MODE"] == "1"
     }
