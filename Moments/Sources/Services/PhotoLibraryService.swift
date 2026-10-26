@@ -146,6 +146,106 @@ class PhotoLibraryService: ObservableObject {
         }
     }
     
+    // MARK: - Single Asset Indexing (for background processing)
+    
+    func indexSingleAsset(_ asset: PHAsset) async {
+        let existingIds = fetchExistingPhotoIds()
+        
+        guard !existingIds.contains(asset.localIdentifier) else {
+            return
+        }
+        
+        let photo = createPersistedPhoto(from: asset)
+        modelContext.insert(photo)
+        
+        if let state = try? modelContext.fetch(FetchDescriptor<AnalysisState>()).first {
+            state.indexedCount += 1
+            state.lastIndexedPhotoDate = asset.creationDate
+        }
+        
+        try? modelContext.save()
+    }
+    
+    // MARK: - Resumable Scan with Checkpointing
+    
+    func scanLibraryWithCheckpointing(
+        checkpointHandler: @escaping (String) -> Void,
+        isAlreadyIndexed: @escaping (String) -> Bool,
+        progressHandler: @escaping @Sendable (Double, Int) async -> Void
+    ) async {
+        let analysisState = loadOrCreateAnalysisState()
+        let existingIds = fetchExistingPhotoIds()
+        let existingCount = existingIds.count
+        
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        fetchOptions.includeHiddenAssets = false
+        
+        let allAssets = PHAsset.fetchAssets(with: fetchOptions)
+        
+        guard allAssets.count > 0 else {
+            analysisState.indexingInProgress = false
+            try? modelContext.save()
+            await progressHandler(1.0, existingCount)
+            return
+        }
+        
+        analysisState.indexingInProgress = true
+        try? modelContext.save()
+        
+        var assets: [PHAsset] = []
+        allAssets.enumerateObjects { asset, _, _ in
+            assets.append(asset)
+        }
+        
+        let totalToProcess = assets.count
+        var newlyInsertedCount = 0
+        var processedInThisScan = 0
+        let batchSize = 50
+        var photosToInsert: [PersistedPhoto] = []
+        
+        for asset in assets {
+            let assetId = asset.localIdentifier
+            
+            if existingIds.contains(assetId) || isAlreadyIndexed(assetId) {
+                processedInThisScan += 1
+                continue
+            }
+            
+            let photo = createPersistedPhoto(from: asset)
+            photosToInsert.append(photo)
+            newlyInsertedCount += 1
+            processedInThisScan += 1
+            
+            checkpointHandler(assetId)
+            
+            if processedInThisScan % batchSize == 0 {
+                for photo in photosToInsert {
+                    modelContext.insert(photo)
+                }
+                photosToInsert.removeAll()
+                try? modelContext.save()
+                
+                let progress = Double(processedInThisScan) / Double(totalToProcess)
+                let totalInDatabase = existingCount + newlyInsertedCount
+                await progressHandler(progress, totalInDatabase)
+            }
+        }
+        
+        for photo in photosToInsert {
+            modelContext.insert(photo)
+        }
+        
+        let finalCount = existingCount + newlyInsertedCount
+        analysisState.indexingInProgress = false
+        analysisState.indexedCount = finalCount
+        analysisState.totalLibraryCount = finalCount
+        analysisState.lastScanDate = Date()
+        
+        try? modelContext.save()
+        await progressHandler(1.0, finalCount)
+    }
+    
     func getIndexingProgress() -> (indexed: Int, total: Int, inProgress: Bool) {
         let descriptor = FetchDescriptor<AnalysisState>(
             predicate: #Predicate { $0.id == "main" }
