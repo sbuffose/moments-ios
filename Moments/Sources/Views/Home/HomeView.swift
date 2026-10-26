@@ -412,8 +412,12 @@ class HomeViewModel: ObservableObject {
             ))
         }
         
+        // Use stored property originRaw, not computed property origin
+        let whatsapp = "whatsapp"
+        let telegram = "telegram"
+        let instagram = "instagram"
         let downloadedDescriptor = FetchDescriptor<PersistedPhoto>(
-            predicate: #Predicate { $0.origin.rawValue == "whatsapp" || $0.origin.rawValue == "telegram" || $0.origin.rawValue == "instagram" }
+            predicate: #Predicate { $0.originRaw == whatsapp || $0.originRaw == telegram || $0.originRaw == instagram }
         )
         if let downloaded = try? context.fetch(downloadedDescriptor), !downloaded.isEmpty {
             let size = downloaded.reduce(0) { $0 + ($1.estimatedFileSize ?? 500_000) }

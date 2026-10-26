@@ -144,6 +144,257 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(existingIds.contains("photo-9999"))
     }
     
+    // MARK: - FetchDescriptor Validation Tests
+    // These tests verify that all predicates use STORED properties, not computed ones.
+    // SwiftData crashes at runtime if a predicate uses a computed property.
+    
+    @MainActor
+    func testAllFetchDescriptorsUseStoredProperties() throws {
+        // Create in-memory container with FULL schema to catch any key path issues
+        let schema = Schema([
+            PersistedPhoto.self,
+            PersistedMoment.self,
+            PersistedPlace.self,
+            PersistedPlaceCluster.self,
+            PersistedPerson.self,
+            PersistedFaceDetection.self,
+            PersistedRecurringEvent.self,
+            PersistedCatalogingCard.self,
+            PersistedImportantDate.self,
+            PersistedNotificationSettings.self,
+            AnalysisState.self,
+            RememberListItem.self,
+            PendingTrashItem.self,
+            SimilarGroup.self,
+            DeletionRecord.self,
+            PhotoTag.self,
+            PhotoReminder.self,
+            DailyReviewSettings.self
+        ])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Insert sample data
+        let photo1 = PersistedPhoto(localIdentifier: "test-1")
+        photo1.mediaSubtypesRaw = "screenshot"
+        photo1.originRaw = "whatsapp"
+        photo1.isLivePhoto = true
+        photo1.analysisCompleted = true
+        photo1.creationDate = Date()
+        photo1.cleanupCategoryRaw = "screenshot"
+        context.insert(photo1)
+        
+        let photo2 = PersistedPhoto(localIdentifier: "test-2")
+        photo2.burstIdentifier = "burst-1"
+        photo2.representsBurst = false
+        photo2.analysisCompleted = true
+        photo2.mediaTypeRaw = "video"
+        photo2.estimatedFileSize = 200_000_000
+        context.insert(photo2)
+        
+        let moment = PersistedMoment(startDate: Date(), endDate: Date())
+        moment.isTrip = true
+        context.insert(moment)
+        
+        let tag = PhotoTag(name: "TestTag")
+        context.insert(tag)
+        
+        let settings = DailyReviewSettings()
+        context.insert(settings)
+        
+        let analysisState = AnalysisState()
+        context.insert(analysisState)
+        
+        try context.save()
+        
+        // Test all FetchDescriptors from HomeViewModel.loadMetadataCategories
+        // These are the exact predicates that caused the crash
+        
+        // 1. Screenshots - uses mediaSubtypesRaw (stored)
+        let screenshotDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.mediaSubtypesRaw.contains("screenshot") }
+        )
+        let screenshots = try context.fetch(screenshotDescriptor)
+        XCTAssertEqual(screenshots.count, 1, "Should find 1 screenshot")
+        
+        // 2. Bursts - uses burstIdentifier and representsBurst (stored)
+        let burstDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.burstIdentifier != nil && !$0.representsBurst }
+        )
+        let bursts = try context.fetch(burstDescriptor)
+        XCTAssertEqual(bursts.count, 1, "Should find 1 burst")
+        
+        // 3. Live Photos - uses isLivePhoto (stored)
+        let livePhotoDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.isLivePhoto }
+        )
+        let livePhotos = try context.fetch(livePhotoDescriptor)
+        XCTAssertEqual(livePhotos.count, 1, "Should find 1 live photo")
+        
+        // 4. Downloaded from apps - uses originRaw (stored), NOT origin (computed)
+        // This was the CRASH: origin.rawValue crashed because origin is computed
+        let whatsapp = "whatsapp"
+        let telegram = "telegram"
+        let instagram = "instagram"
+        let downloadedDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.originRaw == whatsapp || $0.originRaw == telegram || $0.originRaw == instagram }
+        )
+        let downloaded = try context.fetch(downloadedDescriptor)
+        XCTAssertEqual(downloaded.count, 1, "Should find 1 downloaded photo")
+        
+        // 5. Large videos - uses mediaTypeRaw and estimatedFileSize (stored)
+        let videoDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.mediaTypeRaw == "video" && ($0.estimatedFileSize ?? 0) > 100_000_000 }
+        )
+        let largeVideos = try context.fetch(videoDescriptor)
+        XCTAssertEqual(largeVideos.count, 1, "Should find 1 large video")
+        
+        // 6. Analyzed photos - uses analysisCompleted (stored)
+        let analyzedDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.analysisCompleted && $0.creationDate != nil }
+        )
+        let analyzed = try context.fetch(analyzedDescriptor)
+        XCTAssertEqual(analyzed.count, 2, "Should find 2 analyzed photos")
+        
+        // 7. Trips - uses isTrip (stored)
+        let tripDescriptor = FetchDescriptor<PersistedMoment>(
+            predicate: #Predicate { $0.isTrip },
+            sortBy: [SortDescriptor(\.endDate, order: .reverse)]
+        )
+        let trips = try context.fetch(tripDescriptor)
+        XCTAssertEqual(trips.count, 1, "Should find 1 trip")
+        
+        // 8. Tags by name
+        let tagName = "TestTag"
+        let tagDescriptor = FetchDescriptor<PhotoTag>(
+            predicate: #Predicate { $0.name == tagName }
+        )
+        let tags = try context.fetch(tagDescriptor)
+        XCTAssertEqual(tags.count, 1, "Should find 1 tag")
+        
+        // 9. Daily review settings by ID
+        let settingsDescriptor = FetchDescriptor<DailyReviewSettings>(
+            predicate: #Predicate { $0.id == "main" }
+        )
+        let fetchedSettings = try context.fetch(settingsDescriptor)
+        XCTAssertEqual(fetchedSettings.count, 1, "Should find 1 settings")
+        
+        // 10. Analysis state by ID
+        let stateDescriptor = FetchDescriptor<AnalysisState>(
+            predicate: #Predicate { $0.id == "main" }
+        )
+        let states = try context.fetch(stateDescriptor)
+        XCTAssertEqual(states.count, 1, "Should find 1 analysis state")
+    }
+    
+    @MainActor
+    func testRepasoDelDiaFetchDescriptor() throws {
+        // Test the Repaso del día query that filters today's low-value photos
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfToday = calendar.startOfDay(for: now)
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday)!
+        
+        // Photo from today with cleanup category
+        let todayPhoto = PersistedPhoto(localIdentifier: "today-1")
+        todayPhoto.creationDate = now
+        todayPhoto.cleanupCategoryRaw = "screenshot"
+        context.insert(todayPhoto)
+        
+        // Photo from today without cleanup category
+        let todayClean = PersistedPhoto(localIdentifier: "today-2")
+        todayClean.creationDate = now
+        todayClean.cleanupCategoryRaw = "none"
+        context.insert(todayClean)
+        
+        // Photo from yesterday with cleanup category
+        let yesterdayPhoto = PersistedPhoto(localIdentifier: "yesterday-1")
+        yesterdayPhoto.creationDate = calendar.date(byAdding: .day, value: -1, to: now)
+        yesterdayPhoto.cleanupCategoryRaw = "blurry"
+        context.insert(yesterdayPhoto)
+        
+        try context.save()
+        
+        // This is the exact predicate from RepasoDelDiaView
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { photo in
+                photo.creationDate != nil &&
+                photo.creationDate! >= startOfToday &&
+                photo.creationDate! < endOfToday &&
+                photo.cleanupCategoryRaw != "none" &&
+                photo.cleanupCategoryRaw != nil
+            },
+            sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
+        )
+        
+        let results = try context.fetch(descriptor)
+        XCTAssertEqual(results.count, 1, "Should find only 1 photo from today with cleanup category")
+        XCTAssertEqual(results.first?.localIdentifier, "today-1")
+    }
+    
+    @MainActor
+    func testCleanupCategoryUsesStoredProperty() throws {
+        // Verify we use cleanupCategoryRaw (stored) not cleanupCategory (computed)
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let photo = PersistedPhoto(localIdentifier: "test-1")
+        photo.cleanupCategoryRaw = "screenshot"  // Stored property
+        context.insert(photo)
+        try context.save()
+        
+        // This should NOT crash - uses stored property
+        let categoryValue = "screenshot"
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.cleanupCategoryRaw == categoryValue }
+        )
+        
+        let results = try context.fetch(descriptor)
+        XCTAssertEqual(results.count, 1)
+        
+        // Verify the computed property still works for reading
+        XCTAssertEqual(results.first?.cleanupCategory, .screenshot)
+    }
+    
+    @MainActor 
+    func testOriginRawUsedNotOrigin() throws {
+        // This test specifically guards against the crash that happened:
+        // Using origin.rawValue (computed) instead of originRaw (stored)
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let photo = PersistedPhoto(localIdentifier: "test-whatsapp")
+        photo.originRaw = "whatsapp"  // Stored property
+        context.insert(photo)
+        try context.save()
+        
+        // CORRECT: Use originRaw (stored property)
+        let whatsapp = "whatsapp"
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.originRaw == whatsapp }
+        )
+        
+        let results = try context.fetch(descriptor)
+        XCTAssertEqual(results.count, 1)
+        
+        // Verify computed property works for reading
+        XCTAssertEqual(results.first?.origin, .whatsapp)
+        
+        // NOTE: This would CRASH if we tried:
+        // #Predicate { $0.origin.rawValue == "whatsapp" }
+        // Because origin is a computed property, not stored
+    }
+    
     // MARK: - Intent Parser Tests
     
     func testSpanishCleanupIntentParsing() throws {

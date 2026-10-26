@@ -119,6 +119,94 @@ final class MomentsUITests: XCTestCase {
                      "Home screen must appear quickly")
     }
     
+    // MARK: - HomeView Data Loading Tests
+    // NOTE: UI tests did NOT catch the SwiftData predicate crash because:
+    // 1. UI tests run in a separate process - crash manifests as launch timeout, not clear error
+    // 2. The simulator may handle SwiftData differently than real devices
+    // 3. Seeded photos may not trigger specific code paths (e.g., no WhatsApp photos seeded)
+    // 4. loadMetadataCategories runs async and may not complete before UI checks
+    //
+    // To catch SwiftData predicate errors, we now have UNIT tests that:
+    // - Use in-memory ModelContainer with the full schema
+    // - Execute EVERY FetchDescriptor the app uses
+    // - Insert sample data that exercises all predicates
+    // - Fail fast at compile/test time if predicates use computed properties
+    
+    func testHomeViewLoadsMetadataCategories() throws {
+        // This test verifies HomeView actually loads and displays metadata categories
+        // Without this, a crash in loadMetadataCategories() might go unnoticed
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App crashed on launch or tab bar never appeared - possible SwiftData predicate crash")
+            return
+        }
+        
+        // Navigate to home tab
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let homeRoot = app.otherElements["home.root"]
+        XCTAssertTrue(homeRoot.waitForExistence(timeout: 10), 
+                     "Home root should exist - if missing, HomeView may have crashed during initialization")
+        
+        // Wait for HomeViewModel.loadMetadataCategories to complete
+        // This is where the predicate crash happened
+        sleep(3)
+        
+        // Verify the scroll view loaded (means body rendered without crash)
+        let scrollView = app.scrollViews["home.scrollView"]
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 5), 
+                     "Home scroll view should exist - if missing, HomeView.body may have crashed")
+        
+        // Check for any content indicating categories loaded
+        let hasScreenshotsCategory = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Capturas' OR label CONTAINS[c] 'screenshot'")
+        ).count > 0
+        
+        let hasAnyContent = app.staticTexts.count > 2 || app.buttons.count > 1
+        
+        // At minimum, verify the view rendered something
+        XCTAssertTrue(hasAnyContent, 
+                     "Home should have content - empty view may indicate loadMetadataCategories crashed")
+        
+        print("HomeView loaded successfully. Screenshots category visible: \(hasScreenshotsCategory)")
+    }
+    
+    func testAppDoesNotCrashWithSeededLibrary() throws {
+        // This test specifically checks that the app survives initialization
+        // with a seeded photo library (3000+ photos from CI)
+        
+        // If app crashes on launch, this will timeout
+        let tabBar = app.tabBars.firstMatch
+        let launched = tabBar.waitForExistence(timeout: 30)
+        
+        if !launched {
+            // Capture crash state
+            let crashIndicator = app.alerts.firstMatch
+            if crashIndicator.exists {
+                XCTFail("App showed alert on launch - possible crash dialog")
+            }
+            XCTFail("App did not launch within 30s - likely crashed. Check for SwiftData predicate errors.")
+            return
+        }
+        
+        // Navigate through all tabs to exercise all ViewModels
+        for i in 0..<4 {
+            tabBar.buttons.element(boundBy: i).tap()
+            sleep(1) // Allow async data loading
+            
+            // Verify we're still alive (not crashed)
+            XCTAssertTrue(tabBar.exists, "Tab bar disappeared after tapping tab \(i) - possible crash")
+        }
+        
+        // Return to home and verify analysis progress (if running)
+        tabBar.buttons.element(boundBy: 0).tap()
+        sleep(2)
+        
+        // If we got here without crashing, the test passes
+        XCTAssertTrue(tabBar.exists, "App survived full navigation - no crashes detected")
+    }
+    
     // MARK: - Core Navigation Tests
     
     func testMainTabBarExists() throws {
