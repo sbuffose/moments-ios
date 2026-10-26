@@ -498,3 +498,29 @@ struct MomentsLoadingIndicator: View {
         .onAppear { isAnimating = true }
     }
 }
+
+// MARK: - Pluralization Helpers
+
+enum MomentsPluralization {
+    static func photos(_ count: Int) -> String {
+        switch count {
+        case 0:
+            return String(localized: "photo_count_zero")
+        case 1:
+            return String(localized: "photo_count_singular")
+        default:
+            return String(localized: "photo_count_plural \(count)")
+        }
+    }
+    
+    static func people(_ count: Int) -> String {
+        switch count {
+        case 0:
+            return String(localized: "person_count_zero")
+        case 1:
+            return String(localized: "person_count_singular")
+        default:
+            return String(localized: "person_count_plural \(count)")
+        }
+    }
+}

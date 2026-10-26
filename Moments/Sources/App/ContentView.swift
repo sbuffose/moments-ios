@@ -46,6 +46,167 @@ struct ContentView: View {
         .sheet(isPresented: $appState.showProcessingSheet) {
             ProcessingStatusSheet()
         }
+        .sheet(isPresented: $appState.showFirstRunExplanation) {
+            FirstRunExplanationSheet()
+        }
+    }
+}
+
+// MARK: - First Run Explanation Sheet
+
+struct FirstRunExplanationSheet: View {
+    @EnvironmentObject var appState: AppState
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MomentsColors.bgPrimary.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: MomentsSpacing.xl) {
+                        Spacer(minLength: MomentsSpacing.xl)
+                        
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [MomentsColors.accent.opacity(0.3), MomentsColors.accent.opacity(0.1)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 140, height: 140)
+                            
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 60, weight: .light))
+                                .foregroundStyle(MomentsColors.accent)
+                        }
+                        
+                        VStack(spacing: MomentsSpacing.md) {
+                            Text("¿Qué vamos a hacer?")
+                                .font(MomentsTypography.titleLarge)
+                                .foregroundStyle(MomentsColors.textPrimary)
+                                .multilineTextAlignment(.center)
+                            
+                            Text("Antes de empezar, te explicamos cómo funciona Moments.")
+                                .font(MomentsTypography.bodyMedium)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, MomentsSpacing.lg)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: MomentsSpacing.lg) {
+                            ExplanationRow(
+                                icon: "photo.on.rectangle.angled",
+                                iconColor: .blue,
+                                title: "Analizamos tus fotos",
+                                description: "Detectamos fotos borrosas, duplicadas, capturas y más."
+                            )
+                            
+                            ExplanationRow(
+                                icon: "iphone",
+                                iconColor: .green,
+                                title: "Todo en tu dispositivo",
+                                description: "Nada sale de tu iPhone. El análisis es 100% privado."
+                            )
+                            
+                            ExplanationRow(
+                                icon: "arrow.triangle.2.circlepath",
+                                iconColor: .orange,
+                                title: "Continúa en segundo plano",
+                                description: "El análisis sigue aunque cierres la app. Es más rápido con el teléfono cargando."
+                            )
+                            
+                            ExplanationRow(
+                                icon: "bell.badge",
+                                iconColor: .purple,
+                                title: "Te avisamos cuando termine",
+                                description: "Recibirás una notificación cuando tu biblioteca esté lista."
+                            )
+                            
+                            ExplanationRow(
+                                icon: "hand.raised",
+                                iconColor: .pink,
+                                title: "Vos decidís qué borrar",
+                                description: "Te sugerimos fotos para eliminar, pero la decisión es tuya."
+                            )
+                        }
+                        .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                        
+                        Spacer(minLength: MomentsSpacing.xl)
+                    }
+                }
+                
+                VStack {
+                    Spacer()
+                    
+                    Button {
+                        appState.dismissFirstRunExplanation()
+                    } label: {
+                        Text("¡Entendido, comenzar!")
+                            .font(MomentsTypography.buttonLarge)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, MomentsSpacing.md)
+                            .background(
+                                LinearGradient(
+                                    colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(MomentsCorners.large)
+                    }
+                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    .padding(.bottom, MomentsSpacing.xl)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        appState.dismissFirstRunExplanation()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    }
+                }
+            }
+        }
+        .interactiveDismissDisabled()
+        .preferredColorScheme(.dark)
+        .accessibilityIdentifier("firstRun.explanation")
+    }
+}
+
+struct ExplanationRow: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let description: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: MomentsSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundStyle(iconColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(MomentsTypography.headlineSmall)
+                    .foregroundStyle(MomentsColors.textPrimary)
+                
+                Text(description)
+                    .font(MomentsTypography.bodySmall)
+                    .foregroundStyle(MomentsColors.textSecondary)
+            }
+        }
     }
 }
 
@@ -255,6 +416,15 @@ struct MomentsListView: View {
             }
         }
         
+        var navigationTitle: String {
+            switch self {
+            case .timeline: return String(localized: "timeline_title")
+            case .people: return String(localized: "people_title")
+            case .places: return String(localized: "places_title")
+            case .dates: return String(localized: "fechas_title")
+            }
+        }
+        
         var accessibilityId: String {
             switch self {
             case .timeline: return "moments.timeline"
@@ -310,7 +480,7 @@ struct MomentsListView: View {
                 }
                 }
             }
-            .navigationTitle(Text(String(localized: "tab_moments")))
+            .navigationTitle(selectedSection.navigationTitle)
             .background(MomentsColors.bgPrimary)
         }
     }

@@ -9,17 +9,14 @@ struct TimelineView: View {
     @StateObject private var viewModel = TimelineViewModel()
     
     var body: some View {
-        NavigationStack {
-            Group {
-                if viewModel.isLoading {
-                    loadingView
-                } else if viewModel.sections.isEmpty {
-                    emptyStateView
-                } else {
-                    timelineContent
-                }
+        Group {
+            if viewModel.isLoading {
+                loadingView
+            } else if viewModel.sections.isEmpty {
+                emptyStateView
+            } else {
+                timelineContent
             }
-            .navigationTitle(Text("timeline_title"))
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
@@ -219,7 +216,7 @@ struct OnThisDayCard: View {
                 .font(.caption)
                 .fontWeight(.medium)
             
-            Text("\(memory.photos.count) fotos")
+            Text(MomentsPluralization.photos(memory.photos.count))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -264,7 +261,7 @@ struct TripCard: View {
                 
                 Spacer()
                 
-                Text("\(trip.photoCount) fotos")
+                Text(MomentsPluralization.photos(trip.photoCount))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

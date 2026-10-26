@@ -10,25 +10,22 @@ struct PlacesView: View {
     @StateObject private var viewModel = PlacesViewModel()
     
     var body: some View {
-        NavigationStack {
-            Group {
-                if viewModel.isLoading {
-                    loadingView
-                } else if viewModel.places.isEmpty {
-                    emptyStateView
-                } else {
-                    contentView
-                }
+        Group {
+            if viewModel.isLoading {
+                loadingView
+            } else if viewModel.places.isEmpty {
+                emptyStateView
+            } else {
+                contentView
             }
-            .navigationTitle(Text("places_title"))
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Picker("Modo", selection: $viewModel.displayMode) {
-                        Image(systemName: "map").tag(PlacesViewModel.DisplayMode.map)
-                        Image(systemName: "list.bullet").tag(PlacesViewModel.DisplayMode.list)
-                    }
-                    .pickerStyle(.segmented)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Picker("Modo", selection: $viewModel.displayMode) {
+                    Image(systemName: "map").tag(PlacesViewModel.DisplayMode.map)
+                    Image(systemName: "list.bullet").tag(PlacesViewModel.DisplayMode.list)
                 }
+                .pickerStyle(.segmented)
             }
         }
         .onAppear {
@@ -300,7 +297,7 @@ struct PlaceDetailView: View {
                     }
                     
                     HStack(spacing: 16) {
-                        Label("\(place.photoCount) fotos", systemImage: "photo")
+                        Label(MomentsPluralization.photos(place.photoCount), systemImage: "photo")
                         Label("\(place.visitCount) visitas", systemImage: "calendar")
                     }
                     .font(.subheadline)

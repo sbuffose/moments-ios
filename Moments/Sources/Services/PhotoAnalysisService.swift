@@ -25,6 +25,7 @@ class PhotoAnalysisService: ObservableObject {
     
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        DeletionScoringService.shared.configure(modelContext: modelContext)
     }
     
     // MARK: - Background Analysis (Non-blocking)
@@ -83,6 +84,52 @@ class PhotoAnalysisService: ObservableObject {
     func analyzeAllPhotos(progressHandler: @escaping @Sendable (Double) async -> Void) async {
         await analyzePhotosInBackground { analyzed, total, progress in
             await progressHandler(progress)
+        }
+    }
+    
+    // MARK: - Background Analysis with Checkpointing
+    
+    func analyzeUnprocessedPhotosInBackground(progressHandler: @escaping @Sendable (Double) async -> Void) async -> Bool {
+        do {
+            let descriptor = FetchDescriptor<PersistedPhoto>(
+                predicate: #Predicate { !$0.analysisCompleted }
+            )
+            
+            let photos = try modelContext.fetch(descriptor)
+            guard !photos.isEmpty else {
+                await progressHandler(1.0)
+                return true
+            }
+            
+            let total = photos.count
+            var analyzed = 0
+            
+            for photo in photos {
+                if Task.isCancelled {
+                    return false
+                }
+                
+                await analyzePhotoSafely(photo)
+                
+                BackgroundTaskManager.shared.markAnalyzed(photoId: photo.id)
+                
+                analyzed += 1
+                
+                if analyzed % 10 == 0 {
+                    try? modelContext.save()
+                }
+                
+                let progress = Double(analyzed) / Double(total)
+                await progressHandler(progress)
+            }
+            
+            try? modelContext.save()
+            await progressHandler(1.0)
+            return true
+            
+        } catch {
+            print("Error in background analysis: \(error)")
+            return false
         }
     }
     
@@ -196,6 +243,11 @@ class PhotoAnalysisService: ObservableObject {
         
         await determineCleanupCategory(photo: photo, textAnalysis: textAnalysis, qualityMetrics: qualityMetrics)
         
+        // Calculate deletion likelihood score
+        await MainActor.run {
+            photo.deletionLikelihoodScore = DeletionScoringService.shared.calculateScore(for: photo)
+        }
+        
         for faceData in faces {
             await MainActor.run {
                 let detection = PersistedFaceDetection(
@@ -247,7 +299,9 @@ class PhotoAnalysisService: ObservableObject {
                 return
             }
             
-            if let sharpness = photo.sharpnessScore, sharpness < 0.3, photo.mediaTypeRaw == "image" {
+            // Stricter blur detection - only flag photos with very low sharpness
+            // Threshold lowered from 0.3 to 0.15 to reduce false positives
+            if let sharpness = photo.sharpnessScore, sharpness < 0.15, photo.mediaTypeRaw == "image" {
                 photo.cleanupCategory = .blurry
                 return
             }
@@ -611,6 +665,22 @@ final class ImageAnalyzer: Sendable {
     private func calculateLaplacianVariance(_ image: CIImage) -> Double {
         let context = CIContext()
         
+        // Normalize image to standard size for consistent blur detection
+        // This ensures the Laplacian variance is comparable across different resolutions
+        let normalizedSize: CGFloat = 512
+        let extent = image.extent
+        guard extent.width > 0 && extent.height > 0 && !extent.isInfinite else { return 0.5 }
+        
+        let scale = min(normalizedSize / extent.width, normalizedSize / extent.height)
+        let normalizedImage: CIImage
+        
+        if scale < 1.0 {
+            // Downsample large images
+            normalizedImage = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        } else {
+            normalizedImage = image
+        }
+        
         guard let laplacianFilter = CIFilter(name: "CIConvolution3X3") else { return 0.5 }
         
         let laplacianKernel: [CGFloat] = [
@@ -619,25 +689,76 @@ final class ImageAnalyzer: Sendable {
             0,  1, 0
         ]
         
-        laplacianFilter.setValue(image, forKey: kCIInputImageKey)
+        laplacianFilter.setValue(normalizedImage, forKey: kCIInputImageKey)
         laplacianFilter.setValue(CIVector(values: laplacianKernel, count: 9), forKey: "inputWeights")
         laplacianFilter.setValue(0, forKey: "inputBias")
         
         guard let output = laplacianFilter.outputImage else { return 0.5 }
         
-        let extent = output.extent
-        guard extent.width > 0 && extent.height > 0 && !extent.isInfinite else { return 0.5 }
+        let outputExtent = output.extent
+        guard outputExtent.width > 0 && outputExtent.height > 0 && !outputExtent.isInfinite else { return 0.5 }
         
-        guard let statsFilter = CIFilter(name: "CIAreaAverage") else { return 0.5 }
-        
-        let sampleRect = CGRect(
-            x: extent.midX - 150,
-            y: extent.midY - 150,
-            width: 300,
-            height: 300
-        ).intersection(extent)
+        // Calculate variance over a larger area (center 80% of image)
+        // to get a more representative sharpness score
+        let margin = min(outputExtent.width, outputExtent.height) * 0.1
+        let sampleRect = outputExtent.insetBy(dx: margin, dy: margin)
         
         guard !sampleRect.isEmpty else { return 0.5 }
+        
+        // Calculate histogram to get variance
+        guard let histogramFilter = CIFilter(name: "CIAreaHistogram") else {
+            // Fallback to average if histogram not available
+            return calculateAverageVariance(output: output, sampleRect: sampleRect, context: context)
+        }
+        
+        histogramFilter.setValue(output, forKey: kCIInputImageKey)
+        histogramFilter.setValue(CIVector(cgRect: sampleRect), forKey: kCIInputExtentKey)
+        histogramFilter.setValue(256, forKey: "inputCount")
+        histogramFilter.setValue(1.0, forKey: "inputScale")
+        
+        guard let histOutput = histogramFilter.outputImage else {
+            return calculateAverageVariance(output: output, sampleRect: sampleRect, context: context)
+        }
+        
+        // Read histogram data
+        var histData = [UInt8](repeating: 0, count: 256 * 4)
+        context.render(
+            histOutput,
+            toBitmap: &histData,
+            rowBytes: 256 * 4,
+            bounds: CGRect(x: 0, y: 0, width: 256, height: 1),
+            format: .RGBA8,
+            colorSpace: CGColorSpaceCreateDeviceRGB()
+        )
+        
+        // Calculate variance from histogram
+        var sum: Double = 0
+        var sumSquares: Double = 0
+        var count: Double = 0
+        
+        for i in 0..<256 {
+            let freq = Double(histData[i * 4]) // Red channel
+            let value = Double(i)
+            sum += value * freq
+            sumSquares += value * value * freq
+            count += freq
+        }
+        
+        guard count > 0 else { return 0.5 }
+        
+        let mean = sum / count
+        let variance = (sumSquares / count) - (mean * mean)
+        
+        // Normalize variance to 0-1 range
+        // Higher variance = sharper image (more high-frequency content)
+        // Typical variance range for Laplacian is 0-1000+
+        let normalizedVariance = min(variance / 500.0, 1.0)
+        
+        return normalizedVariance
+    }
+    
+    private func calculateAverageVariance(output: CIImage, sampleRect: CGRect, context: CIContext) -> Double {
+        guard let statsFilter = CIFilter(name: "CIAreaAverage") else { return 0.5 }
         
         statsFilter.setValue(output, forKey: kCIInputImageKey)
         statsFilter.setValue(CIVector(cgRect: sampleRect), forKey: kCIInputExtentKey)

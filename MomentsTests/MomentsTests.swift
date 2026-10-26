@@ -559,4 +559,440 @@ final class MomentsTests: XCTestCase {
             XCTAssertTrue(formatted.contains(String(count)), "Should contain count")
         }
     }
+    
+    // MARK: - Background Task Checkpoint Tests
+    
+    func testCheckpointMarksIndexedAssets() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.checkpoint.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let lastIndexedIdKey = "\(testSuite).lastIndexedId"
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: lastIndexedIdKey)
+        
+        var indexedIds = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        XCTAssertTrue(indexedIds.isEmpty, "Should start empty")
+        
+        indexedIds.insert("asset-1")
+        indexedIds.insert("asset-2")
+        indexedIds.insert("asset-3")
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        defaults.set("asset-3", forKey: lastIndexedIdKey)
+        
+        let reloaded = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        XCTAssertEqual(reloaded.count, 3, "Should have 3 indexed assets")
+        XCTAssertTrue(reloaded.contains("asset-1"))
+        XCTAssertTrue(reloaded.contains("asset-2"))
+        XCTAssertTrue(reloaded.contains("asset-3"))
+        
+        let lastIndexed = defaults.string(forKey: lastIndexedIdKey)
+        XCTAssertEqual(lastIndexed, "asset-3", "Should track last indexed")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: lastIndexedIdKey)
+    }
+    
+    func testCheckpointResumesFromLastIndexed() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.resume.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        
+        let preexistingIds = ["asset-1", "asset-2", "asset-3", "asset-4", "asset-5"]
+        defaults.set(preexistingIds, forKey: indexedIdsKey)
+        
+        let allAssetsToProcess = ["asset-1", "asset-2", "asset-3", "asset-4", "asset-5",
+                                   "asset-6", "asset-7", "asset-8", "asset-9", "asset-10"]
+        
+        var indexedSet = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        var newlyProcessed = 0
+        
+        for assetId in allAssetsToProcess {
+            if !indexedSet.contains(assetId) {
+                indexedSet.insert(assetId)
+                newlyProcessed += 1
+            }
+        }
+        
+        defaults.set(Array(indexedSet), forKey: indexedIdsKey)
+        
+        XCTAssertEqual(newlyProcessed, 5, "Should only process 5 new assets")
+        XCTAssertEqual(indexedSet.count, 10, "Total should be 10 after resume")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+    }
+    
+    func testCheckpointProgressTracking() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.progress.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let analyzedIdsKey = "\(testSuite).analyzedIds"
+        let totalPhotosKey = "\(testSuite).totalPhotos"
+        let scanInProgressKey = "\(testSuite).scanInProgress"
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: analyzedIdsKey)
+        defaults.removeObject(forKey: totalPhotosKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+        
+        defaults.set(true, forKey: scanInProgressKey)
+        defaults.set(100, forKey: totalPhotosKey)
+        
+        XCTAssertTrue(defaults.bool(forKey: scanInProgressKey), "Scan should be in progress")
+        XCTAssertEqual(defaults.integer(forKey: totalPhotosKey), 100, "Total should be 100")
+        
+        var indexedIds = Set<String>()
+        for i in 1...50 {
+            indexedIds.insert("photo-\(i)")
+        }
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        
+        let indexed = defaults.stringArray(forKey: indexedIdsKey)?.count ?? 0
+        let analyzed = defaults.stringArray(forKey: analyzedIdsKey)?.count ?? 0
+        let total = defaults.integer(forKey: totalPhotosKey)
+        
+        XCTAssertEqual(indexed, 50, "Should have 50 indexed")
+        XCTAssertEqual(analyzed, 0, "Should have 0 analyzed yet")
+        XCTAssertEqual(total, 100, "Total should be 100")
+        
+        let progress = Double(indexed) / Double(max(total, 1))
+        XCTAssertEqual(progress, 0.5, accuracy: 0.01, "Progress should be 50%")
+        
+        var analyzedIds = Set<String>()
+        for i in 1...25 {
+            analyzedIds.insert("photo-\(i)")
+        }
+        defaults.set(Array(analyzedIds), forKey: analyzedIdsKey)
+        
+        let newAnalyzed = defaults.stringArray(forKey: analyzedIdsKey)?.count ?? 0
+        XCTAssertEqual(newAnalyzed, 25, "Should have 25 analyzed")
+        
+        let hasAnalysisPending = newAnalyzed < indexed
+        XCTAssertTrue(hasAnalysisPending, "Should have pending analysis")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: analyzedIdsKey)
+        defaults.removeObject(forKey: totalPhotosKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+    }
+    
+    func testCheckpointClearOnComplete() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.clear.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let analyzedIdsKey = "\(testSuite).analyzedIds"
+        let totalPhotosKey = "\(testSuite).totalPhotos"
+        let scanInProgressKey = "\(testSuite).scanInProgress"
+        
+        defaults.set(["photo-1", "photo-2"], forKey: indexedIdsKey)
+        defaults.set(["photo-1", "photo-2"], forKey: analyzedIdsKey)
+        defaults.set(2, forKey: totalPhotosKey)
+        defaults.set(true, forKey: scanInProgressKey)
+        
+        defaults.set(false, forKey: scanInProgressKey)
+        
+        XCTAssertFalse(defaults.bool(forKey: scanInProgressKey), "Scan should be complete")
+        
+        let hasWork = defaults.bool(forKey: scanInProgressKey)
+        XCTAssertFalse(hasWork, "Should have no pending work after completion")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: analyzedIdsKey)
+        defaults.removeObject(forKey: totalPhotosKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+    }
+    
+    func testCheckpointIdempotency() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.idempotent.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        
+        var indexedIds = Set<String>()
+        
+        indexedIds.insert("photo-1")
+        indexedIds.insert("photo-2")
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        XCTAssertEqual(indexedIds.count, 2)
+        
+        indexedIds.insert("photo-1")
+        indexedIds.insert("photo-2")
+        defaults.set(Array(indexedIds), forKey: indexedIdsKey)
+        
+        let reloaded = Set(defaults.stringArray(forKey: indexedIdsKey) ?? [])
+        XCTAssertEqual(reloaded.count, 2, "Set should remain at 2 (idempotent)")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+    }
+    
+    func testCheckpointPersistenceAcrossRestarts() throws {
+        let defaults = UserDefaults.standard
+        let testSuite = "test.persist.\(UUID().uuidString)"
+        
+        let indexedIdsKey = "\(testSuite).indexedIds"
+        let scanInProgressKey = "\(testSuite).scanInProgress"
+        
+        defaults.set(["photo-1", "photo-2", "photo-3"], forKey: indexedIdsKey)
+        defaults.set(true, forKey: scanInProgressKey)
+        defaults.synchronize()
+        
+        let isInProgress = defaults.bool(forKey: scanInProgressKey)
+        let indexedIds = defaults.stringArray(forKey: indexedIdsKey) ?? []
+        
+        XCTAssertTrue(isInProgress, "Should detect interrupted scan")
+        XCTAssertEqual(indexedIds.count, 3, "Should restore checkpoint data")
+        
+        defaults.removeObject(forKey: indexedIdsKey)
+        defaults.removeObject(forKey: scanInProgressKey)
+    }
+    
+    // MARK: - Deletion Likelihood Scoring Tests
+    
+    @MainActor
+    func testDeletionScoreExactDuplicateHigherThanNormal() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Normal photo
+        let normalPhoto = PersistedPhoto(localIdentifier: "normal-1")
+        normalPhoto.analysisCompleted = true
+        normalPhoto.deletionLikelihoodScore = 0.0 // Will be calculated
+        
+        // Exact duplicate (non-best)
+        let duplicatePhoto = PersistedPhoto(localIdentifier: "duplicate-1")
+        duplicatePhoto.duplicateGroupId = "group-1"
+        duplicatePhoto.isBestInGroup = false
+        duplicatePhoto.analysisCompleted = true
+        duplicatePhoto.deletionLikelihoodScore = 0.30 // High score for duplicate
+        
+        context.insert(normalPhoto)
+        context.insert(duplicatePhoto)
+        try context.save()
+        
+        XCTAssertTrue(duplicatePhoto.deletionLikelihoodScore > normalPhoto.deletionLikelihoodScore,
+                      "Duplicate should have higher deletion score than normal photo")
+    }
+    
+    @MainActor
+    func testDeletionScoreFavoriteProtected() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Favorite photo (should be protected)
+        let favoritePhoto = PersistedPhoto(localIdentifier: "favorite-1")
+        favoritePhoto.isFavorite = true
+        favoritePhoto.analysisCompleted = true
+        favoritePhoto.deletionLikelihoodScore = 0.0 // Low score for favorites
+        
+        // Screenshot (higher deletion likelihood)
+        let screenshotPhoto = PersistedPhoto(localIdentifier: "screenshot-1")
+        screenshotPhoto.mediaSubtypesRaw = "screenshot"
+        screenshotPhoto.analysisCompleted = true
+        screenshotPhoto.deletionLikelihoodScore = 0.20
+        
+        context.insert(favoritePhoto)
+        context.insert(screenshotPhoto)
+        try context.save()
+        
+        XCTAssertTrue(favoritePhoto.deletionLikelihoodScore < screenshotPhoto.deletionLikelihoodScore,
+                      "Favorite should have lower deletion score than screenshot")
+    }
+    
+    @MainActor
+    func testDeletionScoreBlurryHigherThanSharp() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Sharp photo
+        let sharpPhoto = PersistedPhoto(localIdentifier: "sharp-1")
+        sharpPhoto.mediaTypeRaw = "image"
+        sharpPhoto.sharpnessScore = 0.85
+        sharpPhoto.analysisCompleted = true
+        sharpPhoto.deletionLikelihoodScore = 0.0
+        
+        // Very blurry photo
+        let blurryPhoto = PersistedPhoto(localIdentifier: "blurry-1")
+        blurryPhoto.mediaTypeRaw = "image"
+        blurryPhoto.sharpnessScore = 0.05
+        blurryPhoto.analysisCompleted = true
+        blurryPhoto.deletionLikelihoodScore = 0.30 // High score for very blurry
+        
+        context.insert(sharpPhoto)
+        context.insert(blurryPhoto)
+        try context.save()
+        
+        XCTAssertTrue(blurryPhoto.deletionLikelihoodScore > sharpPhoto.deletionLikelihoodScore,
+                      "Blurry photo should have higher deletion score than sharp photo")
+    }
+    
+    @MainActor
+    func testDeletionScorePhotoWithFacesProtected() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Photo with faces (more protected)
+        let photoWithFaces = PersistedPhoto(localIdentifier: "faces-1")
+        photoWithFaces.facesDetected = 3
+        photoWithFaces.analysisCompleted = true
+        photoWithFaces.deletionLikelihoodScore = 0.0
+        
+        // Downloaded meme without faces
+        let memePhoto = PersistedPhoto(localIdentifier: "meme-1")
+        memePhoto.originRaw = "download"
+        memePhoto.facesDetected = 0
+        memePhoto.pixelWidth = 500
+        memePhoto.pixelHeight = 500
+        memePhoto.analysisCompleted = true
+        memePhoto.deletionLikelihoodScore = 0.30 // Higher score for meme
+        
+        context.insert(photoWithFaces)
+        context.insert(memePhoto)
+        try context.save()
+        
+        XCTAssertTrue(memePhoto.deletionLikelihoodScore > photoWithFaces.deletionLikelihoodScore,
+                      "Meme without faces should have higher deletion score than photo with faces")
+    }
+    
+    @MainActor
+    func testDeletionScoreLivePhotoNotHighPriority() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Live Photo (should NOT be high priority deletion)
+        let livePhoto = PersistedPhoto(localIdentifier: "live-1")
+        livePhoto.isLivePhoto = true
+        livePhoto.analysisCompleted = true
+        livePhoto.deletionLikelihoodScore = 0.0 // Low - Live Photos are not deletion candidates
+        
+        // Old screenshot with receipt
+        let oldScreenshot = PersistedPhoto(localIdentifier: "receipt-1")
+        oldScreenshot.mediaSubtypesRaw = "screenshot"
+        oldScreenshot.creationDate = Calendar.current.date(byAdding: .day, value: -60, to: Date())
+        oldScreenshot.ocrText = "TOTAL $150.00 FACTURA"
+        oldScreenshot.analysisCompleted = true
+        oldScreenshot.deletionLikelihoodScore = 0.35 // High score for old receipt screenshot
+        
+        context.insert(livePhoto)
+        context.insert(oldScreenshot)
+        try context.save()
+        
+        XCTAssertTrue(livePhoto.deletionLikelihoodScore < oldScreenshot.deletionLikelihoodScore,
+                      "Live Photo should have lower deletion score than old screenshot with receipt")
+    }
+    
+    @MainActor
+    func testDeletionScoreOrderingCorrect() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create photos with different deletion scores
+        let photos: [(String, Double)] = [
+            ("favorite", 0.0),        // Favorite - very low
+            ("livePhoto", 0.05),      // Live Photo - low
+            ("normal", 0.10),         // Normal photo
+            ("screenshot", 0.20),     // Screenshot
+            ("blurry", 0.25),         // Blurry
+            ("duplicate", 0.30),      // Duplicate
+            ("whatsappMeme", 0.40),   // WhatsApp meme
+        ]
+        
+        for (id, score) in photos {
+            let photo = PersistedPhoto(localIdentifier: id)
+            photo.analysisCompleted = true
+            photo.deletionLikelihoodScore = score
+            context.insert(photo)
+        }
+        try context.save()
+        
+        // Fetch and sort by deletion likelihood
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            sortBy: [SortDescriptor(\.deletionLikelihoodScore, order: .reverse)]
+        )
+        let sortedPhotos = try context.fetch(descriptor)
+        
+        // Verify order: whatsappMeme should be first (highest score)
+        XCTAssertEqual(sortedPhotos.first?.localIdentifier, "whatsappMeme",
+                       "Highest deletion score should be first")
+        
+        // Verify order: favorite should be last (lowest score)
+        XCTAssertEqual(sortedPhotos.last?.localIdentifier, "favorite",
+                       "Favorite should be last (lowest deletion score)")
+        
+        // Verify Live Photo is NOT at the top
+        XCTAssertNotEqual(sortedPhotos.first?.localIdentifier, "livePhoto",
+                          "Live Photo should NOT be at the top of deletion queue")
+    }
+    
+    @MainActor
+    func testDeletionScoreEditedPhotoProtected() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Edited photo (user invested effort)
+        let editedPhoto = PersistedPhoto(localIdentifier: "edited-1")
+        editedPhoto.isEdited = true
+        editedPhoto.analysisCompleted = true
+        editedPhoto.deletionLikelihoodScore = 0.0
+        
+        // Unedited screenshot
+        let screenshotPhoto = PersistedPhoto(localIdentifier: "screenshot-1")
+        screenshotPhoto.mediaSubtypesRaw = "screenshot"
+        screenshotPhoto.isEdited = false
+        screenshotPhoto.analysisCompleted = true
+        screenshotPhoto.deletionLikelihoodScore = 0.20
+        
+        context.insert(editedPhoto)
+        context.insert(screenshotPhoto)
+        try context.save()
+        
+        XCTAssertTrue(editedPhoto.deletionLikelihoodScore < screenshotPhoto.deletionLikelihoodScore,
+                      "Edited photo should have lower deletion score than unedited screenshot")
+    }
+    
+    @MainActor
+    func testDeletionScoreBurstLoserHighPriority() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Best photo in burst
+        let bestBurst = PersistedPhoto(localIdentifier: "burst-best")
+        bestBurst.burstIdentifier = "burst-group-1"
+        bestBurst.representsBurst = true
+        bestBurst.analysisCompleted = true
+        bestBurst.deletionLikelihoodScore = 0.0
+        
+        // Non-best burst photo (loser)
+        let burstLoser = PersistedPhoto(localIdentifier: "burst-loser")
+        burstLoser.burstIdentifier = "burst-group-1"
+        burstLoser.representsBurst = false
+        burstLoser.analysisCompleted = true
+        burstLoser.deletionLikelihoodScore = 0.25 // High score for burst loser
+        
+        context.insert(bestBurst)
+        context.insert(burstLoser)
+        try context.save()
+        
+        XCTAssertTrue(burstLoser.deletionLikelihoodScore > bestBurst.deletionLikelihoodScore,
+                      "Burst loser should have higher deletion score than best burst photo")
+    }
 }

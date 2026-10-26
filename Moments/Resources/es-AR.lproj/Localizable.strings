@@ -533,3 +533,13 @@
 /* Privacy */
 "privacy_on_device" = "100% en tu dispositivo";
 "privacy_no_uploads" = "Tus fotos nunca salen de tu iPhone";
+
+/* Pluralization - Photos */
+"photo_count_singular" = "1 foto";
+"photo_count_plural %lld" = "%lld fotos";
+"photo_count_zero" = "0 fotos";
+
+/* Pluralization - People */
+"person_count_singular" = "1 persona";
+"person_count_plural %lld" = "%lld personas";
+"person_count_zero" = "0 personas";

@@ -185,10 +185,10 @@ struct HomeView: View {
                 .padding(.top, MomentsSpacing.xs)
             }
             
-            if !viewModel.cleanupPreviewPhotos.isEmpty {
+            if !viewModel.topScoredPreviewPhotos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(viewModel.cleanupPreviewPhotos, id: \.id) { photo in
+                        ForEach(viewModel.topScoredPreviewPhotos, id: \.id) { photo in
                             AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
                                 .frame(width: 56, height: 56)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -202,7 +202,7 @@ struct HomeView: View {
             } label: {
                 HStack {
                     Image(systemName: "sparkles")
-                    Text("Revisar \(viewModel.cleanupItemCount > 0 ? "\(viewModel.cleanupItemCount) fotos" : "ahora")")
+                    Text("Revisar \(viewModel.cleanupItemCount > 0 ? MomentsPluralization.photos(viewModel.cleanupItemCount) : "ahora")")
                 }
             }
             .momentsAccentButton()
@@ -308,6 +308,15 @@ struct MetadataCategory: Identifiable {
     let icon: String
     let count: Int
     let estimatedSize: Int64
+    let averageScore: Double
+    let photos: [PersistedPhoto]
+    
+    /// Combined score for sorting: prioritizes high deletion scores and large space savings
+    var sortScore: Double {
+        let scoreWeight = averageScore * 0.6
+        let sizeWeight = min(Double(estimatedSize) / 1_000_000_000.0, 1.0) * 0.4
+        return scoreWeight + sizeWeight
+    }
 }
 
 // MARK: - Home View Model
@@ -319,6 +328,7 @@ class HomeViewModel: ObservableObject {
     @Published var totalSpaceSaved: Int64 = 0
     @Published var cleanupItemCount: Int = 0
     @Published var cleanupPreviewPhotos: [PersistedPhoto] = []
+    @Published var topScoredPreviewPhotos: [PersistedPhoto] = []
     @Published var metadataCategories: [MetadataCategory] = []
     @Published var totalMetadataItems: Int = 0
     @Published var metadataSize: Int64 = 0
@@ -359,6 +369,14 @@ class HomeViewModel: ObservableObject {
         canFreeSpace = cleanupViewModel.estimatedSpaceFreed
         cleanupItemCount = cleanupViewModel.totalCleanupItems
         cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
+        
+        // Top-scored photos: sorted by deletion likelihood (highest first), excluding Live Photos at top
+        let allCleanupPhotos = cleanupViewModel.categories.flatMap { $0.photos }
+        topScoredPreviewPhotos = Array(
+            allCleanupPhotos
+                .sorted { $0.deletionLikelihoodScore > $1.deletionLikelihoodScore }
+                .prefix(10)
+        )
     }
     
     private func loadSpaceSaved() {
@@ -370,6 +388,12 @@ class HomeViewModel: ObservableObject {
         
         var categories: [MetadataCategory] = []
         
+        // Helper to calculate average deletion score
+        func avgScore(_ photos: [PersistedPhoto]) -> Double {
+            guard !photos.isEmpty else { return 0 }
+            return photos.reduce(0) { $0 + $1.deletionLikelihoodScore } / Double(photos.count)
+        }
+        
         let screenshotDescriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate { $0.mediaSubtypesRaw.contains("screenshot") }
         )
@@ -380,7 +404,9 @@ class HomeViewModel: ObservableObject {
                 title: "Capturas de pantalla",
                 icon: "rectangle.on.rectangle",
                 count: screenshots.count,
-                estimatedSize: size
+                estimatedSize: size,
+                averageScore: avgScore(screenshots),
+                photos: screenshots
             ))
         }
         
@@ -394,21 +420,27 @@ class HomeViewModel: ObservableObject {
                 title: "Ráfagas duplicadas",
                 icon: "square.stack.3d.up",
                 count: bursts.count,
-                estimatedSize: size
+                estimatedSize: size,
+                averageScore: avgScore(bursts),
+                photos: bursts
             ))
         }
         
+        // Live Photos - show as low-priority conversion suggestion, not deletion
         let livePhotoDescriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate { $0.isLivePhoto }
         )
         if let livePhotos = try? context.fetch(livePhotoDescriptor), !livePhotos.isEmpty {
             let size = livePhotos.reduce(0) { $0 + ($1.estimatedFileSize ?? 3_000_000) }
+            // Live Photos have low deletion score - suggest conversion instead
             categories.append(MetadataCategory(
                 id: "livePhotos",
                 title: "Live Photos",
                 icon: "livephoto",
                 count: livePhotos.count,
-                estimatedSize: size
+                estimatedSize: size,
+                averageScore: 0.05, // Very low score - not deletion candidates
+                photos: livePhotos
             ))
         }
         
@@ -426,7 +458,9 @@ class HomeViewModel: ObservableObject {
                 title: "Descargas de apps",
                 icon: "arrow.down.circle",
                 count: downloaded.count,
-                estimatedSize: size
+                estimatedSize: size,
+                averageScore: avgScore(downloaded),
+                photos: downloaded
             ))
         }
         
@@ -440,17 +474,28 @@ class HomeViewModel: ObservableObject {
                 title: "Videos grandes (+100 MB)",
                 icon: "film",
                 count: largeVideos.count,
-                estimatedSize: size
+                estimatedSize: size,
+                averageScore: avgScore(largeVideos),
+                photos: largeVideos
             ))
         }
         
-        metadataCategories = categories.sorted { $0.estimatedSize > $1.estimatedSize }
+        // Sort by combined score (deletion likelihood + space savings)
+        metadataCategories = categories.sorted { $0.sortScore > $1.sortScore }
         totalMetadataItems = categories.reduce(0) { $0 + $1.count }
         metadataSize = categories.reduce(0) { $0 + $1.estimatedSize }
         
         canFreeSpace = cleanupViewModel.estimatedSpaceFreed
         cleanupItemCount = cleanupViewModel.totalCleanupItems
         cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
+        
+        // Top-scored photos for preview strip (sorted by deletion likelihood, highest first)
+        let allPhotosFromCategories = categories.flatMap { $0.photos }
+        topScoredPreviewPhotos = Array(
+            allPhotosFromCategories
+                .sorted { $0.deletionLikelihoodScore > $1.deletionLikelihoodScore }
+                .prefix(10)
+        )
     }
     
     private func loadFeedCards() async {

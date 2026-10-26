@@ -19,59 +19,56 @@ struct FechasView: View {
     @State private var showMemoryReel = false
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .accessibilityIdentifier("fechas.root")
-                
-                Group {
-                    if isLoading {
-                        loadingView
-                    } else if upcomingDates.isEmpty && unconfirmedDates.isEmpty {
-                        emptyStateView
-                    } else {
-                        datesList
-                    }
+        ZStack {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityIdentifier("fechas.root")
+            
+            Group {
+                if isLoading {
+                    loadingView
+                } else if upcomingDates.isEmpty && unconfirmedDates.isEmpty {
+                    emptyStateView
+                } else {
+                    datesList
                 }
             }
-            .navigationTitle(Text("fechas_title"))
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Label("fechas_settings", systemImage: "gear")
-                        }
-                        
-                        Button {
-                            showContactsImport = true
-                        } label: {
-                            Label("fechas_import_contacts", systemImage: "person.crop.circle.badge.plus")
-                        }
-                        
-                        Button {
-                            Task {
-                                await refreshDates()
-                            }
-                        } label: {
-                            Label("fechas_refresh", systemImage: "arrow.clockwise")
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("fechas_settings", systemImage: "gear")
+                    }
+                    
+                    Button {
+                        showContactsImport = true
+                    } label: {
+                        Label("fechas_import_contacts", systemImage: "person.crop.circle.badge.plus")
+                    }
+                    
+                    Button {
+                        Task {
+                            await refreshDates()
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Label("fechas_refresh", systemImage: "arrow.clockwise")
                     }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                NotificationSettingsView()
-            }
-            .sheet(isPresented: $showContactsImport) {
-                ContactsImportView()
-            }
-            .sheet(item: $selectedDate) { date in
-                MemoryReelView(importantDate: date)
-            }
+        }
+        .sheet(isPresented: $showSettings) {
+            NotificationSettingsView()
+        }
+        .sheet(isPresented: $showContactsImport) {
+            ContactsImportView()
+        }
+        .sheet(item: $selectedDate) { date in
+            MemoryReelView(importantDate: date)
         }
         .onAppear {
             importantDatesService.initialize(modelContext: modelContext)
