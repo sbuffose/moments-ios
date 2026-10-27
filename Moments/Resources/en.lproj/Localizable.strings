@@ -543,3 +543,39 @@
 "person_count_singular" = "1 person";
 "person_count_plural %lld" = "%lld people";
 "person_count_zero" = "0 people";
+
+/* Keep Decisions */
+"keep_decision_forever" = "Keep forever";
+"keep_decision_snoozed" = "Keep temporarily";
+"keep_always" = "Keep always";
+"keep_ask_week" = "Keep, ask in 1 week";
+"keep_ask_month" = "Keep, ask in 1 month";
+"kept_photos_title" = "Kept Photos";
+"kept_photos_empty" = "No kept photos";
+"kept_photos_empty_description" = "Photos you choose to keep will appear here";
+"kept_photos_count %lld" = "%lld photos kept";
+"kept_photos_footer" = "These photos won't appear in cleanup suggestions";
+"kept_photo_forever" = "Keep forever";
+"kept_photo_snoozed" = "Keep temporarily";
+"kept_photo_since" = "Kept %@";
+"kept_photo_until" = "Returns %@";
+"kept_undo_title" = "Ask again?";
+"kept_undo_message" = "The photo will appear in cleanup suggestions again";
+"kept_undo_confirm" = "Undo decision";
+
+/* Grouped Review */
+"group_identical_photos" = "Identical photos";
+"group_similar_photos" = "Similar photos";
+"group_keep_one_copy" = "Keep one copy";
+"group_best_copy" = "Best copy";
+"group_best_photo" = "Best photo";
+"group_keep_all" = "Keep all";
+"group_keep_all_forever" = "Keep all forever";
+"group_select_to_keep" = "Select which to keep";
+"group_delete_others %lld" = "Delete the other %lld";
+
+/* Background Tasks */
+"bg_task_title" = "Analyzing photos";
+"bg_task_subtitle_remaining" = "Remaining";
+"bg_task_title_finishing" = "Finishing";
+"bg_task_subtitle_almost_done" = "Almost done";

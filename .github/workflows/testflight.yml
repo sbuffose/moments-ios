@@ -61,13 +61,38 @@ jobs:
           echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
           echo "Project generated with build number $BUILD_NUMBER"
 
+      - name: Create Simulator
+        id: create_sim
+        run: |
+          # List available runtimes
+          echo "Available iOS runtimes:"
+          xcrun simctl list runtimes iOS
+          
+          # Get the latest iOS runtime
+          RUNTIME=$(xcrun simctl list runtimes iOS | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
+          echo "Using runtime: $RUNTIME"
+          
+          # Try to find an existing iPhone device, or create one
+          DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
+          
+          if [ -z "$DEVICE_ID" ]; then
+            echo "Creating iPhone 15 Pro simulator..."
+            DEVICE_ID=$(xcrun simctl create "iPhone 15 Pro" "iPhone 15 Pro" "$RUNTIME" 2>/dev/null || \
+                        xcrun simctl create "iPhone 15" "iPhone 15" "$RUNTIME" 2>/dev/null || \
+                        xcrun simctl create "iPhone 14 Pro" "iPhone 14 Pro" "$RUNTIME")
+          fi
+          
+          echo "device_id=$DEVICE_ID" >> $GITHUB_OUTPUT
+          echo "Created/found simulator: $DEVICE_ID"
+
       - name: Build for Simulator
         run: |
+          DEVICE_ID="${{ steps.create_sim.outputs.device_id }}"
           xcodebuild build \
             -project Moments.xcodeproj \
             -scheme "$SCHEME" \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 16" \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -derivedDataPath "$RUNNER_TEMP/SimulatorBuild" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO
@@ -75,12 +100,7 @@ jobs:
       - name: Boot Simulator and Seed Photos
         id: boot_simulator
         run: |
-          DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone 16" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
-          
-          if [ -z "$DEVICE_ID" ]; then
-            echo "Creating iPhone 16 simulator..."
-            DEVICE_ID=$(xcrun simctl create "iPhone 16 Test" "iPhone 16")
-          fi
+          DEVICE_ID="${{ steps.create_sim.outputs.device_id }}"
           
           echo "device_id=$DEVICE_ID" >> $GITHUB_OUTPUT
           echo "Using simulator: $DEVICE_ID"
@@ -224,13 +244,22 @@ jobs:
       - name: Setup Simulator for UI Tests
         id: setup_sim
         run: |
-          DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone 16" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
+          # Get the latest iOS runtime
+          RUNTIME=$(xcrun simctl list runtimes iOS | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
+          echo "Using runtime: $RUNTIME"
+          
+          # Try to find an existing iPhone device, or create one
+          DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
           
           if [ -z "$DEVICE_ID" ]; then
-            DEVICE_ID=$(xcrun simctl create "iPhone 16 Test" "iPhone 16")
+            echo "Creating iPhone 15 Pro simulator..."
+            DEVICE_ID=$(xcrun simctl create "iPhone 15 Pro" "iPhone 15 Pro" "$RUNTIME" 2>/dev/null || \
+                        xcrun simctl create "iPhone 15" "iPhone 15" "$RUNTIME" 2>/dev/null || \
+                        xcrun simctl create "iPhone 14 Pro" "iPhone 14 Pro" "$RUNTIME")
           fi
           
           echo "device_id=$DEVICE_ID" >> $GITHUB_OUTPUT
+          echo "Using simulator: $DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
           sleep 5
           

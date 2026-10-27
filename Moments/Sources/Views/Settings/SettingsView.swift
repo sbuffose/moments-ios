@@ -3,6 +3,7 @@
 
 import SwiftUI
 import Photos
+import SwiftData
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
@@ -66,6 +67,12 @@ struct SettingsView: View {
                         TagsListView()
                     } label: {
                         Label("Etiquetas", systemImage: "tag")
+                    }
+                    
+                    NavigationLink {
+                        KeptPhotosListView()
+                    } label: {
+                        Label("Fotos conservadas", systemImage: "checkmark.circle")
                     }
                 } header: {
                     Text("Tus datos")
@@ -263,6 +270,142 @@ struct SettingsView: View {
     private func resetApp() {
         UserDefaults.standard.removeObject(forKey: "hasLaunchedBefore")
         // En una implementación real, también limpiaríamos SwiftData
+    }
+}
+
+// MARK: - Kept Photos List View
+
+struct KeptPhotosListView: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var keptPhotos: [PersistedPhoto] = []
+    @State private var showUndoConfirmation = false
+    @State private var photoToUndo: PersistedPhoto?
+    
+    var body: some View {
+        List {
+            if keptPhotos.isEmpty {
+                ContentUnavailableView {
+                    Label("No hay fotos conservadas", systemImage: "checkmark.circle")
+                } description: {
+                    Text("Las fotos que elijas conservar aparecerán aquí")
+                }
+            } else {
+                Section {
+                    ForEach(keptPhotos, id: \.id) { photo in
+                        KeptPhotoRow(photo: photo) {
+                            photoToUndo = photo
+                            showUndoConfirmation = true
+                        }
+                    }
+                } header: {
+                    Text("\(keptPhotos.count) fotos conservadas")
+                } footer: {
+                    Text("Estas fotos no aparecerán en las sugerencias de limpieza")
+                }
+            }
+        }
+        .navigationTitle("Fotos conservadas")
+        .onAppear {
+            loadKeptPhotos()
+        }
+        .refreshable {
+            loadKeptPhotos()
+        }
+        .confirmationDialog(
+            "¿Volver a preguntar?",
+            isPresented: $showUndoConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Deshacer decisión", role: .destructive) {
+                if let photo = photoToUndo {
+                    undoKeepDecision(photo)
+                }
+            }
+            Button("Cancelar", role: .cancel) {
+                photoToUndo = nil
+            }
+        } message: {
+            Text("La foto volverá a aparecer en las sugerencias de limpieza")
+        }
+    }
+    
+    private func loadKeptPhotos() {
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate<PersistedPhoto> { photo in
+                photo.keepDecisionRaw != nil && photo.keepDecisionRaw != "none"
+            },
+            sortBy: [SortDescriptor(\.keepDecisionDate, order: .reverse)]
+        )
+        
+        do {
+            keptPhotos = try modelContext.fetch(descriptor)
+        } catch {
+            print("Error loading kept photos: \(error)")
+        }
+    }
+    
+    private func undoKeepDecision(_ photo: PersistedPhoto) {
+        photo.keepDecision = .none
+        photo.keepUntil = nil
+        photo.keepDecisionDate = nil
+        photo.keepDecisionGroupId = nil
+        
+        try? modelContext.save()
+        loadKeptPhotos()
+        photoToUndo = nil
+    }
+}
+
+struct KeptPhotoRow: View {
+    let photo: PersistedPhoto
+    let onUndo: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                .frame(width: 60, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(keepDecisionText)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                
+                if let date = photo.keepDecisionDate {
+                    Text("Conservada \(date.formatted(.relative(presentation: .named)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                if photo.keepDecision == .snoozed, let until = photo.keepUntil {
+                    Text("Vuelve a aparecer \(until.formatted(.relative(presentation: .named)))")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            
+            Spacer()
+            
+            Button {
+                onUndo()
+            } label: {
+                Image(systemName: "arrow.uturn.backward.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private var keepDecisionText: String {
+        switch photo.keepDecision {
+        case .forever:
+            return "Conservar siempre"
+        case .snoozed:
+            return "Conservar temporalmente"
+        case .none:
+            return "Sin decisión"
+        }
     }
 }
 

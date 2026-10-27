@@ -563,23 +563,25 @@ struct OnThisDayView: View {
     }
 }
 
-// MARK: - Cleanup Review View (All categories combined)
+// MARK: - Cleanup Review View (All categories combined - Now with Groups)
 
 struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
+    @StateObject private var shareService = ShareLoadingService()
     @State private var currentIndex = 0
     @State private var showFinishSheet = false
-    @State private var showShareSheet = false
+    @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
     @State private var sharedPhotoId: String?
+    @State private var showShareError = false
     @Environment(\.dismiss) private var dismiss
     
     private var allPhotos: [PersistedPhoto] {
         viewModel.categories.flatMap { $0.photos }
     }
     
-    private var unreviewedPhotos: [PersistedPhoto] {
-        viewModel.unreviewedPhotos(from: allPhotos)
+    private var unreviewedItems: [ReviewItem] {
+        viewModel.unreviewedItems()
     }
     
     private var photosToDelete: [PersistedPhoto] {
@@ -590,106 +592,97 @@ struct CleanupReviewView: View {
         viewModel.deletionSizeForReview(from: allPhotos)
     }
     
+    private var totalItems: Int {
+        viewModel.reviewQueue.count
+    }
+    
+    private var currentProgress: Double {
+        guard totalItems > 0 else { return 0 }
+        let totalReviewed = viewModel.reviewedItemCount()
+        return Double(totalReviewed + currentIndex) / Double(totalItems)
+    }
+    
+    private var currentPosition: Int {
+        viewModel.reviewedItemCount() + currentIndex + 1
+    }
+    
+    private var currentCategory: CleanupCategoryType? {
+        guard currentIndex < unreviewedItems.count else { return nil }
+        let item = unreviewedItems[currentIndex]
+        switch item {
+        case .single(let photo):
+            return photo.cleanupCategory != .none ? photo.cleanupCategory : nil
+        case .exactDuplicateGroup(_, _):
+            return CleanupCategoryType.duplicate
+        case .similarGroup(_, _):
+            return CleanupCategoryType.nearDuplicate
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
-            if currentIndex < unreviewedPhotos.count {
-                let currentPhoto = unreviewedPhotos[currentIndex]
-                let totalReviewed = viewModel.reviewedCount(from: allPhotos)
-                let totalPhotos = allPhotos.count
+            if currentIndex < unreviewedItems.count {
+                let currentItem = unreviewedItems[currentIndex]
                 
-                // Progress indicator
-                ProgressView(value: Double(totalReviewed + currentIndex), total: Double(totalPhotos))
+                // Progress indicator - synced with counter
+                ProgressView(value: currentProgress)
                     .padding(.horizontal)
                     .padding(.top)
+                    .animation(.easeInOut(duration: 0.3), value: currentProgress)
                 
-                Text("\(totalReviewed + currentIndex + 1) de \(totalPhotos)")
+                // Counter - shows position synced with progress
+                Text("\(currentPosition) de \(totalItems)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.3), value: currentPosition)
                 
-                // Current photo category
-                if let category = categoryFor(photo: currentPhoto) {
+                // Category label for current photo
+                if let category = currentCategory {
                     Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
                         .font(.caption)
                         .foregroundStyle(.tint)
-                        .padding(.top, 4)
+                        .padding(.top, 2)
+                        .id(category)
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.2), value: category)
                 }
                 
                 Spacer()
                 
-                // Swipeable card
-                SwipeablePhotoCard(
-                    photo: currentPhoto,
-                    onKeep: {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: false)
-                            currentIndex += 1
-                        }
-                    },
-                    onDelete: {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: true)
-                            currentIndex += 1
-                        }
-                    }
-                )
-                .padding()
-                
-                // Action buttons
-                HStack(spacing: 40) {
-                    // Keep button
-                    Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: false)
-                            currentIndex += 1
-                        }
-                    } label: {
-                        VStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundStyle(.green)
-                            Text("Conservar")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                // Show appropriate card based on item type
+                switch currentItem {
+                case .single(let photo):
+                    singlePhotoCard(photo: photo)
                     
-                    // Share button
-                    Button {
-                        sharedPhotoId = currentPhoto.id
-                        showShareSheet = true
-                    } label: {
-                        VStack {
-                            Image(systemName: "square.and.arrow.up.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundStyle(.blue)
-                            Text("Compartir")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                case .exactDuplicateGroup(let group, let photos):
+                    ExactDuplicateGroupCard(
+                        group: group,
+                        photos: photos,
+                        viewModel: viewModel,
+                        onComplete: {
+                            withAnimation(.spring(response: 0.3)) {
+                                currentIndex += 1
+                            }
                         }
-                    }
+                    )
                     
-                    // Delete button
-                    Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: true)
-                            currentIndex += 1
+                case .similarGroup(let group, let photos):
+                    SimilarGroupCard(
+                        group: group,
+                        photos: photos,
+                        viewModel: viewModel,
+                        onComplete: {
+                            withAnimation(.spring(response: 0.3)) {
+                                currentIndex += 1
+                            }
                         }
-                    } label: {
-                        VStack {
-                            Image(systemName: "trash.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundStyle(.red)
-                            Text("Eliminar")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    )
                 }
-                .padding(.bottom, 40)
                 
             } else {
-                // Review complete (all photos reviewed)
+                // Review complete (all items reviewed)
                 reviewCompleteView
             }
         }
@@ -738,15 +731,22 @@ struct CleanupReviewView: View {
                 }
             )
         }
-        .sheet(isPresented: $showShareSheet) {
-            if let photoId = sharedPhotoId,
-               let photo = unreviewedPhotos.first(where: { $0.id == photoId }) {
-                PhotoShareSheet(photo: photo) { didShare in
-                    if didShare {
-                        showPostShareDeletePrompt = true
-                    }
+        .sheet(item: $shareItem) { item in
+            ShareActivityController(shareItem: item) { didShare in
+                shareItem = nil
+                if didShare {
+                    showPostShareDeletePrompt = true
                 }
             }
+            .presentationDetents([.medium, .large])
+            .accessibilityIdentifier("share.activitySheet")
+        }
+        .alert("Error al compartir", isPresented: $showShareError) {
+            Button("OK") {
+                showShareError = false
+            }
+        } message: {
+            Text(shareService.errorMessage ?? "No se pudo preparar la foto para compartir")
         }
         .alert("¿Eliminar después de compartir?", isPresented: $showPostShareDeletePrompt) {
             Button("Eliminar", role: .destructive) {
@@ -769,6 +769,132 @@ struct CleanupReviewView: View {
             }
         } message: {
             Text("Ya compartiste esta foto. ¿Querés eliminarla de tu biblioteca?")
+        }
+    }
+    
+    // MARK: - Single Photo Card (existing behavior)
+    
+    @ViewBuilder
+    private func singlePhotoCard(photo: PersistedPhoto) -> some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            // Photo card with consistent sizing
+            GeometryReader { geometry in
+                let cardWidth = geometry.size.width - 32
+                let cardHeight = min(geometry.size.height, cardWidth * 1.3)
+                
+                SwipeablePhotoCard(
+                    photo: photo,
+                    onKeep: {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(photo.id, delete: false)
+                            currentIndex += 1
+                        }
+                    },
+                    onDelete: {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(photo.id, delete: true)
+                            currentIndex += 1
+                        }
+                    }
+                )
+                .frame(width: cardWidth, height: cardHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, 16)
+            
+            Spacer()
+            
+            // Action buttons - fixed width, equal spacing, centered labels
+            HStack(spacing: 0) {
+                // Keep button with menu for options
+                Menu {
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.keepPhoto(photo.id, duration: .forever)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        Label("Conservar siempre", systemImage: "checkmark.circle.fill")
+                    }
+                    
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.keepPhoto(photo.id, duration: .oneWeek)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        Label("Conservar, preguntar en 1 semana", systemImage: "clock")
+                    }
+                    
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.keepPhoto(photo.id, duration: .oneMonth)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
+                    }
+                } label: {
+                    ReviewActionButton(
+                        iconName: "checkmark.circle.fill",
+                        label: "Conservar",
+                        color: .green,
+                        isLoading: false
+                    )
+                } primaryAction: {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.keepPhoto(photo.id, duration: .forever)
+                        currentIndex += 1
+                    }
+                }
+                .disabled(shareService.isLoading)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("review.keepButton")
+                
+                // Share button
+                Button {
+                    Task {
+                        sharedPhotoId = photo.id
+                        if let item = await shareService.loadShareItem(for: photo) {
+                            shareItem = item
+                        } else {
+                            showShareError = true
+                        }
+                    }
+                } label: {
+                    ReviewActionButton(
+                        iconName: "square.and.arrow.up.circle.fill",
+                        label: "Compartir",
+                        color: .blue,
+                        isLoading: shareService.isLoading && shareService.loadingPhotoId == photo.id
+                    )
+                }
+                .disabled(shareService.isLoading)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("review.shareButton")
+                
+                // Delete button
+                Button {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photo.id, delete: true)
+                        currentIndex += 1
+                    }
+                } label: {
+                    ReviewActionButton(
+                        iconName: "trash.circle.fill",
+                        label: "Eliminar",
+                        color: .red,
+                        isLoading: false
+                    )
+                }
+                .disabled(shareService.isLoading)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("review.deleteButton")
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 40)
         }
     }
     
@@ -844,6 +970,380 @@ struct CleanupReviewView: View {
             .padding(.horizontal)
             .padding(.bottom, 32)
         }
+    }
+}
+
+// MARK: - Exact Duplicate Group Card
+
+struct ExactDuplicateGroupCard: View {
+    let group: SimilarGroup
+    let photos: [PersistedPhoto]
+    @ObservedObject var viewModel: CleanupViewModel
+    let onComplete: () -> Void
+    
+    private var bestPhoto: PersistedPhoto? {
+        photos.first { $0.id == group.bestPhotoId } ?? photos.first
+    }
+    
+    private var duplicateCount: Int {
+        photos.count - 1
+    }
+    
+    private var deletionSize: Int64 {
+        photos.filter { $0.id != bestPhoto?.id }.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Header
+            Label("Fotos idénticas", systemImage: "doc.on.doc.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            
+            Spacer()
+            
+            // Main preview of best photo
+            if let best = bestPhoto {
+                AsyncPhotoThumbnail(localIdentifier: best.localIdentifier, targetSize: CGSize(width: 400, height: 400))
+                    .aspectRatio(contentMode: .fit)
+                    .cornerRadius(16)
+                    .shadow(radius: 8)
+                    .padding(.horizontal)
+                    .overlay(alignment: .topLeading) {
+                        Label("Mejor copia", systemImage: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange)
+                            .cornerRadius(8)
+                            .padding(24)
+                    }
+            }
+            
+            // Duplicate thumbnails strip
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(photos, id: \.id) { photo in
+                        AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                            .frame(width: 60, height: 60)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(alignment: .topTrailing) {
+                                if photo.id == bestPhoto?.id {
+                                    Image(systemName: "star.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.yellow)
+                                        .padding(4)
+                                }
+                            }
+                            .overlay {
+                                if photo.id != bestPhoto?.id {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.red.opacity(0.3))
+                                }
+                            }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            
+            // Info text
+            VStack(spacing: 4) {
+                Text("\(MomentsPluralization.photos(photos.count)) idénticas")
+                    .font(.headline)
+                
+                Text("Conservar la mejor y eliminar \(MomentsPluralization.deleteOthers(duplicateCount))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                Text(formattedSize(deletionSize))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            
+            Spacer()
+            
+            // Action buttons
+            VStack(spacing: 12) {
+                // Primary action: Keep best, delete others
+                Button {
+                    // Keep the best photo forever, mark others for deletion
+                    if let bestId = bestPhoto?.id {
+                        viewModel.keepPhotos([bestId], duration: .forever, groupId: group.id)
+                    }
+                    let deleteIds = photos.filter { $0.id != bestPhoto?.id }.map { $0.id }
+                    for photoId in deleteIds {
+                        viewModel.markAsReviewed(photoId, delete: true)
+                    }
+                    onComplete()
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Conservar una copia")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .cornerRadius(14)
+                }
+                .accessibilityIdentifier("group.keepBest")
+                
+                // Secondary action: Keep all (with menu for duration)
+                Menu {
+                    Button {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                        onComplete()
+                    } label: {
+                        Label("Conservar todas siempre", systemImage: "checkmark.circle.fill")
+                    }
+                    
+                    Button {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .oneWeek, groupId: group.id)
+                        onComplete()
+                    } label: {
+                        Label("Conservar, preguntar en 1 semana", systemImage: "clock")
+                    }
+                    
+                    Button {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .oneMonth, groupId: group.id)
+                        onComplete()
+                    } label: {
+                        Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
+                    }
+                } label: {
+                    Text("Conservar todas")
+                        .font(.subheadline)
+                        .foregroundStyle(.tint)
+                } primaryAction: {
+                    viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                    onComplete()
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 32)
+        }
+        .accessibilityIdentifier("review.exactDuplicateGroup")
+    }
+    
+    private func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - Similar Group Card (for near-duplicates, bursts)
+
+struct SimilarGroupCard: View {
+    let group: SimilarGroup
+    let photos: [PersistedPhoto]
+    @ObservedObject var viewModel: CleanupViewModel
+    let onComplete: () -> Void
+    
+    @State private var selectedToKeep: Set<String> = []
+    @State private var previewPhoto: PersistedPhoto?
+    
+    private var bestPhoto: PersistedPhoto? {
+        photos.first { $0.id == group.bestPhotoId } ?? photos.first
+    }
+    
+    private var photosToDelete: [PersistedPhoto] {
+        photos.filter { !selectedToKeep.contains($0.id) }
+    }
+    
+    private var deletionSize: Int64 {
+        photosToDelete.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Header
+            Label("Fotos similares", systemImage: "square.on.square")
+                .font(.caption)
+                .foregroundStyle(.purple)
+            
+            Spacer()
+            
+            // Preview of selected/hovered photo or best
+            let displayPhoto = previewPhoto ?? photos.first { selectedToKeep.contains($0.id) } ?? bestPhoto
+            if let photo = displayPhoto {
+                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 400, height: 400))
+                    .aspectRatio(contentMode: .fit)
+                    .cornerRadius(16)
+                    .shadow(radius: 8)
+                    .padding(.horizontal)
+                    .overlay(alignment: .topLeading) {
+                        if photo.id == bestPhoto?.id {
+                            Label("Mejor foto", systemImage: "star.fill")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange)
+                                .cornerRadius(8)
+                                .padding(24)
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if selectedToKeep.contains(photo.id) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title)
+                                .foregroundStyle(.green)
+                                .padding(24)
+                        }
+                    }
+            }
+            
+            // Selectable thumbnails strip
+            Text("Seleccioná las que querés conservar")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(photos, id: \.id) { photo in
+                        Button {
+                            if selectedToKeep.contains(photo.id) {
+                                selectedToKeep.remove(photo.id)
+                            } else {
+                                selectedToKeep.insert(photo.id)
+                            }
+                            previewPhoto = photo
+                        } label: {
+                            AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                                .frame(width: 70, height: 70)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(alignment: .topTrailing) {
+                                    Image(systemName: selectedToKeep.contains(photo.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.caption)
+                                        .foregroundStyle(selectedToKeep.contains(photo.id) ? .green : .white.opacity(0.8))
+                                        .shadow(radius: 2)
+                                        .padding(4)
+                                }
+                                .overlay(alignment: .topLeading) {
+                                    if photo.id == bestPhoto?.id {
+                                        Image(systemName: "star.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.yellow)
+                                            .shadow(radius: 2)
+                                            .padding(4)
+                                    }
+                                }
+                                .overlay {
+                                    if selectedToKeep.contains(photo.id) {
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.green, lineWidth: 3)
+                                    }
+                                }
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            
+            // Info text
+            VStack(spacing: 4) {
+                Text("\(MomentsPluralization.photos(photos.count)) similares")
+                    .font(.headline)
+                
+                if photosToDelete.count > 0 {
+                    Text("Eliminar \(MomentsPluralization.deleteOthers(photosToDelete.count)) (\(formattedSize(deletionSize)))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Seleccioná al menos una para conservar")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            // Action buttons
+            VStack(spacing: 12) {
+                // Primary action: Keep selected, delete unselected
+                Button {
+                    // Keep selected photos forever
+                    viewModel.keepPhotos(Array(selectedToKeep), duration: .forever, groupId: group.id)
+                    // Mark unselected for deletion
+                    let deleteIds = photos.filter { !selectedToKeep.contains($0.id) }.map { $0.id }
+                    for photoId in deleteIds {
+                        viewModel.markAsReviewed(photoId, delete: true)
+                    }
+                    onComplete()
+                } label: {
+                    HStack {
+                        if photosToDelete.count > 0 {
+                            Image(systemName: "trash")
+                            Text(MomentsPluralization.deleteOthers(photosToDelete.count))
+                        } else {
+                            Image(systemName: "checkmark")
+                            Text("Conservar todas")
+                        }
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(photosToDelete.count > 0 ? Color.red : Color.green)
+                    .cornerRadius(14)
+                }
+                .disabled(selectedToKeep.isEmpty)
+                .accessibilityIdentifier("group.confirmSelection")
+                
+                // Secondary action: Keep all (with menu for duration)
+                if photosToDelete.count > 0 {
+                    Menu {
+                        Button {
+                            viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                            onComplete()
+                        } label: {
+                            Label("Conservar todas siempre", systemImage: "checkmark.circle.fill")
+                        }
+                        
+                        Button {
+                            viewModel.keepPhotos(photos.map { $0.id }, duration: .oneWeek, groupId: group.id)
+                            onComplete()
+                        } label: {
+                            Label("Conservar, preguntar en 1 semana", systemImage: "clock")
+                        }
+                        
+                        Button {
+                            viewModel.keepPhotos(photos.map { $0.id }, duration: .oneMonth, groupId: group.id)
+                            onComplete()
+                        } label: {
+                            Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
+                        }
+                    } label: {
+                        Text("Conservar todas")
+                            .font(.subheadline)
+                            .foregroundStyle(.tint)
+                    } primaryAction: {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                        onComplete()
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 32)
+        }
+        .accessibilityIdentifier("review.similarGroup")
+        .onAppear {
+            // Pre-select best photo
+            if let best = bestPhoto {
+                selectedToKeep.insert(best.id)
+            }
+        }
+    }
+    
+    private func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 }
 
@@ -1001,125 +1501,26 @@ struct ReviewSummarySheet: View {
     }
 }
 
-// MARK: - Photo Share Sheet
+// MARK: - Share Item (Identifiable for .sheet(item:))
 
-struct PhotoShareSheet: View {
-    let photo: PersistedPhoto
-    let onComplete: (Bool) -> Void
-    
-    @Environment(\.dismiss) private var dismiss
-    @State private var shareItems: [Any] = []
-    @State private var isLoading = true
-    
-    var body: some View {
-        NavigationStack {
-            VStack {
-                if isLoading {
-                    ProgressView("Preparando...")
-                } else if !shareItems.isEmpty {
-                    ShareActivityView(activityItems: shareItems) { completed in
-                        dismiss()
-                        onComplete(completed)
-                    }
-                } else {
-                    ContentUnavailableView(
-                        "No se pudo cargar",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("No se pudo cargar la foto para compartir")
-                    )
-                }
-            }
-            .navigationTitle("Compartir")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                        onComplete(false)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .task {
-            await loadShareItems()
-        }
-    }
-    
-    private func loadShareItems() async {
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [photo.localIdentifier], options: nil)
-        guard let asset = fetchResult.firstObject else {
-            isLoading = false
-            return
-        }
-        
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
-        options.isSynchronous = false
-        
-        if asset.mediaType == .video {
-            // For videos, get the video URL
-            let videoOptions = PHVideoRequestOptions()
-            videoOptions.isNetworkAccessAllowed = true
-            videoOptions.deliveryMode = .highQualityFormat
-            
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: videoOptions) { avAsset, _, _ in
-                DispatchQueue.main.async {
-                    if let urlAsset = avAsset as? AVURLAsset {
-                        self.shareItems = [urlAsset.url]
-                    }
-                    self.isLoading = false
-                }
-            }
-        } else if asset.mediaSubtypes.contains(.photoLive) {
-            // For Live Photos, get the Live Photo object
-            let livePhotoOptions = PHLivePhotoRequestOptions()
-            livePhotoOptions.isNetworkAccessAllowed = true
-            livePhotoOptions.deliveryMode = .highQualityFormat
-            
-            PHImageManager.default().requestLivePhoto(
-                for: asset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
-                options: livePhotoOptions
-            ) { livePhoto, _ in
-                DispatchQueue.main.async {
-                    if let livePhoto = livePhoto {
-                        self.shareItems = [livePhoto]
-                    }
-                    self.isLoading = false
-                }
-            }
-        } else {
-            // For regular images, get full-size image
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
-                options: options
-            ) { image, _ in
-                DispatchQueue.main.async {
-                    if let image = image {
-                        self.shareItems = [image]
-                    }
-                    self.isLoading = false
-                }
-            }
-        }
-    }
+struct ShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+    let photoId: String
 }
 
-// MARK: - Share Activity View (UIKit wrapper)
+// MARK: - Share Activity Controller (UIKit wrapper - presented directly)
 
-struct ShareActivityView: UIViewControllerRepresentable {
-    let activityItems: [Any]
+struct ShareActivityController: UIViewControllerRepresentable {
+    let shareItem: ShareItem
     let onComplete: (Bool) -> Void
+    @Environment(\.dismiss) private var dismiss
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        let controller = UIActivityViewController(
+            activityItems: [shareItem.url],
+            applicationActivities: nil
+        )
         controller.completionWithItemsHandler = { _, completed, _, _ in
             onComplete(completed)
         }
@@ -1127,6 +1528,170 @@ struct ShareActivityView: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Share Loading Service
+
+@MainActor
+class ShareLoadingService: ObservableObject {
+    @Published var isLoading = false
+    @Published var loadingPhotoId: String?
+    @Published var errorMessage: String?
+    
+    func loadShareItem(for photo: PersistedPhoto) async -> ShareItem? {
+        isLoading = true
+        loadingPhotoId = photo.id
+        errorMessage = nil
+        
+        defer {
+            isLoading = false
+            loadingPhotoId = nil
+        }
+        
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [photo.localIdentifier], options: nil)
+        guard let asset = fetchResult.firstObject else {
+            errorMessage = "No se pudo encontrar la foto"
+            return nil
+        }
+        
+        do {
+            let tempURL = try await exportAssetToTempFile(asset: asset)
+            return ShareItem(url: tempURL, photoId: photo.id)
+        } catch {
+            errorMessage = "Error al preparar: \(error.localizedDescription)"
+            return nil
+        }
+    }
+    
+    private func exportAssetToTempFile(asset: PHAsset) async throws -> URL {
+        if asset.mediaType == .video {
+            return try await exportVideo(asset: asset)
+        } else if asset.mediaSubtypes.contains(.photoLive) {
+            return try await exportLivePhoto(asset: asset)
+        } else {
+            return try await exportImage(asset: asset)
+        }
+    }
+    
+    private func exportImage(asset: PHAsset) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+            options.version = .current
+            
+            PHImageManager.default().requestImageDataAndOrientation(
+                for: asset,
+                options: options
+            ) { data, uti, _, info in
+                guard let imageData = data else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    continuation.resume(throwing: error ?? NSError(domain: "ShareError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No se pudo cargar la imagen"]))
+                    return
+                }
+                
+                let fileExtension: String
+                if let uniformType = uti {
+                    switch uniformType {
+                    case "public.jpeg", "public.jpg": fileExtension = "jpg"
+                    case "public.png": fileExtension = "png"
+                    case "public.heic", "public.heif": fileExtension = "heic"
+                    case "com.compuserve.gif": fileExtension = "gif"
+                    default: fileExtension = "jpg"
+                    }
+                } else {
+                    fileExtension = "jpg"
+                }
+                
+                let resources = PHAssetResource.assetResources(for: asset)
+                let originalFilename = resources.first?.originalFilename ?? "photo"
+                let baseName = (originalFilename as NSString).deletingPathExtension
+                
+                let tempDir = FileManager.default.temporaryDirectory
+                let fileName = "\(baseName)_\(UUID().uuidString.prefix(8)).\(fileExtension)"
+                let tempURL = tempDir.appendingPathComponent(fileName)
+                
+                do {
+                    try imageData.write(to: tempURL)
+                    continuation.resume(returning: tempURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private func exportVideo(asset: PHAsset) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.version = .current
+            
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
+                guard let urlAsset = avAsset as? AVURLAsset else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    continuation.resume(throwing: error ?? NSError(domain: "ShareError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No se pudo cargar el video"]))
+                    return
+                }
+                
+                let resources = PHAssetResource.assetResources(for: asset)
+                let originalFilename = resources.first?.originalFilename ?? "video.mov"
+                let baseName = (originalFilename as NSString).deletingPathExtension
+                let ext = (originalFilename as NSString).pathExtension.isEmpty ? "mov" : (originalFilename as NSString).pathExtension
+                
+                let tempDir = FileManager.default.temporaryDirectory
+                let fileName = "\(baseName)_\(UUID().uuidString.prefix(8)).\(ext)"
+                let tempURL = tempDir.appendingPathComponent(fileName)
+                
+                do {
+                    if FileManager.default.fileExists(atPath: tempURL.path) {
+                        try FileManager.default.removeItem(at: tempURL)
+                    }
+                    try FileManager.default.copyItem(at: urlAsset.url, to: tempURL)
+                    continuation.resume(returning: tempURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private func exportLivePhoto(asset: PHAsset) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+            
+            PHImageManager.default().requestImageDataAndOrientation(
+                for: asset,
+                options: options
+            ) { data, uti, _, info in
+                guard let imageData = data else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    continuation.resume(throwing: error ?? NSError(domain: "ShareError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No se pudo cargar Live Photo"]))
+                    return
+                }
+                
+                let resources = PHAssetResource.assetResources(for: asset)
+                let originalFilename = resources.first?.originalFilename ?? "livephoto"
+                let baseName = (originalFilename as NSString).deletingPathExtension
+                
+                let tempDir = FileManager.default.temporaryDirectory
+                let fileName = "\(baseName)_\(UUID().uuidString.prefix(8)).heic"
+                let tempURL = tempDir.appendingPathComponent(fileName)
+                
+                do {
+                    try imageData.write(to: tempURL)
+                    continuation.resume(returning: tempURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Category Row
@@ -1383,10 +1948,20 @@ struct SwipeablePhotoCard: View {
     @State private var rotation: Double = 0
     
     var body: some View {
-        AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 500, height: 500))
-            .aspectRatio(contentMode: .fit)
+        GeometryReader { geometry in
+            let cardSize = min(geometry.size.width, geometry.size.height)
+            
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemGray6))
+                
+                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 600, height: 600))
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
             .cornerRadius(16)
-            .shadow(radius: 8)
+            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
             .offset(offset)
             .rotationEffect(.degrees(rotation))
             .gesture(
@@ -1444,6 +2019,8 @@ struct SwipeablePhotoCard: View {
                 }
                 .padding()
             }
+        }
+        .accessibilityIdentifier("review.photoCard")
     }
 }
 
@@ -1652,6 +2229,39 @@ struct SimilarPhotoCell: View {
             .onLongPressGesture {
                 onLongPress()
             }
+    }
+}
+
+// MARK: - Review Action Button
+
+struct ReviewActionButton: View {
+    let iconName: String
+    let label: String
+    let color: Color
+    let isLoading: Bool
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            if isLoading {
+                ProgressView()
+                    .frame(width: 56, height: 56)
+            } else {
+                Image(systemName: iconName)
+                    .font(.system(size: 56))
+                    .foregroundStyle(color)
+            }
+            
+            Text(label)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .frame(width: 96)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier("review.actionButton.\(label)")
     }
 }
 

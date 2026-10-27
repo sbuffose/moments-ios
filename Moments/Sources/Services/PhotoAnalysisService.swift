@@ -185,6 +185,8 @@ class PhotoAnalysisService: ObservableObject {
             photo.exposureScore = qualityMetrics.exposure
             photo.detailScore = qualityMetrics.detail
             photo.deviceTilt = qualityMetrics.tilt
+            photo.visionAestheticsScore = qualityMetrics.visionAestheticsScore
+            photo.visionIsUtility = qualityMetrics.visionIsUtility
             
             photo.hasText = textAnalysis.hasText
             photo.isDocument = textAnalysis.isDocument
@@ -304,11 +306,47 @@ class PhotoAnalysisService: ObservableObject {
                 return
             }
             
-            // Stricter blur detection - only flag photos with very low sharpness
-            // Threshold lowered from 0.3 to 0.15 to reduce false positives
-            if let sharpness = photo.sharpnessScore, sharpness < 0.15, photo.mediaTypeRaw == "image" {
-                photo.cleanupCategory = .blurry
-                return
+            // STRICT blur detection - requires BOTH Laplacian variance AND Vision aesthetics to agree
+            // Never flag photos with faces as blurry unless they're REALLY blurry
+            // This eliminates false positives like sharp storefronts or vacation photos
+            if photo.mediaTypeRaw == "image" {
+                let laplacianSharpness = photo.sharpnessScore ?? 1.0
+                let visionAesthetics = qualityMetrics.visionAestheticsScore
+                let isUtility = qualityMetrics.visionIsUtility
+                let hasFaces = (photo.facesDetected ?? 0) > 0
+                
+                // Only flag as blurry if:
+                // 1. Laplacian variance is very low
+                // 2. AND either Vision aesthetics confirms low quality OR Vision not available
+                // 3. AND if photo has faces, require EXTREMELY low sharpness
+                var shouldFlagAsBlurry = false
+                
+                // Different thresholds for photos with and without faces
+                let laplacianThreshold: Double = hasFaces ? 0.05 : 0.10
+                let stricterThreshold: Double = hasFaces ? 0.03 : 0.08
+                
+                if laplacianSharpness < laplacianThreshold {
+                    // Low Laplacian - potentially blurry
+                    if let aesthetics = visionAesthetics, let utility = isUtility {
+                        // Vision is available - require agreement
+                        // For photos with faces, require BOTH low aesthetics AND utility flag
+                        if hasFaces {
+                            // Extra strict for face photos: must have very low aesthetics AND be utility
+                            shouldFlagAsBlurry = aesthetics < 0.2 && utility == true
+                        } else {
+                            // Normal photos: flag if Vision thinks it's low quality or utility
+                            shouldFlagAsBlurry = aesthetics < 0.3 || utility == true
+                        }
+                    } else {
+                        // Vision not available (pre-iOS 18) - use stricter Laplacian threshold
+                        shouldFlagAsBlurry = laplacianSharpness < stricterThreshold
+                    }
+                }
+                
+                if shouldFlagAsBlurry {
+                    photo.cleanupCategory = .blurry
+                    return
+                }
             }
             
             if let exposure = photo.exposureScore, exposure > 0.85, photo.mediaTypeRaw == "image" {
@@ -719,6 +757,8 @@ final class ImageAnalyzer: Sendable {
         let exposure: Double
         let detail: Double
         let tilt: Double?
+        let visionAestheticsScore: Double?
+        let visionIsUtility: Bool?
     }
     
     struct TextAnalysis: Sendable {
@@ -741,7 +781,7 @@ final class ImageAnalyzer: Sendable {
     
     func analyzeQuality(image: UIImage) async -> QualityMetrics {
         guard let ciImage = CIImage(image: image) else {
-            return QualityMetrics(sharpness: 0.5, exposure: 0.5, detail: 0.5, tilt: nil)
+            return QualityMetrics(sharpness: 0.5, exposure: 0.5, detail: 0.5, tilt: nil, visionAestheticsScore: nil, visionIsUtility: nil)
         }
         
         let sharpness = calculateLaplacianVariance(ciImage)
@@ -749,7 +789,62 @@ final class ImageAnalyzer: Sendable {
         let detail = calculateDetailScore(ciImage)
         let tilt = extractDeviceTilt(from: image)
         
-        return QualityMetrics(sharpness: sharpness, exposure: exposure, detail: detail, tilt: tilt)
+        // Get Vision aesthetics score (iOS 18+)
+        let aesthetics = await analyzeAesthetics(image: image)
+        
+        return QualityMetrics(
+            sharpness: sharpness,
+            exposure: exposure,
+            detail: detail,
+            tilt: tilt,
+            visionAestheticsScore: aesthetics.overallScore,
+            visionIsUtility: aesthetics.isUtility
+        )
+    }
+    
+    // MARK: - Vision Aesthetics Analysis (iOS 18+)
+    
+    private func analyzeAesthetics(image: UIImage) async -> (overallScore: Double?, isUtility: Bool?) {
+        guard let cgImage = image.cgImage else {
+            return (nil, nil)
+        }
+        
+        // VNCalculateImageAestheticsScoresRequest is available in iOS 18+
+        if #available(iOS 18.0, *) {
+            return await withCheckedContinuation { continuation in
+                var hasResumed = false
+                let resumeOnce: ((Double?, Bool?)) -> Void = { result in
+                    if !hasResumed {
+                        hasResumed = true
+                        continuation.resume(returning: result)
+                    }
+                }
+                
+                let request = VNCalculateImageAestheticsScoresRequest { request, error in
+                    guard error == nil,
+                          let observation = request.results?.first as? VNImageAestheticsScoresObservation else {
+                        resumeOnce((nil, nil))
+                        return
+                    }
+                    
+                    resumeOnce((Double(observation.overallScore), observation.isUtility))
+                }
+                
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+                
+                do {
+                    try handler.perform([request])
+                } catch {
+                    resumeOnce((nil, nil))
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    resumeOnce((nil, nil))
+                }
+            }
+        } else {
+            return (nil, nil)
+        }
     }
     
     private func calculateLaplacianVariance(_ image: CIImage) -> Double {

@@ -216,6 +216,22 @@ enum SimilarGroupFeedback: String, Codable, Sendable {
     case notSimilar = "notSimilar"
 }
 
+// MARK: - Keep Decision (user's choice to keep a photo)
+
+enum KeepDecision: String, Codable, CaseIterable, Sendable {
+    case none = "none"           // No decision made yet
+    case forever = "forever"     // Keep forever, never ask again
+    case snoozed = "snoozed"     // Keep temporarily, ask again after keepUntil
+    
+    var localizedDescription: String {
+        switch self {
+        case .none: return ""
+        case .forever: return String(localized: "keep_decision_forever")
+        case .snoozed: return String(localized: "keep_decision_snoozed")
+        }
+    }
+}
+
 // MARK: - Best Shot Reason
 
 enum BestShotReason: String, Codable, CaseIterable, Sendable {
@@ -353,6 +369,10 @@ final class PersistedPhoto {
     var analysisCompleted: Bool
     var lastAnalyzedAt: Date?
     
+    // Vision Aesthetics (iOS 18+)
+    var visionAestheticsScore: Double?
+    var visionIsUtility: Bool?
+    
     // Search index fields
     var visionLabels: String?
     var visionLabelsConfidence: String?
@@ -404,6 +424,13 @@ final class PersistedPhoto {
     // Deletion likelihood score (0-1, higher = more likely to delete)
     // This is a STORED property for use in predicates and sorting
     var deletionLikelihoodScore: Double
+    
+    // Keep decision (user chose to keep this photo - persisted across rescans)
+    // IMPORTANT: These fields must NEVER be reset during re-analysis or rescans
+    var keepDecisionRaw: String?
+    var keepUntil: Date?
+    var keepDecisionDate: Date?
+    var keepDecisionGroupId: String?
     
     // Relaciones
     @Relationship(deleteRule: .cascade, inverse: \PersistedFaceDetection.photo)
@@ -472,6 +499,37 @@ final class PersistedPhoto {
     var similarGroupFeedback: SimilarGroupFeedback {
         get { SimilarGroupFeedback(rawValue: similarGroupFeedbackRaw ?? "none") ?? .none }
         set { similarGroupFeedbackRaw = newValue.rawValue }
+    }
+    
+    var keepDecision: KeepDecision {
+        get { KeepDecision(rawValue: keepDecisionRaw ?? "none") ?? .none }
+        set { keepDecisionRaw = newValue.rawValue }
+    }
+    
+    /// Returns true if this photo should be excluded from cleanup candidates
+    /// - Photos kept forever are always excluded
+    /// - Snoozed photos are excluded until keepUntil date passes
+    var isKeptByUser: Bool {
+        switch keepDecision {
+        case .none:
+            return false
+        case .forever:
+            return true
+        case .snoozed:
+            if let until = keepUntil {
+                return Date() < until
+            }
+            return false
+        }
+    }
+    
+    /// Helper to check if snooze has expired and photo should be a candidate again
+    var isSnoozeExpired: Bool {
+        guard keepDecision == .snoozed else { return false }
+        if let until = keepUntil {
+            return Date() >= until
+        }
+        return true
     }
     
     // Computed properties

@@ -6,6 +6,68 @@ import SwiftData
 import Photos
 import Combine
 
+// MARK: - Review Item (Single photo or Group)
+
+enum ReviewItem: Identifiable {
+    case single(PersistedPhoto)
+    case exactDuplicateGroup(SimilarGroup, [PersistedPhoto])
+    case similarGroup(SimilarGroup, [PersistedPhoto])
+    
+    var id: String {
+        switch self {
+        case .single(let photo):
+            return "single_\(photo.id)"
+        case .exactDuplicateGroup(let group, _):
+            return "exact_\(group.id)"
+        case .similarGroup(let group, _):
+            return "similar_\(group.id)"
+        }
+    }
+    
+    var photoIds: [String] {
+        switch self {
+        case .single(let photo):
+            return [photo.id]
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos.map { $0.id }
+        }
+    }
+    
+    var maxDeletionScore: Double {
+        switch self {
+        case .single(let photo):
+            return photo.deletionLikelihoodScore
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos.map { $0.deletionLikelihoodScore }.max() ?? 0
+        }
+    }
+    
+    var totalSize: Int64 {
+        switch self {
+        case .single(let photo):
+            return photo.estimatedFileSize ?? 0
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+        }
+    }
+    
+    var bestPhoto: PersistedPhoto? {
+        switch self {
+        case .single(let photo):
+            return photo
+        case .exactDuplicateGroup(let group, let photos), .similarGroup(let group, let photos):
+            return photos.first { $0.id == group.bestPhotoId } ?? photos.first
+        }
+    }
+    
+    var isGroup: Bool {
+        switch self {
+        case .single: return false
+        case .exactDuplicateGroup, .similarGroup: return true
+        }
+    }
+}
+
 @MainActor
 class CleanupViewModel: ObservableObject {
     // MARK: - Published Properties
@@ -14,6 +76,7 @@ class CleanupViewModel: ObservableObject {
     @Published var selectedCategory: CleanupCategoryItem?
     @Published var selectedPhotos: Set<String> = []
     @Published var reviewedPhotos: Set<String> = []
+    @Published var reviewedGroups: Set<String> = []
     @Published var keptPhotos: Set<String> = []
     @Published var isDeleting = false
     @Published var showDeleteConfirmation = false
@@ -24,6 +87,10 @@ class CleanupViewModel: ObservableObject {
     @Published var categories: [CleanupCategoryItem] = []
     @Published var estimatedSpaceFreed: Int64 = 0
     
+    // Grouped review queue
+    @Published var reviewQueue: [ReviewItem] = []
+    @Published var similarGroups: [SimilarGroup] = []
+    
     // MARK: - Private Properties
     
     private var modelContext: ModelContext?
@@ -33,6 +100,7 @@ class CleanupViewModel: ObservableObject {
     
     private let selectedPhotosKey = "com.moments.cleanup.selectedPhotos"
     private let reviewedPhotosKey = "com.moments.cleanup.reviewedPhotos"
+    private let reviewedGroupsKey = "com.moments.cleanup.reviewedGroups"
     private let keptPhotosKey = "com.moments.cleanup.keptPhotos"
     
     // MARK: - Category Item
@@ -87,6 +155,9 @@ class CleanupViewModel: ObservableObject {
         if let reviewedData = UserDefaults.standard.array(forKey: reviewedPhotosKey) as? [String] {
             reviewedPhotos = Set(reviewedData)
         }
+        if let reviewedGroupsData = UserDefaults.standard.array(forKey: reviewedGroupsKey) as? [String] {
+            reviewedGroups = Set(reviewedGroupsData)
+        }
         if let keptData = UserDefaults.standard.array(forKey: keptPhotosKey) as? [String] {
             keptPhotos = Set(keptData)
         }
@@ -95,15 +166,18 @@ class CleanupViewModel: ObservableObject {
     func persistProgress() {
         UserDefaults.standard.set(Array(selectedPhotos), forKey: selectedPhotosKey)
         UserDefaults.standard.set(Array(reviewedPhotos), forKey: reviewedPhotosKey)
+        UserDefaults.standard.set(Array(reviewedGroups), forKey: reviewedGroupsKey)
         UserDefaults.standard.set(Array(keptPhotos), forKey: keptPhotosKey)
     }
     
     func clearPersistedProgress() {
         UserDefaults.standard.removeObject(forKey: selectedPhotosKey)
         UserDefaults.standard.removeObject(forKey: reviewedPhotosKey)
+        UserDefaults.standard.removeObject(forKey: reviewedGroupsKey)
         UserDefaults.standard.removeObject(forKey: keptPhotosKey)
         selectedPhotos.removeAll()
         reviewedPhotos.removeAll()
+        reviewedGroups.removeAll()
         keptPhotos.removeAll()
     }
     
@@ -159,8 +233,15 @@ class CleanupViewModel: ObservableObject {
             fetchedPhotos.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
             allPhotos = fetchedPhotos
             
+            // Load similar groups
+            let groupDescriptor = FetchDescriptor<SimilarGroup>(
+                predicate: #Predicate { $0.feedbackRaw != "notSimilar" }
+            )
+            similarGroups = try context.fetch(groupDescriptor)
+            
             await MainActor.run {
                 self.buildCategories()
+                self.buildReviewQueue()
                 self.calculateEstimatedSpace()
                 self.isLoading = false
             }
@@ -173,11 +254,185 @@ class CleanupViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Review Queue Building
+    
+    private func buildReviewQueue() {
+        var queue: [ReviewItem] = []
+        var photosInGroups: Set<String> = []
+        
+        // Get cleanable photos (not protected, not kept by user)
+        let cleanablePhotos = allPhotos.filter { 
+            !$0.isProtected && 
+            !$0.isKeptByUser && 
+            $0.cleanupCategory != .none 
+        }
+        let cleanablePhotoIds = Set(cleanablePhotos.map { $0.id })
+        let photosById = Dictionary(uniqueKeysWithValues: cleanablePhotos.map { ($0.id, $0) })
+        
+        // First, add groups where at least one photo is cleanable
+        for group in similarGroups {
+            let groupPhotoIds = group.photoIds
+            let cleanableInGroup = groupPhotoIds.filter { cleanablePhotoIds.contains($0) }
+            
+            guard cleanableInGroup.count > 1 else { continue }
+            
+            let photos = cleanableInGroup.compactMap { photosById[$0] }
+            guard photos.count > 1 else { continue }
+            
+            // Mark all photos in group as belonging to a group
+            for photoId in cleanableInGroup {
+                photosInGroups.insert(photoId)
+            }
+            
+            if group.isExactDuplicate {
+                queue.append(.exactDuplicateGroup(group, photos))
+            } else {
+                queue.append(.similarGroup(group, photos))
+            }
+        }
+        
+        // Then add singles that are not in any group
+        for photo in cleanablePhotos {
+            if !photosInGroups.contains(photo.id) {
+                queue.append(.single(photo))
+            }
+        }
+        
+        // Sort by max deletion score (highest first)
+        queue.sort { $0.maxDeletionScore > $1.maxDeletionScore }
+        
+        reviewQueue = queue
+    }
+    
+    // MARK: - Group Review Actions
+    
+    func markGroupAsReviewed(_ groupId: String, keepPhotoIds: Set<String>, deletePhotoIds: Set<String>) {
+        reviewedGroups.insert(groupId)
+        
+        for photoId in keepPhotoIds {
+            reviewedPhotos.insert(photoId)
+            keptPhotos.insert(photoId)
+            selectedPhotos.remove(photoId)
+        }
+        
+        for photoId in deletePhotoIds {
+            reviewedPhotos.insert(photoId)
+            selectedPhotos.insert(photoId)
+            keptPhotos.remove(photoId)
+        }
+        
+        persistProgress()
+    }
+    
+    func isReviewItemReviewed(_ item: ReviewItem) -> Bool {
+        switch item {
+        case .single(let photo):
+            return reviewedPhotos.contains(photo.id)
+        case .exactDuplicateGroup(let group, _), .similarGroup(let group, _):
+            return reviewedGroups.contains(group.id)
+        }
+    }
+    
+    func unreviewedItems() -> [ReviewItem] {
+        reviewQueue.filter { !isReviewItemReviewed($0) }
+    }
+    
+    func reviewedItemCount() -> Int {
+        reviewQueue.count - unreviewedItems().count
+    }
+    
+    // MARK: - Keep Decision Actions
+    
+    enum KeepDuration {
+        case forever
+        case oneWeek
+        case oneMonth
+        
+        var keepUntilDate: Date? {
+            switch self {
+            case .forever: return nil
+            case .oneWeek: return Calendar.current.date(byAdding: .day, value: 7, to: Date())
+            case .oneMonth: return Calendar.current.date(byAdding: .month, value: 1, to: Date())
+            }
+        }
+        
+        var decision: KeepDecision {
+            switch self {
+            case .forever: return .forever
+            case .oneWeek, .oneMonth: return .snoozed
+            }
+        }
+    }
+    
+    func keepPhoto(_ photoId: String, duration: KeepDuration) {
+        guard let photo = allPhotos.first(where: { $0.id == photoId }) else { return }
+        
+        photo.keepDecision = duration.decision
+        photo.keepUntil = duration.keepUntilDate
+        photo.keepDecisionDate = Date()
+        
+        // Also mark as reviewed and kept
+        reviewedPhotos.insert(photoId)
+        keptPhotos.insert(photoId)
+        selectedPhotos.remove(photoId)
+        
+        try? modelContext?.save()
+        persistProgress()
+    }
+    
+    func keepPhotos(_ photoIds: [String], duration: KeepDuration, groupId: String? = nil) {
+        for photoId in photoIds {
+            guard let photo = allPhotos.first(where: { $0.id == photoId }) else { continue }
+            
+            photo.keepDecision = duration.decision
+            photo.keepUntil = duration.keepUntilDate
+            photo.keepDecisionDate = Date()
+            photo.keepDecisionGroupId = groupId
+            
+            reviewedPhotos.insert(photoId)
+            keptPhotos.insert(photoId)
+            selectedPhotos.remove(photoId)
+        }
+        
+        if let groupId = groupId {
+            reviewedGroups.insert(groupId)
+        }
+        
+        try? modelContext?.save()
+        persistProgress()
+    }
+    
+    func undoKeepDecision(_ photoId: String) {
+        guard let photo = allPhotos.first(where: { $0.id == photoId }) else { return }
+        
+        photo.keepDecision = .none
+        photo.keepUntil = nil
+        photo.keepDecisionDate = nil
+        photo.keepDecisionGroupId = nil
+        
+        // Remove from kept tracking
+        keptPhotos.remove(photoId)
+        reviewedPhotos.remove(photoId)
+        
+        try? modelContext?.save()
+        persistProgress()
+        
+        // Rebuild categories and queue to include the photo again
+        Task {
+            await loadCleanupSuggestions()
+        }
+    }
+    
+    func getKeptPhotos() -> [PersistedPhoto] {
+        allPhotos.filter { $0.keepDecision != .none }
+    }
+    
     private func buildCategories() {
         var items: [CleanupCategoryItem] = []
         
-        // IMPORTANT: Filter out protected photos from cleanup suggestions
-        let cleanablePhotos = allPhotos.filter { !$0.isProtected }
+        // IMPORTANT: Filter out protected photos AND user-kept photos from cleanup suggestions
+        // isKeptByUser handles forever keeps and active snoozes
+        let cleanablePhotos = allPhotos.filter { !$0.isProtected && !$0.isKeptByUser }
         
         // Group photos by cleanup category
         let categoryGroups = Dictionary(grouping: cleanablePhotos) { $0.cleanupCategory }
@@ -204,15 +459,37 @@ class CleanupViewModel: ObservableObject {
                 }
                 defaultConfidence = .maybe // Screen recordings might be important
             case .blurry:
-                // Stricter blur detection - only include photos with very low sharpness
-                // Threshold lowered from 0.3 to 0.15 to reduce false positives
-                photosForCategory = cleanablePhotos.filter { 
-                    $0.cleanupCategory == .blurry || 
-                    ($0.mediaTypeRaw == "image" && ($0.sharpnessScore ?? 1.0) < 0.15)
+                // STRICT blur detection - requires BOTH Laplacian AND Vision aesthetics to agree
+                // This eliminates false positives like sharp storefronts
+                photosForCategory = cleanablePhotos.filter { photo in
+                    // First check if already categorized as blurry by analysis
+                    if photo.cleanupCategory == .blurry { return true }
+                    
+                    // Otherwise, re-evaluate with strict criteria
+                    guard photo.mediaTypeRaw == "image" else { return false }
+                    
+                    let laplacian = photo.sharpnessScore ?? 1.0
+                    let aesthetics = photo.visionAestheticsScore
+                    let isUtility = photo.visionIsUtility
+                    
+                    if laplacian < 0.10 {
+                        if let aScore = aesthetics, let utility = isUtility {
+                            // Vision available - require agreement
+                            return aScore < 0.3 || utility == true
+                        } else {
+                            // No Vision - use very strict threshold
+                            return laplacian < 0.08
+                        }
+                    }
+                    return false
                 }
-                // Very blurry (<0.08) is very likely, somewhat blurry (<0.15) is maybe
+                // Set confidence tiers
                 photosForCategory.forEach { photo in
-                    if (photo.sharpnessScore ?? 1.0) < 0.08 {
+                    let laplacian = photo.sharpnessScore ?? 1.0
+                    let aesthetics = photo.visionAestheticsScore ?? 0.5
+                    
+                    // Very blurry with Vision confirmation = very likely
+                    if laplacian < 0.06 && aesthetics < 0.2 {
                         photo.cleanupConfidenceTier = .veryLikely
                     } else {
                         photo.cleanupConfidenceTier = .maybe

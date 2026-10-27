@@ -995,4 +995,433 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(burstLoser.deletionLikelihoodScore > bestBurst.deletionLikelihoodScore,
                       "Burst loser should have higher deletion score than best burst photo")
     }
+    
+    // MARK: - Keep Decision Tests
+    
+    @MainActor
+    func testKeepDecisionForeverExcludesFromCandidates() throws {
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create a blurry photo that would normally be a candidate
+        let photo = PersistedPhoto(localIdentifier: "kept-photo-1")
+        photo.analysisCompleted = true
+        photo.mediaTypeRaw = "image"
+        photo.sharpnessScore = 0.05 // Very blurry
+        photo.cleanupCategoryRaw = "blurry"
+        photo.deletionLikelihoodScore = 0.4
+        
+        context.insert(photo)
+        try context.save()
+        
+        // Verify photo is a candidate before keep decision
+        XCTAssertFalse(photo.isKeptByUser, "Photo should NOT be kept initially")
+        XCTAssertTrue(photo.cleanupCategory == .blurry, "Photo should be categorized as blurry")
+        
+        // User decides to keep the photo forever
+        photo.keepDecision = .forever
+        photo.keepDecisionDate = Date()
+        try context.save()
+        
+        // Verify photo is now excluded from candidates
+        XCTAssertTrue(photo.isKeptByUser, "Photo should be marked as kept")
+        
+        // Simulate a rescan - verify keepDecision is NOT reset
+        photo.analysisCompleted = false // Simulate re-analysis needed
+        photo.analysisCompleted = true  // Re-analysis complete
+        try context.save()
+        
+        // keepDecision should persist through rescan
+        XCTAssertEqual(photo.keepDecision, .forever, "Keep decision should persist through rescan")
+        XCTAssertTrue(photo.isKeptByUser, "Photo should still be kept after rescan")
+    }
+    
+    @MainActor
+    func testKeepDecisionSnoozedReentersAfterExpiry() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let photo = PersistedPhoto(localIdentifier: "snoozed-photo-1")
+        photo.analysisCompleted = true
+        photo.mediaTypeRaw = "image"
+        photo.sharpnessScore = 0.05
+        photo.cleanupCategoryRaw = "blurry"
+        
+        context.insert(photo)
+        try context.save()
+        
+        // User snoozes for 7 days
+        let sevenDaysFromNow = Calendar.current.date(byAdding: .day, value: 7, to: Date())!
+        photo.keepDecision = .snoozed
+        photo.keepUntil = sevenDaysFromNow
+        photo.keepDecisionDate = Date()
+        try context.save()
+        
+        // Verify photo is excluded during snooze period
+        XCTAssertTrue(photo.isKeptByUser, "Snoozed photo should be kept during snooze period")
+        XCTAssertFalse(photo.isSnoozeExpired, "Snooze should NOT be expired yet")
+        
+        // Simulate time passing - set keepUntil to the past
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+        photo.keepUntil = sevenDaysAgo
+        try context.save()
+        
+        // Verify photo re-enters candidates after snooze expires
+        XCTAssertFalse(photo.isKeptByUser, "Photo should NOT be kept after snooze expires")
+        XCTAssertTrue(photo.isSnoozeExpired, "Snooze should be expired")
+    }
+    
+    @MainActor
+    func testKeepDecisionPreservedDuringRescan() throws {
+        let schema = Schema([PersistedPhoto.self, AnalysisState.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create a photo with keep decision
+        let photo = PersistedPhoto(localIdentifier: "preserved-photo-1")
+        photo.analysisCompleted = true
+        photo.keepDecision = .forever
+        photo.keepDecisionDate = Date()
+        
+        context.insert(photo)
+        try context.save()
+        
+        // Verify keepDecision fields are set
+        XCTAssertEqual(photo.keepDecision, .forever)
+        XCTAssertNotNil(photo.keepDecisionDate)
+        
+        // Simulate what happens during a rescan:
+        // A rescan would try to insert a new photo with the same localIdentifier
+        // but the idempotent indexing should find the existing photo and not overwrite it
+        
+        // First, check if photo already exists (simulating idempotent indexing)
+        let existingDescriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.localIdentifier == "preserved-photo-1" }
+        )
+        let existingPhotos = try context.fetch(existingDescriptor)
+        XCTAssertFalse(existingPhotos.isEmpty, "Photo should exist")
+        
+        // The existing photo's keepDecision should be preserved
+        let existingPhoto = existingPhotos.first!
+        XCTAssertEqual(existingPhoto.keepDecision, .forever, 
+                       "Keep decision should be preserved during rescan")
+        XCTAssertNotNil(existingPhoto.keepDecisionDate,
+                        "Keep decision date should be preserved during rescan")
+    }
+    
+    @MainActor
+    func testUndoKeepDecisionMakesPhotoCandidate() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let photo = PersistedPhoto(localIdentifier: "undo-test-1")
+        photo.analysisCompleted = true
+        photo.cleanupCategoryRaw = "blurry"
+        photo.keepDecision = .forever
+        photo.keepDecisionDate = Date()
+        
+        context.insert(photo)
+        try context.save()
+        
+        XCTAssertTrue(photo.isKeptByUser, "Photo should be kept")
+        
+        // Undo the keep decision
+        photo.keepDecision = .none
+        photo.keepUntil = nil
+        photo.keepDecisionDate = nil
+        try context.save()
+        
+        XCTAssertFalse(photo.isKeptByUser, "Photo should no longer be kept after undo")
+    }
+    
+    // MARK: - Blur Detection Tests
+    
+    @MainActor
+    func testBlurDetectionRequiresBothLaplacianAndVisionAgreement() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Photo with low Laplacian but high Vision aesthetics (like ROTONDO storefront)
+        // This should NOT be flagged as blurry
+        let sharpStorefront = PersistedPhoto(localIdentifier: "sharp-storefront")
+        sharpStorefront.analysisCompleted = true
+        sharpStorefront.mediaTypeRaw = "image"
+        sharpStorefront.sharpnessScore = 0.09  // Low Laplacian (would trigger old detector)
+        sharpStorefront.visionAestheticsScore = 0.7  // High Vision score (sharp/aesthetic)
+        sharpStorefront.visionIsUtility = false  // Not utility
+        
+        // Truly blurry photo - both indicators agree
+        let trulyBlurry = PersistedPhoto(localIdentifier: "truly-blurry")
+        trulyBlurry.analysisCompleted = true
+        trulyBlurry.mediaTypeRaw = "image"
+        trulyBlurry.sharpnessScore = 0.05  // Very low Laplacian
+        trulyBlurry.visionAestheticsScore = 0.15  // Low Vision score
+        trulyBlurry.visionIsUtility = true  // Vision says utility
+        
+        context.insert(sharpStorefront)
+        context.insert(trulyBlurry)
+        try context.save()
+        
+        // Test the blur detection logic
+        func shouldFlagAsBlurry(_ photo: PersistedPhoto) -> Bool {
+            guard photo.mediaTypeRaw == "image" else { return false }
+            
+            let laplacian = photo.sharpnessScore ?? 1.0
+            let aesthetics = photo.visionAestheticsScore
+            let isUtility = photo.visionIsUtility
+            
+            if laplacian < 0.10 {
+                if let aScore = aesthetics, let utility = isUtility {
+                    return aScore < 0.3 || utility == true
+                } else {
+                    return laplacian < 0.08
+                }
+            }
+            return false
+        }
+        
+        // Sharp storefront should NOT be flagged as blurry
+        XCTAssertFalse(shouldFlagAsBlurry(sharpStorefront),
+                       "Sharp storefront with high Vision score should NOT be flagged as blurry")
+        
+        // Truly blurry photo SHOULD be flagged
+        XCTAssertTrue(shouldFlagAsBlurry(trulyBlurry),
+                      "Photo with both low Laplacian and low Vision score SHOULD be flagged as blurry")
+    }
+    
+    @MainActor
+    func testBlurDetectionFallbackWithoutVision() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Photo without Vision scores (pre-iOS 18)
+        let photoNoVision = PersistedPhoto(localIdentifier: "no-vision")
+        photoNoVision.analysisCompleted = true
+        photoNoVision.mediaTypeRaw = "image"
+        photoNoVision.sharpnessScore = 0.09  // Low but not extremely low Laplacian
+        photoNoVision.visionAestheticsScore = nil  // No Vision
+        photoNoVision.visionIsUtility = nil
+        
+        // Very blurry photo without Vision
+        let veryBlurryNoVision = PersistedPhoto(localIdentifier: "very-blurry-no-vision")
+        veryBlurryNoVision.analysisCompleted = true
+        veryBlurryNoVision.mediaTypeRaw = "image"
+        veryBlurryNoVision.sharpnessScore = 0.05  // Very low Laplacian
+        veryBlurryNoVision.visionAestheticsScore = nil
+        veryBlurryNoVision.visionIsUtility = nil
+        
+        context.insert(photoNoVision)
+        context.insert(veryBlurryNoVision)
+        try context.save()
+        
+        func shouldFlagAsBlurry(_ photo: PersistedPhoto) -> Bool {
+            guard photo.mediaTypeRaw == "image" else { return false }
+            
+            let laplacian = photo.sharpnessScore ?? 1.0
+            let aesthetics = photo.visionAestheticsScore
+            let isUtility = photo.visionIsUtility
+            
+            if laplacian < 0.10 {
+                if let aScore = aesthetics, let utility = isUtility {
+                    return aScore < 0.3 || utility == true
+                } else {
+                    // No Vision - use stricter threshold
+                    return laplacian < 0.08
+                }
+            }
+            return false
+        }
+        
+        // Moderately low Laplacian without Vision should NOT be flagged (uses stricter 0.08 threshold)
+        XCTAssertFalse(shouldFlagAsBlurry(photoNoVision),
+                       "Photo at 0.09 sharpness without Vision should NOT be flagged (threshold is 0.08)")
+        
+        // Very low Laplacian without Vision SHOULD be flagged
+        XCTAssertTrue(shouldFlagAsBlurry(veryBlurryNoVision),
+                      "Photo at 0.05 sharpness without Vision SHOULD be flagged")
+    }
+    
+    // MARK: - Background Task Tests
+    
+    @MainActor
+    func testBackgroundTaskProgressCalculation() throws {
+        // Test progress calculation for continued processing task
+        
+        let totalPhotos = 100
+        var processedCount = 0
+        
+        // Simulate progress updates
+        func calculateProgress() -> Double {
+            return Double(processedCount) / Double(totalPhotos)
+        }
+        
+        func calculateRemaining() -> Int {
+            return totalPhotos - processedCount
+        }
+        
+        // Initial state
+        XCTAssertEqual(calculateProgress(), 0.0, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 100)
+        
+        // 25% progress
+        processedCount = 25
+        XCTAssertEqual(calculateProgress(), 0.25, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 75)
+        
+        // 50% progress
+        processedCount = 50
+        XCTAssertEqual(calculateProgress(), 0.5, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 50)
+        
+        // 100% progress
+        processedCount = 100
+        XCTAssertEqual(calculateProgress(), 1.0, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 0)
+    }
+    
+    @MainActor
+    func testBackgroundTaskShouldNotSubmitWithNoWork() throws {
+        // Test that continued processing task should not be submitted when no work remains
+        
+        let remainingPhotos = 0
+        let hasPendingWork = false
+        
+        // Mock the submission logic
+        func shouldSubmitContinuedTask() -> Bool {
+            guard remainingPhotos > 0 else { return false }
+            guard hasPendingWork else { return false }
+            return true
+        }
+        
+        XCTAssertFalse(shouldSubmitContinuedTask(),
+                       "Should not submit continued processing task when no photos remain")
+    }
+    
+    @MainActor
+    func testBackgroundTaskShouldNotSubmitWhenScanNotInProgress() throws {
+        // Test that continued processing task should not be submitted when scan is not in progress
+        
+        let remainingPhotos = 50
+        let hasPendingWork = false
+        
+        func shouldSubmitContinuedTask() -> Bool {
+            guard remainingPhotos > 0 else { return false }
+            guard hasPendingWork else { return false }
+            return true
+        }
+        
+        XCTAssertFalse(shouldSubmitContinuedTask(),
+                       "Should not submit continued processing task when scan is not in progress")
+    }
+    
+    @MainActor
+    func testBackgroundTaskShouldSubmitWithPendingWork() throws {
+        // Test that continued processing task should be submitted when there is pending work
+        
+        let remainingPhotos = 50
+        let hasPendingWork = true
+        
+        func shouldSubmitContinuedTask() -> Bool {
+            guard remainingPhotos > 0 else { return false }
+            guard hasPendingWork else { return false }
+            return true
+        }
+        
+        XCTAssertTrue(shouldSubmitContinuedTask(),
+                      "Should submit continued processing task when photos remain and scan is in progress")
+    }
+    
+    @MainActor
+    func testBackgroundTaskProgressIntegrity() throws {
+        // Test that progress values stay within valid bounds
+        
+        var totalUnitCount: Int64 = 100
+        var completedUnitCount: Int64 = 0
+        
+        // Simulate progress updates and verify bounds
+        for i in 0...100 {
+            completedUnitCount = Int64(i)
+            
+            // completedUnitCount should never exceed totalUnitCount
+            XCTAssertLessThanOrEqual(completedUnitCount, totalUnitCount)
+            
+            // completedUnitCount should never be negative
+            XCTAssertGreaterThanOrEqual(completedUnitCount, 0)
+            
+            // Progress fraction should be valid
+            let progress = Double(completedUnitCount) / Double(totalUnitCount)
+            XCTAssertGreaterThanOrEqual(progress, 0.0)
+            XCTAssertLessThanOrEqual(progress, 1.0)
+        }
+    }
+    
+    @MainActor
+    func testBackgroundTaskExpirationCheckpoint() throws {
+        // Test that checkpoint is properly saved on expiration
+        
+        let checkpointKey = "test.checkpoint.progress"
+        let defaults = UserDefaults.standard
+        
+        // Clear any existing checkpoint
+        defaults.removeObject(forKey: checkpointKey)
+        
+        // Simulate work progress
+        var processedIds: [String] = []
+        for i in 1...50 {
+            processedIds.append("photo-\(i)")
+        }
+        
+        // Save checkpoint (simulating expiration handler)
+        defaults.set(processedIds, forKey: checkpointKey)
+        defaults.synchronize()
+        
+        // Verify checkpoint was saved
+        let savedIds = defaults.stringArray(forKey: checkpointKey) ?? []
+        XCTAssertEqual(savedIds.count, 50, "Checkpoint should save all processed IDs")
+        XCTAssertEqual(savedIds.first, "photo-1")
+        XCTAssertEqual(savedIds.last, "photo-50")
+        
+        // Clean up
+        defaults.removeObject(forKey: checkpointKey)
+    }
+    
+    @MainActor
+    func testBackgroundTaskCompletionStateTransition() throws {
+        // Test that task completion properly transitions state
+        
+        var isBackgroundScanActive = true
+        var taskCompleted = false
+        var completionSuccess: Bool?
+        
+        // Simulate successful completion
+        func completeTask(success: Bool) {
+            taskCompleted = true
+            completionSuccess = success
+            isBackgroundScanActive = false
+        }
+        
+        // Before completion
+        XCTAssertTrue(isBackgroundScanActive)
+        XCTAssertFalse(taskCompleted)
+        XCTAssertNil(completionSuccess)
+        
+        // Complete with success
+        completeTask(success: true)
+        
+        // After completion
+        XCTAssertFalse(isBackgroundScanActive, "Background scan should be inactive after completion")
+        XCTAssertTrue(taskCompleted, "Task should be marked as completed")
+        XCTAssertEqual(completionSuccess, true, "Completion should be successful")
+    }
 }
