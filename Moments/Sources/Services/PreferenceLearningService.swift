@@ -210,36 +210,39 @@ final class PreferenceLearningService: ObservableObject {
     
     // MARK: - Calculate Adjusted Score
     
-    func calculateAdjustedScore(for photo: PersistedPhoto, baseScore: Double) async -> Double {
-        guard let context = modelContext else { return baseScore }
-        
-        let preferences = await getOrCreatePreferences()
+    static func shouldShow(_ category: CleanupCategoryType, preferences: LearnedPreferences?) -> Bool {
+        guard let preferences else { return true }
+        if category == .none { return true }
+        return !preferences.suppressedCategories.contains(category)
+    }
+    
+    static func adjustedScore(for photo: PersistedPhoto, baseScore: Double, preferences: LearnedPreferences?) -> Double {
+        guard let preferences else { return baseScore }
         let confidence = preferences.confidenceWeight
-        
-        // Start with base score
         var adjustedScore = baseScore
-        
-        // Apply learned category weight
         let category = photo.cleanupCategory
         if category != .none {
             let keepRate = preferences.keepRate(for: category)
-            // Lower keep rate = higher deletion score
-            let categoryAdjustment = (1.0 - keepRate) * 0.3 * confidence
-            adjustedScore += categoryAdjustment
+            adjustedScore += (1.0 - keepRate) * 0.3 * confidence
         }
-        
-        // Apply logistic regression prediction
-        let logisticPrediction = calculateLogisticPrediction(preferences: preferences, photo: photo)
-        // Lower prediction (less likely to keep) = higher deletion score
-        let logisticAdjustment = (1.0 - logisticPrediction) * 0.2 * confidence
-        adjustedScore += logisticAdjustment
-        
-        // Apply nearest-neighbor boost
-        let nnBoost = await calculateNearestNeighborBoost(for: photo)
-        adjustedScore += nnBoost * confidence
-        
-        // Clamp to [0, 1]
+        let faceFeature = Double(photo.facesDetected ?? 0) / 10.0
+        let aestheticsFeature = photo.visionAestheticsScore ?? 0.5
+        let sharpnessFeature = photo.sharpnessScore ?? 0.5
+        let z = preferences.intercept
+            + preferences.weightFaceCount * faceFeature
+            + preferences.weightAesthetics * aestheticsFeature
+            + preferences.weightSharpness * sharpnessFeature
+        let logistic = 1.0 / (1.0 + exp(-z))
+        adjustedScore += (1.0 - logistic) * 0.2 * confidence
         return max(0, min(1, adjustedScore))
+    }
+    
+    func calculateAdjustedScore(for photo: PersistedPhoto, baseScore: Double) async -> Double {
+        let preferences = await getOrCreatePreferences()
+        var adjusted = Self.adjustedScore(for: photo, baseScore: baseScore, preferences: preferences)
+        let nnBoost = await calculateNearestNeighborBoost(for: photo)
+        adjusted += nnBoost * preferences.confidenceWeight
+        return max(0, min(1, adjusted))
     }
     
     private func calculateLogisticPrediction(preferences: LearnedPreferences, photo: PersistedPhoto) -> Double {
