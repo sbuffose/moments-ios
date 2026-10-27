@@ -96,7 +96,7 @@ actor MetadataExtractionService {
             
             asset.requestContentEditingInput(with: options) { input, info in
                 // Check if asset is only in iCloud
-                let isInCloud = (info?[PHContentEditingInputResultIsInCloudKey] as? Bool) ?? false
+                let isInCloud = (info[PHContentEditingInputResultIsInCloudKey] as? Bool) ?? false
                 
                 if isInCloud {
                     // Use basic metadata from PHAsset properties only
