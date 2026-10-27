@@ -18,6 +18,7 @@ class PhotoAnalysisService: ObservableObject {
     private let geocodingService = GeocodingService.shared
     private let metadataService = MetadataExtractionService.shared
     
+    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     private let maxConcurrentAnalysis = 3
     private let batchSaveInterval = 20
     private let thumbnailSize = CGSize(width: 300, height: 300)
@@ -311,37 +312,12 @@ class PhotoAnalysisService: ObservableObject {
             // This eliminates false positives like sharp storefronts or vacation photos
             if photo.mediaTypeRaw == "image" {
                 let laplacianSharpness = photo.sharpnessScore ?? 1.0
-                let visionAesthetics = qualityMetrics.visionAestheticsScore
-                let isUtility = qualityMetrics.visionIsUtility
-                let hasFaces = (photo.facesDetected ?? 0) > 0
-                
-                // Only flag as blurry if:
-                // 1. Laplacian variance is very low
-                // 2. AND either Vision aesthetics confirms low quality OR Vision not available
-                // 3. AND if photo has faces, require EXTREMELY low sharpness
-                var shouldFlagAsBlurry = false
-                
-                // Different thresholds for photos with and without faces
-                let laplacianThreshold: Double = hasFaces ? 0.05 : 0.10
-                let stricterThreshold: Double = hasFaces ? 0.03 : 0.08
-                
-                if laplacianSharpness < laplacianThreshold {
-                    // Low Laplacian - potentially blurry
-                    if let aesthetics = visionAesthetics, let utility = isUtility {
-                        // Vision is available - require agreement
-                        // For photos with faces, require BOTH low aesthetics AND utility flag
-                        if hasFaces {
-                            // Extra strict for face photos: must have very low aesthetics AND be utility
-                            shouldFlagAsBlurry = aesthetics < 0.2 && utility == true
-                        } else {
-                            // Normal photos: flag if Vision thinks it's low quality or utility
-                            shouldFlagAsBlurry = aesthetics < 0.3 || utility == true
-                        }
-                    } else {
-                        // Vision not available (pre-iOS 18) - use stricter Laplacian threshold
-                        shouldFlagAsBlurry = laplacianSharpness < stricterThreshold
-                    }
-                }
+                let shouldFlagAsBlurry = BlurDetection.isBlurry(
+                    sharpness: laplacianSharpness,
+                    aesthetics: qualityMetrics.visionAestheticsScore,
+                    isUtility: qualityMetrics.visionIsUtility,
+                    hasFaces: (photo.facesDetected ?? 0) > 0
+                )
                 
                 if shouldFlagAsBlurry {
                     photo.cleanupCategory = .blurry
@@ -894,7 +870,7 @@ final class ImageAnalyzer: Sendable {
     /// 3. Takes the top 10% of tiles (highest gradient regions)
     /// 4. Normalizes by exposure to avoid penalizing dark images
     private func calculateLaplacianVariance(_ image: CIImage) -> Double {
-        let context = CIContext()
+        let context = ciContext
         
         // Normalize image to standard size
         let normalizedSize: CGFloat = 512
@@ -1089,7 +1065,7 @@ final class ImageAnalyzer: Sendable {
     }
     
     private func calculateExposure(_ image: CIImage) -> Double {
-        let context = CIContext()
+        let context = ciContext
         guard let filter = CIFilter(name: "CIAreaAverage") else { return 0.5 }
         
         let extent = image.extent
@@ -1119,7 +1095,7 @@ final class ImageAnalyzer: Sendable {
     }
     
     private func calculateDetailScore(_ image: CIImage) -> Double {
-        let context = CIContext()
+        let context = ciContext
         
         guard let histogramFilter = CIFilter(name: "CIAreaHistogram") else { return 0.5 }
         
