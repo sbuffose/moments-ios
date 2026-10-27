@@ -48,6 +48,15 @@ actor MetadataExtractionService {
                 return .camera
             }
             
+            if let filename = originalFilename?.lowercased() {
+                if filename.contains("-wa") || filename.contains("whatsapp") {
+                    return .whatsapp
+                }
+                if filename.contains("screenshot") || filename.hasPrefix("captura") {
+                    return .screenshot
+                }
+            }
+            
             // Check software for editing apps
             if let software = software?.lowercased() {
                 if software.contains("photoshop") || software.contains("lightroom") || 
@@ -86,7 +95,7 @@ actor MetadataExtractionService {
     // MARK: - Extraction Methods
     
     func extractMetadata(for asset: PHAsset) async -> PhotoMetadata? {
-        // First try to get metadata from PHAsset properties (no network needed)
+        // PHAsset properties + resource filename — never download iCloud originals.
         let basicMetadata = extractBasicMetadata(from: asset)
         
         // Only request file metadata if available locally (no iCloud download)
@@ -119,6 +128,14 @@ actor MetadataExtractionService {
         }
     }
     
+    static func originalFilename(for asset: PHAsset) -> String? {
+        PHAssetResource.assetResources(for: asset).first?.originalFilename
+    }
+    
+    static func neverAllowsNetworkForMetadata() -> Bool {
+        false
+    }
+    
     /// Extract basic metadata from PHAsset properties without file access
     private func extractBasicMetadata(from asset: PHAsset) -> PhotoMetadata {
         return PhotoMetadata(
@@ -128,7 +145,7 @@ actor MetadataExtractionService {
             lensMake: nil,
             lensModel: nil,
             software: nil,
-            originalFilename: nil,
+            originalFilename: Self.originalFilename(for: asset),
             dateTimeOriginal: asset.creationDate,
             gpsLatitude: asset.location?.coordinate.latitude,
             gpsLongitude: asset.location?.coordinate.longitude,
@@ -286,6 +303,15 @@ actor MetadataExtractionService {
             confidence = 0.7
         default:
             break
+        }
+        
+        if let filename = metadata?.originalFilename?.lowercased() ?? Self.originalFilename(for: asset)?.lowercased() {
+            if filename.contains("-wa") || filename.contains("whatsapp") {
+                return OriginDetectionResult(origin: .whatsapp, confidence: 0.92, metadata: metadata)
+            }
+            if filename.contains("screenshot") || filename.hasPrefix("captura") {
+                return OriginDetectionResult(origin: .screenshot, confidence: 0.9, metadata: metadata)
+            }
         }
         
         // Check metadata for origin clues

@@ -279,13 +279,13 @@ struct AsyncFullPhoto: View {
         
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
+        options.isNetworkAccessAllowed = false
         options.isSynchronous = false
         
         let loadedImage = await withCheckedContinuation { continuation in
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: PHImageManagerMaximumSize,
+                targetSize: PhotoLibraryService.displayTargetSize(),
                 contentMode: .aspectFit,
                 options: options
             ) { image, _ in
