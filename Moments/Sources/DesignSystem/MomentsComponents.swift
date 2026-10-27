@@ -508,14 +508,16 @@ enum SpaceFormatting {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         formatter.includesUnit = true
-        if bytes >= 1_000_000_000 {
-            formatter.allowedUnits = [.useGB]
-        } else if bytes >= 1_000_000 {
-            formatter.allowedUnits = [.useMB]
-        } else {
-            formatter.allowedUnits = [.useKB, .useMB]
+        formatter.allowedUnits = bytes >= 1_000_000_000 ? [.useGB] : bytes >= 1_000_000 ? [.useMB] : [.useKB, .useMB]
+        formatter.formattingContext = .standalone
+        if let locale = Locale(identifier: "es_AR") as Locale? {
+            formatter.numberFormatter.locale = locale
         }
         return formatter.string(fromByteCount: bytes)
+    }
+    
+    static func pendingLiberationLabel(bytes: Int64) -> String {
+        "Vas a liberar \(string(from: bytes))"
     }
 }
 
