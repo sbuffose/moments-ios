@@ -847,11 +847,20 @@ final class ImageAnalyzer: Sendable {
         }
     }
     
+    /// Calculates sharpness using LOCAL gradient analysis (top 10% of grid tiles)
+    /// instead of global Laplacian variance. This prevents false positives for:
+    /// - Night photos with dark backgrounds (e.g., lit Ferris wheel)
+    /// - Photos with large solid-color regions
+    /// 
+    /// The algorithm:
+    /// 1. Divides the image into an 8x8 grid
+    /// 2. Calculates Laplacian variance for each tile
+    /// 3. Takes the top 10% of tiles (highest gradient regions)
+    /// 4. Normalizes by exposure to avoid penalizing dark images
     private func calculateLaplacianVariance(_ image: CIImage) -> Double {
         let context = CIContext()
         
-        // Normalize image to standard size for consistent blur detection
-        // This ensures the Laplacian variance is comparable across different resolutions
+        // Normalize image to standard size
         let normalizedSize: CGFloat = 512
         let extent = image.extent
         guard extent.width > 0 && extent.height > 0 && !extent.isInfinite else { return 0.5 }
@@ -860,7 +869,6 @@ final class ImageAnalyzer: Sendable {
         let normalizedImage: CIImage
         
         if scale < 1.0 {
-            // Downsample large images
             normalizedImage = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         } else {
             normalizedImage = image
@@ -878,68 +886,102 @@ final class ImageAnalyzer: Sendable {
         laplacianFilter.setValue(CIVector(values: laplacianKernel, count: 9), forKey: "inputWeights")
         laplacianFilter.setValue(0, forKey: "inputBias")
         
-        guard let output = laplacianFilter.outputImage else { return 0.5 }
+        guard let laplacianOutput = laplacianFilter.outputImage else { return 0.5 }
         
-        let outputExtent = output.extent
+        let outputExtent = laplacianOutput.extent
         guard outputExtent.width > 0 && outputExtent.height > 0 && !outputExtent.isInfinite else { return 0.5 }
         
-        // Calculate variance over a larger area (center 80% of image)
-        // to get a more representative sharpness score
-        let margin = min(outputExtent.width, outputExtent.height) * 0.1
-        let sampleRect = outputExtent.insetBy(dx: margin, dy: margin)
+        // Divide into 8x8 grid and calculate variance for each tile
+        let gridSize = 8
+        let tileWidth = outputExtent.width / CGFloat(gridSize)
+        let tileHeight = outputExtent.height / CGFloat(gridSize)
         
-        guard !sampleRect.isEmpty else { return 0.5 }
+        var tileVariances: [Double] = []
         
-        // Calculate histogram to get variance
-        guard let histogramFilter = CIFilter(name: "CIAreaHistogram") else {
-            // Fallback to average if histogram not available
-            return calculateAverageVariance(output: output, sampleRect: sampleRect, context: context)
+        for row in 0..<gridSize {
+            for col in 0..<gridSize {
+                let tileRect = CGRect(
+                    x: outputExtent.minX + CGFloat(col) * tileWidth,
+                    y: outputExtent.minY + CGFloat(row) * tileHeight,
+                    width: tileWidth,
+                    height: tileHeight
+                )
+                
+                let variance = calculateTileVariance(laplacianOutput: laplacianOutput, tileRect: tileRect, context: context)
+                tileVariances.append(variance)
+            }
         }
         
-        histogramFilter.setValue(output, forKey: kCIInputImageKey)
-        histogramFilter.setValue(CIVector(cgRect: sampleRect), forKey: kCIInputExtentKey)
-        histogramFilter.setValue(256, forKey: "inputCount")
-        histogramFilter.setValue(1.0, forKey: "inputScale")
+        // Sort descending and take top 10% of tiles (highest gradient regions)
+        // This focuses on the sharpest parts of the image, ignoring dark backgrounds
+        tileVariances.sort(by: >)
+        let topTileCount = max(1, Int(Double(tileVariances.count) * 0.10))
+        let topVariances = Array(tileVariances.prefix(topTileCount))
         
-        guard let histOutput = histogramFilter.outputImage else {
-            return calculateAverageVariance(output: output, sampleRect: sampleRect, context: context)
+        // Average of top tiles
+        let avgTopVariance = topVariances.reduce(0, +) / Double(topVariances.count)
+        
+        // Calculate exposure for normalization
+        let exposureLevel = calculateExposure(normalizedImage)
+        
+        // Normalize by exposure: dark images naturally have lower variance
+        // Boost the variance score for low-light images (exposure < 0.3)
+        let exposureBoost: Double
+        if exposureLevel < 0.15 {
+            // Very dark image - significant boost (night photos)
+            exposureBoost = 2.5
+        } else if exposureLevel < 0.3 {
+            // Dark image - moderate boost
+            exposureBoost = 1.5 + (0.3 - exposureLevel) * 3.0
+        } else {
+            exposureBoost = 1.0
         }
         
-        // Read histogram data
-        var histData = [UInt8](repeating: 0, count: 256 * 4)
+        let adjustedVariance = avgTopVariance * exposureBoost
+        
+        // Normalize to 0-1 range
+        let normalizedVariance = min(adjustedVariance / 500.0, 1.0)
+        
+        return normalizedVariance
+    }
+    
+    private func calculateTileVariance(laplacianOutput: CIImage, tileRect: CGRect, context: CIContext) -> Double {
+        guard !tileRect.isEmpty else { return 0 }
+        
+        guard let statsFilter = CIFilter(name: "CIAreaAverage") else { return 0 }
+        
+        // Get absolute value of Laplacian for better variance estimation
+        guard let absFilter = CIFilter(name: "CIColorMatrix") else { return 0 }
+        absFilter.setValue(laplacianOutput, forKey: kCIInputImageKey)
+        // Make all values positive by shifting
+        absFilter.setValue(CIVector(x: 1, y: 0, z: 0, w: 0), forKey: "inputRVector")
+        absFilter.setValue(CIVector(x: 0, y: 1, z: 0, w: 0), forKey: "inputGVector")
+        absFilter.setValue(CIVector(x: 0, y: 0, z: 1, w: 0), forKey: "inputBVector")
+        absFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")
+        absFilter.setValue(CIVector(x: 0.5, y: 0.5, z: 0.5, w: 0), forKey: "inputBiasVector")
+        
+        let processedOutput = absFilter.outputImage ?? laplacianOutput
+        
+        statsFilter.setValue(processedOutput, forKey: kCIInputImageKey)
+        statsFilter.setValue(CIVector(cgRect: tileRect), forKey: kCIInputExtentKey)
+        
+        guard let statsOutput = statsFilter.outputImage else { return 0 }
+        
+        var pixel = [UInt8](repeating: 0, count: 4)
         context.render(
-            histOutput,
-            toBitmap: &histData,
-            rowBytes: 256 * 4,
-            bounds: CGRect(x: 0, y: 0, width: 256, height: 1),
+            statsOutput,
+            toBitmap: &pixel,
+            rowBytes: 4,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
             format: .RGBA8,
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
         
-        // Calculate variance from histogram
-        var sum: Double = 0
-        var sumSquares: Double = 0
-        var count: Double = 0
+        // Average of RGB channels as proxy for variance magnitude
+        let avgValue = (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3.0
         
-        for i in 0..<256 {
-            let freq = Double(histData[i * 4]) // Red channel
-            let value = Double(i)
-            sum += value * freq
-            sumSquares += value * value * freq
-            count += freq
-        }
-        
-        guard count > 0 else { return 0.5 }
-        
-        let mean = sum / count
-        let variance = (sumSquares / count) - (mean * mean)
-        
-        // Normalize variance to 0-1 range
-        // Higher variance = sharper image (more high-frequency content)
-        // Typical variance range for Laplacian is 0-1000+
-        let normalizedVariance = min(variance / 500.0, 1.0)
-        
-        return normalizedVariance
+        // Scale to variance range
+        return avgValue * 4.0
     }
     
     private func calculateAverageVariance(output: CIImage, sampleRect: CGRect, context: CIContext) -> Double {
