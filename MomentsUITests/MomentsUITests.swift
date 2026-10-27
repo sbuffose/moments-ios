@@ -880,7 +880,7 @@ final class MomentsUITests: XCTestCase {
         
         // 06: Home cleanup section (scrolled)
         tabBar.buttons.element(boundBy: 0).tap()
-        _ = homeRoot.waitForExistence(timeout: 3)
+        _ = app.waitForHome(timeout: 5)
         let scrollView = app.scrollViews.firstMatch
         if scrollView.waitForExistence(timeout: 3) {
             scrollView.swipeUp()
