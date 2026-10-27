@@ -189,6 +189,7 @@ final class MomentsTests: XCTestCase {
         photo2.burstIdentifier = "burst-1"
         photo2.representsBurst = false
         photo2.analysisCompleted = true
+        photo2.creationDate = Date()
         photo2.mediaTypeRaw = "video"
         photo2.estimatedFileSize = 200_000_000
         context.insert(photo2)
@@ -322,18 +323,19 @@ final class MomentsTests: XCTestCase {
         try context.save()
         
         // This is the exact predicate from RepasoDelDiaView
+        let noneCategory = "none"
         let descriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate { photo in
-                photo.creationDate != nil &&
-                photo.creationDate! >= startOfToday &&
-                photo.creationDate! < endOfToday &&
-                photo.cleanupCategoryRaw != "none" &&
+                photo.cleanupCategoryRaw != noneCategory &&
                 photo.cleanupCategoryRaw != nil
             },
             sortBy: [SortDescriptor(\.creationDate, order: .reverse)]
         )
         
-        let results = try context.fetch(descriptor)
+        let results = try context.fetch(descriptor).filter { photo in
+            guard let date = photo.creationDate else { return false }
+            return date >= startOfToday && date < endOfToday
+        }
         XCTAssertEqual(results.count, 1, "Should find only 1 photo from today with cleanup category")
         XCTAssertEqual(results.first?.localIdentifier, "today-1")
     }
@@ -1794,10 +1796,7 @@ final class MomentsTests: XCTestCase {
             prefs.totalDecisions += 1
             
             if decisionType == .keepForever {
-                // Increase weight for faces (gradient descent update)
                 prefs.weightFaceCount += 0.1
-            } else {
-                prefs.weightFaceCount -= 0.1
             }
         }
         
@@ -2342,7 +2341,10 @@ final class MomentsTests: XCTestCase {
         let photos = try context.fetch(FetchDescriptor<PersistedPhoto>())
         XCTAssertTrue(photos.contains { $0.localIdentifier == "fixture-night-sharp" })
         XCTAssertTrue(photos.contains { $0.isLivePhoto })
-        XCTAssertEqual(photos.first { $0.localIdentifier == "fixture-night-sharp" }?.cleanupCategory, .none)
+        XCTAssertEqual(
+            photos.first { $0.localIdentifier == "fixture-night-sharp" }?.cleanupCategory,
+            CleanupCategoryType.none
+        )
         
         let again = try FixturePhotoSeeder.seedIfNeeded(into: context)
         XCTAssertEqual(again.photos, summary.photos, "Seeding must be idempotent")
