@@ -271,7 +271,7 @@ struct DaysCountdownBadge: View {
         switch days {
         case 0: return "¡Hoy!"
         case 1: return "Mañana"
-        default: return "\(days) días"
+        default: return MomentsPluralization.days(days)
         }
     }
     
@@ -503,24 +503,34 @@ struct MomentsLoadingIndicator: View {
 
 enum MomentsPluralization {
     static func photos(_ count: Int) -> String {
-        switch count {
-        case 0:
-            return String(localized: "photo_count_zero")
-        case 1:
-            return String(localized: "photo_count_singular")
-        default:
-            return String(localized: "photo_count_plural \(count)")
-        }
+        String(localized: "^[\(count) foto](inflect: true)", comment: "Photo count with automatic grammar agreement")
     }
     
     static func people(_ count: Int) -> String {
-        switch count {
-        case 0:
-            return String(localized: "person_count_zero")
-        case 1:
-            return String(localized: "person_count_singular")
-        default:
-            return String(localized: "person_count_plural \(count)")
+        String(localized: "^[\(count) persona](inflect: true)", comment: "Person count with automatic grammar agreement")
+    }
+    
+    static func elements(_ count: Int) -> String {
+        String(localized: "^[\(count) elemento](inflect: true)", comment: "Element count with automatic grammar agreement")
+    }
+    
+    static func days(_ count: Int) -> String {
+        String(localized: "^[\(count) día](inflect: true)", comment: "Day count with automatic grammar agreement")
+    }
+    
+    static func items(_ count: Int) -> String {
+        String(localized: "^[\(count) elemento](inflect: true)", comment: "Item count with automatic grammar agreement")
+    }
+    
+    static func deletePhotos(_ count: Int) -> String {
+        String(localized: "Eliminar ^[\(count) foto](inflect: true)", comment: "Delete photos action with automatic grammar agreement")
+    }
+    
+    static func deleteOthers(_ count: Int) -> String {
+        if count == 1 {
+            return String(localized: "Borrar la otra", comment: "Delete the other (singular)")
+        } else {
+            return String(localized: "Borrar las otras \(count)", comment: "Delete the other N photos")
         }
     }
 }
