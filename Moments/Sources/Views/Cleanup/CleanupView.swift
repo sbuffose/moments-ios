@@ -613,9 +613,9 @@ struct CleanupReviewView: View {
         case .single(let photo):
             return photo.cleanupCategory != .none ? photo.cleanupCategory : nil
         case .exactDuplicateGroup(_, _):
-            return .duplicates
+            return CleanupCategoryType.duplicate
         case .similarGroup(_, _):
-            return .similar
+            return CleanupCategoryType.nearDuplicate
         }
     }
     
