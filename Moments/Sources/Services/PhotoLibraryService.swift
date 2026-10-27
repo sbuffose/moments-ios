@@ -149,9 +149,12 @@ class PhotoLibraryService: ObservableObject {
     // MARK: - Single Asset Indexing (for background processing)
     
     func indexSingleAsset(_ asset: PHAsset) async {
-        let existingIds = fetchExistingPhotoIds()
-        
-        guard !existingIds.contains(asset.localIdentifier) else {
+        // Single-id fetch instead of loading every persisted identifier (O(n) per asset).
+        let assetId = asset.localIdentifier
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.localIdentifier == assetId }
+        )
+        if let existing = try? modelContext.fetch(descriptor), !existing.isEmpty {
             return
         }
         
@@ -358,7 +361,7 @@ class PhotoLibraryService: ObservableObject {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
+            options.isNetworkAccessAllowed = false
             options.isSynchronous = false
             options.resizeMode = .exact
             
@@ -378,27 +381,13 @@ class PhotoLibraryService: ObservableObject {
         }
     }
     
+    /// Screen-sized decode — never PHImageManagerMaximumSize (48 MP ≈ 190 MB decoded).
+    nonisolated static func displayTargetSize() -> CGSize {
+        CGSize(width: 1320, height: 2868)
+    }
+    
     nonisolated func loadFullSizeImage(for asset: PHAsset) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            options.isSynchronous = false
-            
-            var hasResumed = false
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
-                options: options
-            ) { image, info in
-                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                if !isDegraded && !hasResumed {
-                    hasResumed = true
-                    continuation.resume(returning: image)
-                }
-            }
-        }
+        await loadImage(for: asset, targetSize: PhotoLibraryService.displayTargetSize())
     }
     
     // MARK: - Deletion

@@ -57,6 +57,21 @@ actor GeocodingService {
         }
     }
     
+    func prefetchLocations(_ coordinates: [(latitude: Double, longitude: Double)]) async {
+        var seen = Set<String>()
+        for coordinate in coordinates {
+            let key = "\(coordinate.latitude.rounded(to: 4)),\(coordinate.longitude.rounded(to: 4))"
+            guard seen.insert(key).inserted else { continue }
+            _ = await getLocationName(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        }
+    }
+    
+    func cachedLocationName(latitude: Double, longitude: Double) -> (name: String, city: String?, country: String?)? {
+        let cacheKey = "\(latitude.rounded(to: 4)),\(longitude.rounded(to: 4))"
+        guard let cached = cache[cacheKey], !isCacheExpired(cached) else { return nil }
+        return (cached.name, cached.city, cached.country)
+    }
+    
     func getPlaceName(latitude: Double, longitude: Double) async -> String {
         guard let result = await getLocationName(latitude: latitude, longitude: longitude) else {
             return "Ubicación desconocida"

@@ -687,6 +687,18 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testBackgroundForegroundAfterHomeUsesThumbnails() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.activate()
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "App must survive background after thumbnail Home")
+    }
+    
     func testBlurryFixturesReachReviewWithoutNightFalsePositive() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
