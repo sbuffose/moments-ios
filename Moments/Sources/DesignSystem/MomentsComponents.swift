@@ -503,6 +503,22 @@ struct MomentsLoadingIndicator: View {
 
 // MARK: - Pluralization Helpers
 
+enum SpaceFormatting {
+    static func string(from bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        if bytes >= 1_000_000_000 {
+            formatter.allowedUnits = [.useGB]
+        } else if bytes >= 1_000_000 {
+            formatter.allowedUnits = [.useMB]
+        } else {
+            formatter.allowedUnits = [.useKB, .useMB]
+        }
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
 enum MomentsPluralization {
     static func photos(_ count: Int) -> String {
         count == 1 ? "\(count) foto" : "\(count) fotos"

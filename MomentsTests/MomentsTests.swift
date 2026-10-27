@@ -2356,4 +2356,55 @@ final class MomentsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(50, 50, "Unit-test floor is 50")
         XCTAssertGreaterThanOrEqual(9, 9, "UI-test floor is 9")
     }
+    
+    // MARK: - A. Daily batches
+    
+    @MainActor
+    func testDailyBatchCapsAtTwentyAndGroupCountsAsOne() throws {
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        var items: [ReviewItem] = []
+        for index in 0..<25 {
+            let photo = PersistedPhoto(localIdentifier: "batch-\(index)")
+            photo.analysisCompleted = true
+            photo.cleanupCategoryRaw = "screenshot"
+            photo.deletionLikelihoodScore = Double(index) / 25.0
+            photo.estimatedFileSize = Int64((index + 1) * 1_000_000)
+            context.insert(photo)
+            items.append(.single(photo))
+        }
+        
+        let groupPhotos = (0..<4).map { offset -> PersistedPhoto in
+            let photo = PersistedPhoto(localIdentifier: "batch-group-\(offset)")
+            photo.analysisCompleted = true
+            photo.cleanupCategoryRaw = "duplicate"
+            photo.deletionLikelihoodScore = 0.99
+            context.insert(photo)
+            return photo
+        }
+        let group = SimilarGroup(id: "batch-group", photoIds: groupPhotos.map(\.id), bestPhotoId: groupPhotos[0].id)
+        group.isExactDuplicate = true
+        context.insert(group)
+        items.append(.exactDuplicateGroup(group, groupPhotos))
+        
+        let capped = DailyReviewBatch.cap(items)
+        XCTAssertEqual(capped.batch.count, 20, "A session is at most 20 items")
+        XCTAssertEqual(capped.remaining, 6, "25 singles + 1 group = 26 items, 6 left after the cap")
+        XCTAssertTrue(capped.batch.contains { $0.isGroup }, "The high-score group must be in the top 20 and count as 1")
+        XCTAssertEqual(capped.batch.first?.maxDeletionScore ?? 0, 0.99, accuracy: 0.001)
+        XCTAssertFalse(DailyReviewBatch.progressLabel(reviewed: 0, batchCount: 20).contains("430"))
+        XCTAssertEqual(DailyReviewBatch.progressLabel(reviewed: 0, batchCount: 20), "1 de 20")
+        XCTAssertEqual(DailyReviewBatch.progressLabel(reviewed: 19, batchCount: 20), "20 de 20")
+        XCTAssertEqual(HomeView.todayReviewSubtitle(itemCount: 430), "20 de 20 para hoy")
+        XCTAssertFalse(HomeView.todayReviewSubtitle(itemCount: 500).contains("500"))
+    }
+    
+    func testSpaceFormattingUsesMegabytes() throws {
+        let text = SpaceFormatting.string(from: 48_000_000)
+        XCTAssertTrue(text.contains("MB") || text.contains("MB"), "Summary must show MB for tens of megabytes: \(text)")
+        XCTAssertFalse(text.contains("500+"))
+    }
 }

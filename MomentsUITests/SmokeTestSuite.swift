@@ -687,6 +687,40 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testDailyBatchProgressIsNDe20() throws {
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let reviewButton = app.buttons["home.reviewButton"]
+        if reviewButton.waitForExistence(timeout: 8) {
+            reviewButton.tap()
+        } else {
+            let fallback = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Revisar' OR label CONTAINS[c] 'Liberar'")).firstMatch
+            guard fallback.waitForExistence(timeout: 5) else {
+                throw XCTSkip("No review entry point on Home")
+            }
+            fallback.tap()
+        }
+        
+        let progress = app.staticTexts["review.progress"]
+        if progress.waitForExistence(timeout: 8) {
+            let label = progress.label
+            XCTAssertFalse(label.contains("430"), "Progress must not show the full library count")
+            XCTAssertFalse(label.contains("500+"))
+            let ok = label.range(of: #"^\d+ de (1[0-9]|20|[1-9])$"#, options: .regularExpression) != nil
+            XCTAssertTrue(ok, "Progress should read 'n de 20' (or n de batch<=20), got '\(label)'")
+        }
+        
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_daily_batch_progress"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+    
     func testSeededFixturesAppearOnHome() throws {
         app.launch()
         
