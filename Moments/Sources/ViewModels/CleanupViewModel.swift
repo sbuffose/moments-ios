@@ -330,50 +330,41 @@ class CleanupViewModel: ObservableObject {
     // MARK: - Review Queue Building
     
     private func buildReviewQueue() {
-        var queue: [ReviewItem] = []
-        var photosInGroups: Set<String> = []
-        
-        // Get cleanable photos (not protected, not kept by user)
-        let cleanablePhotos = allPhotos.filter { 
-            !$0.isProtected && 
-            !$0.isKeptByUser && 
-            $0.cleanupCategory != .none 
-        }
-        let cleanablePhotoIds = Set(cleanablePhotos.map { $0.id })
-        let photosById = Dictionary(uniqueKeysWithValues: cleanablePhotos.map { ($0.id, $0) })
-        
-        // First, add groups where at least one photo is cleanable
-        for group in similarGroups {
-            let groupPhotoIds = group.photoIds
-            let cleanableInGroup = groupPhotoIds.filter { cleanablePhotoIds.contains($0) }
-            
-            guard cleanableInGroup.count > 1 else { continue }
-            
-            let photos = cleanableInGroup.compactMap { photosById[$0] }
-            guard photos.count > 1 else { continue }
-            
-            // Mark all photos in group as belonging to a group
-            for photoId in cleanableInGroup {
-                photosInGroups.insert(photoId)
-            }
-            
-            if group.isExactDuplicate {
-                queue.append(.exactDuplicateGroup(group, photos))
-            } else {
-                queue.append(.similarGroup(group, photos))
-            }
-        }
-        
-        // Then add singles that are not in any group
-        for photo in cleanablePhotos {
-            if !photosInGroups.contains(photo.id) {
-                queue.append(.single(photo))
-            }
-        }
+        let queue = Self.makeQueue(photos: allPhotos, groups: similarGroups)
         
         let capped = DailyReviewBatch.cap(queue)
         remainingAfterBatch = capped.remaining
         reviewQueue = capped.batch
+    }
+    
+    static func makeQueue(photos: [PersistedPhoto], groups: [SimilarGroup]) -> [ReviewItem] {
+        var queue: [ReviewItem] = []
+        var photosInGroups: Set<String> = []
+        
+        let eligible = photos.filter { !$0.isProtected && !$0.isKeptByUser }
+        let photosById = Dictionary(uniqueKeysWithValues: eligible.map { ($0.id, $0) })
+        
+        for group in groups {
+            let members = group.photoIds.compactMap { photosById[$0] }
+            guard members.count > 1 else { continue }
+            
+            for photo in members {
+                photosInGroups.insert(photo.id)
+            }
+            
+            if group.isExactDuplicate {
+                queue.append(.exactDuplicateGroup(group, members))
+            } else {
+                queue.append(.similarGroup(group, members))
+            }
+        }
+        
+        for photo in eligible {
+            if !photosInGroups.contains(photo.id) && photo.cleanupCategory != .none {
+                queue.append(.single(photo))
+            }
+        }
+        return queue
     }
     
     func startNextDailyBatch() {

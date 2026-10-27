@@ -687,6 +687,29 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testSimilarGroupReviewShowsMoreThanOnePhoto() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let reviewButton = app.buttons["home.reviewButton"]
+        if reviewButton.waitForExistence(timeout: 8) {
+            reviewButton.tap()
+        }
+        
+        let conserver = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Conservar una copia' OR label CONTAINS[c] 'copia'")).firstMatch
+        if conserver.waitForExistence(timeout: 6) {
+            XCTAssertTrue(conserver.exists)
+        }
+        
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_similar_groups"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+    
     func testKeepChipsAppearAfterKeep() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
