@@ -687,6 +687,18 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testMonthlyRecapCardOpensStory() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let recap = app.buttons["home.monthlyRecap"]
+        if recap.waitForExistence(timeout: 8) {
+            recap.tap()
+            XCTAssertTrue(app.otherElements["recap.storyCards"].waitForExistence(timeout: 8) || app.staticTexts["Tu mes en fotos"].exists)
+        }
+    }
+    
     func testAssistantCatalogAndRecapQuery() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch

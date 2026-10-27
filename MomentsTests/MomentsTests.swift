@@ -2577,6 +2577,16 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(person.name, "Mamá")
     }
     
+    func testMonthlyRecapPreviousMonthAndCopy() {
+        let jan = Calendar.current.date(from: DateComponents(year: 2026, month: 1, day: 5))!
+        let prev = MonthlyRecapService.previousMonth(from: jan)
+        XCTAssertEqual(prev.month, 12)
+        XCTAssertEqual(prev.year, 2025)
+        XCTAssertEqual(MonthlyRecapService.monthName(10), "octubre")
+        XCTAssertEqual(MonthlyRecapService.notificationIdentifier, "monthly-recap")
+        XCTAssertTrue(MonthlyRecapService.fallbackNarrative(monthName: "octubre", stats: "10 fotos").contains("octubre"))
+    }
+    
     func testRecapIntentParsesOctober() async {
         let intent = await IntentParserService.shared.parseIntent("¿cómo fue mi octubre?")
         if case .monthlyRecap(let month, _) = intent {

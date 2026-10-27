@@ -257,6 +257,24 @@ struct HomeView: View {
                 ParallaxMemoryHero(photos: photos, title: "Hace un año hoy")
                     .accessibilityIdentifier("home.memoryHero")
             }
+            NavigationLink {
+                MonthlyRecapView(recap: viewModel.monthlyRecap)
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Tu mes en fotos")
+                            .font(MomentsTypography.headlineMedium)
+                        Text(viewModel.monthlyRecap.subtitle)
+                            .font(MomentsTypography.bodySmall)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(MomentsColors.textTertiary)
+                }
+                .momentsCard()
+            }
+            .accessibilityIdentifier("home.monthlyRecap")
         }
     }
     
@@ -480,6 +498,11 @@ class HomeViewModel: ObservableObject {
     @Published var metadataCategories: [MetadataCategory] = []
     @Published var totalMetadataItems: Int = 0
     @Published var metadataSize: Int64 = 0
+    @Published var monthlyRecap = MonthlyRecap(
+        month: 1, year: 2026, monthName: "enero", photoCount: 0, placeCount: 0,
+        narrative: MonthlyRecapService.fallbackNarrative(monthName: "enero", stats: "sin datos"),
+        photoIds: []
+    )
     
     var cleanupViewModel = CleanupViewModel()
     
@@ -529,6 +552,9 @@ class HomeViewModel: ObservableObject {
         
         Task {
             await loadFeedCards()
+            let previous = MonthlyRecapService.previousMonth()
+            monthlyRecap = await MonthlyRecapService.generateRecap(month: previous.month, year: previous.year, context: modelContext)
+            MonthlyRecapService.scheduleFirstOfMonthNotification()
         }
     }
     
