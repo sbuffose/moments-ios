@@ -2402,6 +2402,41 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(HomeView.todayReviewSubtitle(itemCount: 500).contains("500"))
     }
     
+    @MainActor
+    func testKeepViaEveryPathExcludesFromQueue() throws {
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self, ReviewDecision.self, LearnedPreferences.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        func makePhoto(_ id: String) -> PersistedPhoto {
+            let photo = PersistedPhoto(localIdentifier: id)
+            photo.analysisCompleted = true
+            photo.cleanupCategoryRaw = "screenshot"
+            photo.deletionLikelihoodScore = 0.7
+            context.insert(photo)
+            return photo
+        }
+        
+        let swipe = makePhoto("keep-swipe")
+        let groupKeep = makePhoto("keep-group")
+        let daily = makePhoto("keep-daily")
+        try context.save()
+        
+        swipe.keepDecision = .forever
+        groupKeep.keepDecision = .forever
+        daily.keepDecision = .forever
+        try context.save()
+        
+        XCTAssertTrue(swipe.isKeptByUser)
+        XCTAssertTrue(groupKeep.isKeptByUser)
+        XCTAssertTrue(daily.isKeptByUser)
+        
+        let descriptor = FetchDescriptor<PersistedPhoto>()
+        let remaining = try context.fetch(descriptor).filter { !$0.isKeptByUser && $0.cleanupCategory != .none }
+        XCTAssertTrue(remaining.isEmpty, "Kept photos must never re-enter any review path")
+    }
+    
     func testHomeHeroHeadlineUsesNextBatch() throws {
         let headline = HomeView.heroHeadline(bytes: 1_900_000_000)
         XCTAssertTrue(headline.contains("Hoy podés liberar"), headline)

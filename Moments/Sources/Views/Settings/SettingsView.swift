@@ -733,32 +733,36 @@ struct DailyReviewSettingsView: View {
 
 struct TodayReviewView: View {
     @StateObject private var reviewService = DailyReviewService.shared
+    @StateObject private var cleanupViewModel = CleanupViewModel()
     @State private var candidates: [PersistedPhoto] = []
     @State private var currentIndex = 0
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
+    private var batch: [PersistedPhoto] {
+        Array(candidates.prefix(DailyReviewBatch.size))
+    }
+    
     var body: some View {
         VStack {
-            if candidates.isEmpty {
+            if batch.isEmpty {
                 ContentUnavailableView {
                     Label("No hay fotos para revisar", systemImage: "checkmark.circle")
                 } description: {
                     Text("No hay fotos de hoy que necesiten revisión")
                 }
-            } else if currentIndex < candidates.count {
-                // Progress
-                ProgressView(value: Double(currentIndex), total: Double(candidates.count))
+            } else if currentIndex < batch.count {
+                ProgressView(value: Double(currentIndex), total: Double(batch.count))
                     .padding(.horizontal)
                 
-                Text("\(currentIndex + 1) de \(candidates.count)")
+                Text("\(currentIndex + 1) de \(batch.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("dailyReview.progress")
                 
                 Spacer()
                 
-                // Photo card
-                let photo = candidates[currentIndex]
+                let photo = batch[currentIndex]
                 AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 400, height: 400))
                     .aspectRatio(contentMode: .fit)
                     .cornerRadius(16)
@@ -773,10 +777,9 @@ struct TodayReviewView: View {
                 
                 Spacer()
                 
-                // Action buttons
                 HStack(spacing: 40) {
                     Button {
-                        // Keep
+                        cleanupViewModel.keepPhoto(photo.id, duration: .forever)
                         currentIndex += 1
                     } label: {
                         VStack {
@@ -787,9 +790,10 @@ struct TodayReviewView: View {
                                 .font(.caption)
                         }
                     }
+                    .accessibilityIdentifier("dailyReview.keep")
                     
                     Button {
-                        // Delete
+                        cleanupViewModel.markAsReviewed(photo.id, delete: true)
                         currentIndex += 1
                     } label: {
                         VStack {
@@ -800,6 +804,7 @@ struct TodayReviewView: View {
                                 .font(.caption)
                         }
                     }
+                    .accessibilityIdentifier("dailyReview.delete")
                 }
                 .padding(.bottom, 40)
             } else {
@@ -826,8 +831,10 @@ struct TodayReviewView: View {
         .navigationTitle("Fotos de hoy")
         .onAppear {
             reviewService.initialize(modelContext: modelContext)
+            cleanupViewModel.initialize(modelContext: modelContext)
             Task {
-                candidates = await reviewService.getTodayCandidates()
+                let all = await reviewService.getTodayCandidates()
+                candidates = Array(all.prefix(DailyReviewBatch.size))
             }
         }
     }
