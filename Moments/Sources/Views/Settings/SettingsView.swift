@@ -3,6 +3,7 @@
 
 import SwiftUI
 import Photos
+import SwiftData
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
@@ -330,7 +331,9 @@ struct KeptPhotosListView: View {
     
     private func loadKeptPhotos() {
         let descriptor = FetchDescriptor<PersistedPhoto>(
-            predicate: #Predicate { $0.keepDecisionRaw != nil && $0.keepDecisionRaw != "none" },
+            predicate: #Predicate<PersistedPhoto> { photo in
+                photo.keepDecisionRaw != nil && photo.keepDecisionRaw != "none"
+            },
             sortBy: [SortDescriptor(\.keepDecisionDate, order: .reverse)]
         )
         
