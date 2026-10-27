@@ -553,6 +553,140 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: BGTaskScheduler identifiers are valid (app launched without crash)")
     }
     
+    // MARK: - 8. Review Counter Accuracy (No Skipped Photos)
+    
+    func testReviewCounterShowsEachItemOnce() throws {
+        // CRITICAL: Fix for Issue 1 - review must show each item exactly once
+        // Counter should go 1, 2, 3, 4, 5, 6 (not 1, 3, 5 due to skipping)
+        
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App did not launch")
+            return
+        }
+        
+        // Navigate to Home
+        tabBar.buttons.element(boundBy: 0).tap()
+        let homeRoot = app.otherElements["home.root"]
+        guard homeRoot.waitForExistence(timeout: 5) else {
+            XCTFail("Home screen not loaded")
+            return
+        }
+        
+        // Find cleanup entry
+        let cleanupCTA = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Liberar' OR label CONTAINS[c] 'Revisar'")).firstMatch
+        
+        guard cleanupCTA.waitForExistence(timeout: 5) else {
+            print("No cleanup items - skipping counter test")
+            return
+        }
+        
+        cleanupCTA.tap()
+        
+        let reviewRoot = app.otherElements["review.root"]
+        guard reviewRoot.waitForExistence(timeout: 10) else {
+            print("Review screen not loaded")
+            return
+        }
+        
+        sleep(2)
+        
+        // Track the positions we see
+        var seenPositions: [Int] = []
+        let maxIterations = 6
+        
+        for iteration in 0..<maxIterations {
+            // Find the counter text (e.g., "3 de 10")
+            let counterTexts = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "\\d+ de \\d+"))
+            
+            if let counterText = counterTexts.allElementsBoundByIndex.first {
+                let label = counterText.label
+                // Extract the position number (first number in "X de Y")
+                if let position = Int(label.components(separatedBy: " ")[0]) {
+                    seenPositions.append(position)
+                }
+            }
+            
+            // Take action to advance (keep via button)
+            let keepButton = app.buttons["review.keepButton"]
+            if keepButton.waitForExistence(timeout: 2) {
+                keepButton.tap()
+                sleep(1)
+            } else {
+                // No more items to review
+                break
+            }
+        }
+        
+        // Verify positions are sequential (no skipping)
+        if seenPositions.count >= 2 {
+            for i in 1..<seenPositions.count {
+                let expected = seenPositions[i - 1] + 1
+                let actual = seenPositions[i]
+                
+                XCTAssertEqual(actual, expected, 
+                    "Position should increment by 1, but went from \(seenPositions[i-1]) to \(actual). Positions seen: \(seenPositions)")
+            }
+        }
+        
+        // Take screenshot
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_08_counter_accuracy"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        
+        print("SUCCESS: Review counter positions: \(seenPositions)")
+    }
+    
+    // MARK: - 9. No '1 fotos' Pluralization Bug
+    
+    func testNoPluralOneSyntax() throws {
+        // CRITICAL: Fix for Issue 5 - should never show "1 fotos" (incorrect plural)
+        
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App did not launch")
+            return
+        }
+        
+        var foundBadPlural = false
+        var badPluralLocations: [String] = []
+        
+        // Scan all tabs
+        for tabIndex in 0..<4 {
+            tabBar.buttons.element(boundBy: tabIndex).tap()
+            sleep(2)
+            
+            // Scroll to see more content
+            let scrollView = app.scrollViews.firstMatch
+            if scrollView.exists {
+                scrollView.swipeUp()
+                sleep(1)
+            }
+            
+            // Check for "1 fotos" (incorrect plural)
+            let allTexts = app.staticTexts.allElementsBoundByIndex
+            for text in allTexts {
+                let label = text.label
+                
+                // "1 fotos" is wrong - should be "1 foto"
+                if label.contains("1 fotos") {
+                    foundBadPlural = true
+                    badPluralLocations.append("Tab \(tabIndex): '\(label)'")
+                }
+            }
+        }
+        
+        XCTAssertFalse(foundBadPlural, "Found incorrect '1 fotos' pluralization: \(badPluralLocations.joined(separator: ", "))")
+        
+        print("SUCCESS: No '1 fotos' pluralization bugs found")
+    }
+    
     // MARK: - Full Smoke Suite Summary
     
     func testSmokeTestSummary() throws {

@@ -539,4 +539,12 @@ enum MomentsPluralization {
             return String(localized: "Borrar las otras \(count)", comment: "Delete the other N photos")
         }
     }
+    
+    static func photosConserved(_ count: Int) -> String {
+        count == 1 ? "\(count) foto conservada" : "\(count) fotos conservadas"
+    }
+    
+    static func photosToReview(_ count: Int) -> String {
+        count == 1 ? "\(count) foto" : "\(count) fotos"
+    }
 }

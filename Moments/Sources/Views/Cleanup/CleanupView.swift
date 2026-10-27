@@ -664,9 +664,7 @@ struct CleanupReviewView: View {
                         photos: photos,
                         viewModel: viewModel,
                         onComplete: {
-                            withAnimation(.spring(response: 0.3)) {
-                                currentIndex += 1
-                            }
+                            // Queue shrinks automatically - don't advance index
                         }
                     )
                     
@@ -676,9 +674,7 @@ struct CleanupReviewView: View {
                         photos: photos,
                         viewModel: viewModel,
                         onComplete: {
-                            withAnimation(.spring(response: 0.3)) {
-                                currentIndex += 1
-                            }
+                            // Queue shrinks automatically - don't advance index
                         }
                     )
                 }
@@ -753,19 +749,15 @@ struct CleanupReviewView: View {
         .alert("¿Eliminar después de compartir?", isPresented: $showPostShareDeletePrompt) {
             Button("Eliminar", role: .destructive) {
                 if let photoId = sharedPhotoId {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photoId, delete: true)
-                        currentIndex += 1
-                    }
+                    viewModel.markAsReviewed(photoId, delete: true)
+                    // Queue shrinks automatically - don't advance index
                 }
                 sharedPhotoId = nil
             }
             Button("Conservar", role: .cancel) {
                 if let photoId = sharedPhotoId {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photoId, delete: false)
-                        currentIndex += 1
-                    }
+                    viewModel.markAsReviewed(photoId, delete: false)
+                    // Queue shrinks automatically - don't advance index
                 }
                 sharedPhotoId = nil
             }
@@ -802,16 +794,15 @@ struct CleanupReviewView: View {
                     photo: photo,
                     onKeep: {
                         withAnimation(.spring(response: 0.3)) {
-                            // CRITICAL FIX: keepPhoto is now called via markAsReviewed
                             viewModel.markAsReviewed(photo.id, delete: false)
                             showChipRowAfterKeep(photoId: photo.id)
-                            currentIndex += 1
+                            // Queue shrinks automatically - don't advance index
                         }
                     },
                     onDelete: {
                         withAnimation(.spring(response: 0.3)) {
                             viewModel.markAsReviewed(photo.id, delete: true)
-                            currentIndex += 1
+                            // Queue shrinks automatically - don't advance index
                         }
                     }
                 )
@@ -847,37 +838,29 @@ struct CleanupReviewView: View {
                 // Keep button with menu for options (long-press discoverable)
                 Menu {
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .forever)
-                            currentIndex += 1
-                        }
+                        viewModel.keepPhoto(photo.id, duration: .forever)
+                        // Queue shrinks automatically
                     } label: {
                         Label("Conservar siempre", systemImage: "checkmark.circle.fill")
                     }
                     
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .oneWeek)
-                            currentIndex += 1
-                        }
+                        viewModel.keepPhoto(photo.id, duration: .oneWeek)
+                        // Queue shrinks automatically
                     } label: {
                         Label("Preguntar en 1 semana", systemImage: "clock")
                     }
                     
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .oneMonth)
-                            currentIndex += 1
-                        }
+                        viewModel.keepPhoto(photo.id, duration: .oneMonth)
+                        // Queue shrinks automatically
                     } label: {
                         Label("Preguntar en 1 mes", systemImage: "calendar")
                     }
                     
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .threeMonths)
-                            currentIndex += 1
-                        }
+                        viewModel.keepPhoto(photo.id, duration: .threeMonths)
+                        // Queue shrinks automatically
                     } label: {
                         Label("Preguntar en 3 meses", systemImage: "calendar.badge.clock")
                     }
@@ -889,11 +872,9 @@ struct CleanupReviewView: View {
                         isLoading: false
                     )
                 } primaryAction: {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.keepPhoto(photo.id, duration: .forever)
-                        showChipRowAfterKeep(photoId: photo.id)
-                        currentIndex += 1
-                    }
+                    viewModel.keepPhoto(photo.id, duration: .forever)
+                    showChipRowAfterKeep(photoId: photo.id)
+                    // Queue shrinks automatically
                 }
                 .disabled(shareService.isLoading)
                 .frame(maxWidth: .infinity)
@@ -923,10 +904,8 @@ struct CleanupReviewView: View {
                 
                 // Delete button
                 Button {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photo.id, delete: true)
-                        currentIndex += 1
-                    }
+                    viewModel.markAsReviewed(photo.id, delete: true)
+                    // Queue shrinks automatically
                 } label: {
                     ReviewActionButton(
                         iconName: "trash.circle.fill",
@@ -1898,13 +1877,11 @@ struct CleanupCategoryDetailView: View {
                     photo: photo,
                     onKeep: {
                         withAnimation {
-                            // CRITICAL FIX: Use keepPhoto to persist the decision
                             viewModel.keepPhoto(photo.id, duration: .forever)
                             lastKeptPhotoId = photo.id
                             showKeepDurationChip = true
-                            currentIndex += 1
+                            // Queue shrinks automatically - don't advance index
                             
-                            // Auto-hide chip after 2.5 seconds
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                                 withAnimation {
                                     showKeepDurationChip = false
@@ -1915,7 +1892,7 @@ struct CleanupCategoryDetailView: View {
                     onDelete: {
                         withAnimation {
                             viewModel.markAsReviewed(photo.id, delete: true)
-                            currentIndex += 1
+                            // Queue shrinks automatically
                         }
                     }
                 )
@@ -1945,21 +1922,18 @@ struct CleanupCategoryDetailView: View {
                     Menu {
                         Button {
                             viewModel.keepPhoto(photo.id, duration: .forever)
-                            currentIndex += 1
                         } label: {
                             Label("Conservar siempre", systemImage: "checkmark.circle.fill")
                         }
                         
                         Button {
                             viewModel.keepPhoto(photo.id, duration: .oneWeek)
-                            currentIndex += 1
                         } label: {
                             Label("Preguntar en 1 semana", systemImage: "clock")
                         }
                         
                         Button {
                             viewModel.keepPhoto(photo.id, duration: .oneMonth)
-                            currentIndex += 1
                         } label: {
                             Label("Preguntar en 1 mes", systemImage: "calendar")
                         }
@@ -1971,7 +1945,7 @@ struct CleanupCategoryDetailView: View {
                         viewModel.keepPhoto(photo.id, duration: .forever)
                         lastKeptPhotoId = photo.id
                         showKeepDurationChip = true
-                        currentIndex += 1
+                        // Queue shrinks automatically
                         
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                             withAnimation {
@@ -1982,7 +1956,7 @@ struct CleanupCategoryDetailView: View {
                     
                     Button {
                         viewModel.markAsReviewed(photo.id, delete: true)
-                        currentIndex += 1
+                        // Queue shrinks automatically
                     } label: {
                         Image(systemName: "trash.circle.fill")
                             .font(.system(size: 60))
@@ -1991,7 +1965,8 @@ struct CleanupCategoryDetailView: View {
                 }
                 .padding(.bottom, 40)
                 
-                Text("swipe_progress \(currentIndex + 1) \(category.photos.count)")
+                // Show position in queue based on reviewed count
+                Text("swipe_progress \(viewModel.reviewedItemCount() + 1) \(category.photos.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 

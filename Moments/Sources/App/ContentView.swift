@@ -830,7 +830,7 @@ struct RepasoDelDiaView: View {
                                 .font(MomentsTypography.titleSmall)
                                 .foregroundStyle(MomentsColors.textPrimary)
                             
-                            Text("\(lowValuePhotos.count) fotos • \(selectedPhotos.count) seleccionadas")
+                            Text("\(MomentsPluralization.photos(lowValuePhotos.count)) • \(selectedPhotos.count) seleccionadas")
                                 .font(MomentsTypography.bodySmall)
                                 .foregroundStyle(MomentsColors.textSecondary)
                         }

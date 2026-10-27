@@ -948,21 +948,68 @@ final class ImageAnalyzer: Sendable {
     private func calculateTileVariance(laplacianOutput: CIImage, tileRect: CGRect, context: CIContext) -> Double {
         guard !tileRect.isEmpty else { return 0 }
         
+        // Compute true variance using histogram: Var = E[X²] - E[X]²
+        // CIAreaHistogram gives us the distribution of pixel values
+        
+        guard let histogramFilter = CIFilter(name: "CIAreaHistogram") else {
+            return calculateTileVarianceFallback(laplacianOutput: laplacianOutput, tileRect: tileRect, context: context)
+        }
+        
+        histogramFilter.setValue(laplacianOutput, forKey: kCIInputImageKey)
+        histogramFilter.setValue(CIVector(cgRect: tileRect), forKey: kCIInputExtentKey)
+        histogramFilter.setValue(256, forKey: "inputCount")
+        histogramFilter.setValue(1.0, forKey: "inputScale")
+        
+        guard let histOutput = histogramFilter.outputImage else {
+            return calculateTileVarianceFallback(laplacianOutput: laplacianOutput, tileRect: tileRect, context: context)
+        }
+        
+        var histData = [Float32](repeating: 0, count: 256)
+        context.render(
+            histOutput,
+            toBitmap: &histData,
+            rowBytes: 256 * MemoryLayout<Float32>.size,
+            bounds: CGRect(x: 0, y: 0, width: 256, height: 1),
+            format: .Rf,
+            colorSpace: nil
+        )
+        
+        // Calculate variance from histogram
+        // Laplacian output is centered at 0.5 (128) for "no edge", 
+        // with edges deviating from center. Higher deviation = sharper.
+        var sum: Double = 0
+        var sumSquares: Double = 0
+        var totalCount: Double = 0
+        
+        for i in 0..<256 {
+            let value = Double(i)
+            let count = Double(histData[i])
+            sum += value * count
+            sumSquares += value * value * count
+            totalCount += count
+        }
+        
+        guard totalCount > 0 else { return 0 }
+        
+        let mean = sum / totalCount
+        let variance = (sumSquares / totalCount) - (mean * mean)
+        
+        // Variance near zero = flat/blurry, high variance = sharp edges
+        return variance
+    }
+    
+    private func calculateTileVarianceFallback(laplacianOutput: CIImage, tileRect: CGRect, context: CIContext) -> Double {
+        // Fallback: use mean of squared values as proxy for variance
         guard let statsFilter = CIFilter(name: "CIAreaAverage") else { return 0 }
         
-        // Get absolute value of Laplacian for better variance estimation
-        guard let absFilter = CIFilter(name: "CIColorMatrix") else { return 0 }
-        absFilter.setValue(laplacianOutput, forKey: kCIInputImageKey)
-        // Make all values positive by shifting
-        absFilter.setValue(CIVector(x: 1, y: 0, z: 0, w: 0), forKey: "inputRVector")
-        absFilter.setValue(CIVector(x: 0, y: 1, z: 0, w: 0), forKey: "inputGVector")
-        absFilter.setValue(CIVector(x: 0, y: 0, z: 1, w: 0), forKey: "inputBVector")
-        absFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")
-        absFilter.setValue(CIVector(x: 0.5, y: 0.5, z: 0.5, w: 0), forKey: "inputBiasVector")
+        // Square the Laplacian values to get magnitude
+        guard let multiplyFilter = CIFilter(name: "CIMultiplyCompositing") else { return 0 }
+        multiplyFilter.setValue(laplacianOutput, forKey: kCIInputImageKey)
+        multiplyFilter.setValue(laplacianOutput, forKey: kCIInputBackgroundImageKey)
         
-        let processedOutput = absFilter.outputImage ?? laplacianOutput
+        let squaredOutput = multiplyFilter.outputImage ?? laplacianOutput
         
-        statsFilter.setValue(processedOutput, forKey: kCIInputImageKey)
+        statsFilter.setValue(squaredOutput, forKey: kCIInputImageKey)
         statsFilter.setValue(CIVector(cgRect: tileRect), forKey: kCIInputExtentKey)
         
         guard let statsOutput = statsFilter.outputImage else { return 0 }
@@ -977,11 +1024,10 @@ final class ImageAnalyzer: Sendable {
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
         
-        // Average of RGB channels as proxy for variance magnitude
-        let avgValue = (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3.0
+        // Mean of squared values as proxy for variance
+        let meanSquared = (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3.0
         
-        // Scale to variance range
-        return avgValue * 4.0
+        return meanSquared
     }
     
     private func calculateAverageVariance(output: CIImage, sampleRect: CGRect, context: CIContext) -> Double {
