@@ -687,6 +687,18 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testHomeUsesSystemAppearanceWithoutForcedDark() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "theme_home_system"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+    
     func testRecentlyDeletedHintAppearsInSummary() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
