@@ -2577,6 +2577,19 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(person.name, "Mamá")
     }
     
+    func testPluralizationHasNoRawUnoFotos() {
+        XCTAssertEqual(MomentsPluralization.photos(1), "1 foto")
+        XCTAssertEqual(MomentsPluralization.photos(2), "2 fotos")
+        XCTAssertEqual(MomentsPluralization.visits(1), "1 visita")
+        XCTAssertEqual(MomentsPluralization.elements(1), "1 elemento")
+    }
+    
+    func testAlbumSuggestionFromLabelsAndLastChoice() {
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food|cocinando", lastChoice: nil), "Cooking4U")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "travel", lastChoice: nil), "Viajes")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "cat", lastChoice: "Cooking4U"), "Cooking4U")
+    }
+    
     func testNewPhotoCheckCapsAndRespectsKeep() {
         XCTAssertEqual(NewPhotoCheckService.maxPerDay, 3)
         XCTAssertTrue(NewPhotoCheckService.isObviouslyBad(category: .blurry, keepDecision: nil))

@@ -179,7 +179,7 @@ struct PlaceDetailCard: View {
             
             HStack(spacing: 16) {
                 Label("\(place.photoCount)", systemImage: "photo")
-                Label("\(place.visitCount) visitas", systemImage: "clock")
+                Label(MomentsPluralization.visits(place.visitCount), systemImage: "clock")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -298,7 +298,7 @@ struct PlaceDetailView: View {
                     
                     HStack(spacing: 16) {
                         Label(MomentsPluralization.photos(place.photoCount), systemImage: "photo")
-                        Label("\(place.visitCount) visitas", systemImage: "calendar")
+                        Label(MomentsPluralization.visits(place.visitCount), systemImage: "calendar")
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

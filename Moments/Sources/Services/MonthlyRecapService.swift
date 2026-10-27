@@ -42,7 +42,7 @@ enum MonthlyRecapService {
         guard let context else { return "sin datos" }
         let inMonth = photos(month: month, year: year, context: context)
         let places = Set(inMonth.compactMap { $0.placeCity })
-        return "\(inMonth.count) fotos, \(places.count) lugares"
+        return "\(MomentsPluralization.photos(inMonth.count)), \(places.count) lugares"
     }
     
     static func fallbackNarrative(monthName: String, stats: String) -> String {

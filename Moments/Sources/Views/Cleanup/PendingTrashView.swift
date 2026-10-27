@@ -184,7 +184,7 @@ struct PendingTrashView: View {
                             .tint(.white)
                     } else {
                         Image(systemName: "trash.fill")
-                        Text("Borrar \(selectedCount) elementos")
+                        Text("Borrar \(MomentsPluralization.elements(selectedCount))")
                     }
                 }
             }

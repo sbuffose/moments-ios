@@ -181,7 +181,7 @@ struct MomentRow: View {
                     Label("\(moment.photoCount)", systemImage: "photo")
                     
                     if moment.durationDays > 1 {
-                        Label("\(moment.durationDays) días", systemImage: "calendar")
+                        Label(MomentsPluralization.days(moment.durationDays), systemImage: "calendar")
                     }
                 }
                 .font(.caption)

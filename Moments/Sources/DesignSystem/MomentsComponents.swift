@@ -82,7 +82,7 @@ struct CleanupBatchCard: View {
                         .font(MomentsTypography.headlineMedium)
                         .foregroundStyle(MomentsColors.textPrimary)
                     
-                    Text("\(itemCount) elementos · \(estimatedSize)")
+                    Text("\(MomentsPluralization.elements(itemCount)) · \(estimatedSize)")
                         .font(MomentsTypography.bodySmall)
                         .foregroundStyle(MomentsColors.textSecondary)
                 }
@@ -131,8 +131,8 @@ struct CleanupBatchCard: View {
             }
         }
         .momentsCard()
-        .confirmationDialog("¿Eliminar \(itemCount) elementos?", isPresented: $showConfirm, titleVisibility: .visible) {
-            Button("Eliminar \(itemCount) elementos", role: .destructive) {
+        .confirmationDialog("¿Eliminar \(MomentsPluralization.elements(itemCount))?", isPresented: $showConfirm, titleVisibility: .visible) {
+            Button("Eliminar \(MomentsPluralization.elements(itemCount))", role: .destructive) {
                 MomentsHaptics.success()
                 onQuickDelete()
             }
@@ -580,6 +580,10 @@ enum MomentsPluralization {
     
     static func items(_ count: Int) -> String {
         count == 1 ? "\(count) elemento" : "\(count) elementos"
+    }
+    
+    static func visits(_ count: Int) -> String {
+        count == 1 ? "\(count) visita" : "\(count) visitas"
     }
     
     static func videos(_ count: Int) -> String {

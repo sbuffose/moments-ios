@@ -224,7 +224,7 @@ struct SettingsView: View {
         } else if appState.isAnalyzing {
             return "Analizando \(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)"
         } else if appState.hasCompletedInitialScan {
-            return "\(appState.totalPhotosIndexed) elementos indexados"
+            return "\(MomentsPluralization.elements(appState.totalPhotosIndexed)) indexados"
         } else {
             return "No escaneado"
         }

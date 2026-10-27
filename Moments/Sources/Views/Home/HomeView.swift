@@ -309,7 +309,7 @@ struct HomeView: View {
                             .font(MomentsTypography.headlineMedium)
                             .foregroundStyle(MomentsColors.textPrimary)
                         
-                        Text("\(viewModel.totalMetadataItems) elementos detectados")
+                        Text("\(MomentsPluralization.elements(viewModel.totalMetadataItems)) detectados")
                             .font(MomentsTypography.bodySmall)
                             .foregroundStyle(MomentsColors.textSecondary)
                     }

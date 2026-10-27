@@ -465,7 +465,7 @@ class CatalogingService: ObservableObject {
                 isUser: false,
                 card: .catalogQuestion(
                     question: "¿Qué lugar es?",
-                    subtitle: "\(place.visitCount) visitas",
+                    subtitle: MomentsPluralization.visits(place.visitCount),
                     photos: [],
                     options: [
                         .init(id: "place:\(place.id):Casa", title: "Casa"),

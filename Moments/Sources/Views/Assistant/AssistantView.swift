@@ -231,7 +231,7 @@ struct MessageView: View {
             SpaceStatCard(
                 title: "Podés liberar",
                 value: canFree,
-                subtitle: "\(items) elementos",
+                subtitle: MomentsPluralization.elements(items),
                 icon: "externaldrive.badge.minus",
                 color: .blue
             )
@@ -427,7 +427,7 @@ class AssistantViewModel: ObservableObject {
         let size = cleanupViewModel.formattedSize(photos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) })
         
         return AssistantMessage(
-            text: "Encontré \(photos.count) elementos que podrías eliminar:",
+            text: "Encontré \(MomentsPluralization.elements(photos.count)) que podrías eliminar:",
             isUser: false,
             card: .cleanup(
                 title: title,
@@ -515,7 +515,7 @@ class AssistantViewModel: ObservableObject {
                 let photos = await getPhotosForDate(date)
                 
                 if let days = date.daysUntilNext {
-                    let daysText = days == 0 ? "¡hoy!" : (days == 1 ? "mañana" : "en \(days) días")
+                    let daysText = days == 0 ? "¡hoy!" : (days == 1 ? "mañana" : "en \(MomentsPluralization.days(days))")
                     return AssistantMessage(
                         text: "El cumpleaños de \(date.personName ?? name) es el \(date.displayDate), \(daysText)",
                         isUser: false,
@@ -711,7 +711,7 @@ class AssistantViewModel: ObservableObject {
             await cleanupViewModel.deleteSelectedPhotos()
             
             let response = AssistantMessage(
-                text: "¡Listo! Eliminé \(photos.count) elementos y liberé espacio.",
+                text: "¡Listo! Eliminé \(MomentsPluralization.elements(photos.count)) y liberé espacio.",
                 isUser: false
             )
             messages.append(response)
