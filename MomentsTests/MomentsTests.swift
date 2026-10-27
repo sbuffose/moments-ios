@@ -2562,6 +2562,15 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(label.contains("MB") || label.contains("KB"), label)
     }
     
+    func testRecentlyDeletedHintCopy() {
+        let copy = SpaceFormatting.recentlyDeletedSummary(bytes: 1_200_000_000)
+        XCTAssertTrue(copy.contains("Liberaste"), copy)
+        XCTAssertTrue(copy.contains("Eliminados recientemente"), copy)
+        XCTAssertTrue(copy.contains("30 días"), copy)
+        XCTAssertEqual(SpaceFormatting.recentlyDeletedHowTo, "Fotos > Álbumes > Eliminados recientemente > Eliminar todo")
+        XCTAssertEqual(SpaceFormatting.photosAppURL?.scheme, "photos-redirect")
+    }
+    
     func testBackgroundTaskCompletesExactlyOnce() {
         XCTAssertTrue(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: false))
         XCTAssertFalse(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: true))

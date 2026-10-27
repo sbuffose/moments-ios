@@ -11,6 +11,7 @@ struct HomeView: View {
     @EnvironmentObject var appState: AppState
     
     @StateObject private var viewModel = HomeViewModel()
+    @State private var showRecentlyDeletedInfo = false
     
     var body: some View {
         NavigationStack {
@@ -79,6 +80,15 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
+        }
+        .sheet(isPresented: $showRecentlyDeletedInfo) {
+            NavigationStack {
+                RecentlyDeletedHintView(bytes: viewModel.totalSpaceSaved)
+                    .padding()
+                    .navigationTitle("Espacio liberado")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .presentationDetents([.medium])
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if appState.isAnalyzing {
@@ -205,10 +215,20 @@ struct HomeView: View {
     
     private var freedAndStorageCard: some View {
         VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
-            Text("Ya liberaste \(viewModel.formattedSpaceSaved) con Moments")
-                .font(MomentsTypography.headlineMedium)
-                .foregroundStyle(MomentsColors.textPrimary)
-                .accessibilityIdentifier("home.freedTotal")
+            HStack(alignment: .top) {
+                Text("Ya liberaste \(viewModel.formattedSpaceSaved) con Moments")
+                    .font(MomentsTypography.headlineMedium)
+                    .foregroundStyle(MomentsColors.textPrimary)
+                    .accessibilityIdentifier("home.freedTotal")
+                Spacer()
+                Button {
+                    showRecentlyDeletedInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .accessibilityIdentifier("home.recentlyDeletedInfo")
+                .accessibilityLabel("Cómo se recupera el espacio")
+            }
             
             let storage = DeviceStorage.current()
             VStack(alignment: .leading, spacing: MomentsSpacing.xs) {

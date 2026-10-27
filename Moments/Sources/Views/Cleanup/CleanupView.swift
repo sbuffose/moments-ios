@@ -465,14 +465,7 @@ struct CleanupCelebrationView: View {
                     .font(.title)
                     .fontWeight(.bold)
                 
-                HStack(spacing: 4) {
-                    Text("celebration_freed")
-                        .foregroundStyle(.secondary)
-                    Text(formattedSize(spaceSaved))
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.green)
-                }
+                RecentlyDeletedHintView(bytes: spaceSaved)
             }
             
             Divider()
@@ -1440,9 +1433,7 @@ struct ReviewSummarySheet: View {
                             .fontWeight(.bold)
                             .foregroundStyle(.red)
                         
-                        Text("Se moverán a Eliminados Recientemente")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        RecentlyDeletedHintView(bytes: deletionSize)
                     }
                     
                     // Preview of photos to delete
