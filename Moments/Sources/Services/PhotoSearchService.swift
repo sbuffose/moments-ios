@@ -1,9 +1,8 @@
 // PhotoSearchService.swift
-// Natural language photo search with Vision labels, OCR, feature-print similarity
+// Natural language photo search with Vision labels, OCR, and SwiftData queries
 
 import Foundation
 import SwiftData
-import Vision
 import NaturalLanguage
 
 @MainActor
@@ -11,6 +10,7 @@ class PhotoSearchService: ObservableObject {
     static let shared = PhotoSearchService()
     
     private var modelContext: ModelContext?
+    private var personCache: [String: String] = [:]
     
     @Published var isSearching = false
     @Published var lastQuery: String = ""
@@ -23,7 +23,7 @@ class PhotoSearchService: ObservableObject {
         var sceneLabels: [String] = []
         var textInImage: String?
         var mediaType: MediaTypeFilter = .all
-        var origin: PhotoOrigin = .all
+        var origin: PhotoOriginFilter = .all
         
         enum MediaTypeFilter: String, CaseIterable {
             case all = "todos"
@@ -33,7 +33,7 @@ class PhotoSearchService: ObservableObject {
             case livePhotos = "live"
         }
         
-        enum PhotoOrigin: String, CaseIterable {
+        enum PhotoOriginFilter: String, CaseIterable {
             case all = "todos"
             case camera = "cámara"
             case messaging = "mensajes"
@@ -70,6 +70,25 @@ class PhotoSearchService: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        loadPersonCache()
+    }
+    
+    private func loadPersonCache() {
+        guard let context = modelContext else { return }
+        let descriptor = FetchDescriptor<PersistedPerson>()
+        guard let persons = try? context.fetch(descriptor) else { return }
+        
+        personCache = [:]
+        for person in persons {
+            if let name = person.name, !name.isEmpty {
+                personCache[person.faceClusterId] = name
+            }
+        }
+    }
+    
+    private func getPersonName(forClusterId clusterId: String?) -> String? {
+        guard let clusterId = clusterId else { return nil }
+        return personCache[clusterId]
     }
     
     // MARK: - Main Search
@@ -94,16 +113,11 @@ class PhotoSearchService: ObservableObject {
         
         var results = allPhotos
         
-        // Parse query into terms with Spanish synonyms
         let queryTerms = parseQueryTerms(query)
         
-        // Apply filters
         results = applyFilters(results, filters: filters, queryTerms: queryTerms)
-        
-        // Score and rank results
         results = rankResults(results, query: query, queryTerms: queryTerms)
         
-        // Generate refinement chips from results
         let chips = generateRefinementChips(from: results)
         
         return SearchResult(
@@ -120,11 +134,10 @@ class PhotoSearchService: ObservableObject {
         let normalized = query.lowercased()
             .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_AR"))
         
-        var terms = normalized
+        let terms = normalized
             .components(separatedBy: CharacterSet.whitespaces.union(.punctuationCharacters))
             .filter { !$0.isEmpty && !spanishStopWords.contains($0) }
         
-        // Expand synonyms
         var expandedTerms = Set<String>()
         for term in terms {
             expandedTerms.insert(term)
@@ -143,82 +156,51 @@ class PhotoSearchService: ObservableObject {
     ]
     
     private let spanishSceneSynonyms: [String: Set<String>] = [
-        // Beach / Playa
         "playa": ["beach", "mar", "ocean", "costa", "arena", "sand", "shore", "waterfront"],
         "beach": ["playa", "mar", "ocean", "costa", "arena"],
         "mar": ["sea", "ocean", "playa", "beach", "agua", "water"],
-        
-        // Mountain / Montaña
         "montaña": ["mountain", "cerro", "sierra", "peak", "hill", "cordillera"],
         "mountain": ["montaña", "cerro", "sierra", "peak"],
         "cerro": ["montaña", "mountain", "hill"],
-        
-        // Food / Comida
         "comida": ["food", "meal", "restaurant", "cena", "almuerzo", "dinner", "lunch"],
         "food": ["comida", "meal", "restaurant", "eating"],
         "cena": ["dinner", "comida", "food", "restaurant", "evening meal"],
         "almuerzo": ["lunch", "comida", "food", "midday meal"],
         "restaurant": ["restaurante", "comida", "food", "dining"],
-        
-        // Party / Fiesta
         "fiesta": ["party", "celebration", "evento", "cumpleaños", "birthday"],
         "party": ["fiesta", "celebration", "event"],
         "cumple": ["birthday", "cumpleaños", "fiesta", "party", "celebration"],
         "cumpleaños": ["birthday", "cumple", "fiesta", "party", "cake"],
-        
-        // Family
         "familia": ["family", "familias", "parientes", "relatives"],
         "family": ["familia", "relatives"],
-        
-        // Travel
         "viaje": ["travel", "trip", "vacation", "vacaciones", "holiday", "journey"],
         "vacaciones": ["vacation", "holiday", "viaje", "travel"],
         "trip": ["viaje", "travel", "vacation"],
-        
-        // Nature / Naturaleza
         "naturaleza": ["nature", "outdoor", "landscape", "paisaje", "bosque", "forest"],
         "nature": ["naturaleza", "outdoor", "landscape"],
         "bosque": ["forest", "woods", "trees", "naturaleza", "nature"],
-        
-        // City / Ciudad
         "ciudad": ["city", "urban", "downtown", "centro", "edificio"],
         "city": ["ciudad", "urban", "downtown"],
-        
-        // Night / Noche
         "noche": ["night", "nighttime", "evening", "nocturno", "dark"],
         "night": ["noche", "nighttime", "evening"],
-        
-        // Pet / Mascota
         "mascota": ["pet", "animal", "perro", "dog", "gato", "cat"],
         "perro": ["dog", "mascota", "pet", "puppy", "canine"],
         "dog": ["perro", "mascota", "pet", "puppy"],
         "gato": ["cat", "mascota", "pet", "kitten", "feline"],
         "cat": ["gato", "mascota", "pet", "kitten"],
-        
-        // Document / Documento
         "documento": ["document", "paper", "recibo", "receipt", "factura", "invoice"],
         "recibo": ["receipt", "documento", "document", "bill", "factura"],
         "captura": ["screenshot", "screen capture", "pantalla"],
         "screenshot": ["captura", "screen capture", "pantalla"],
-        
-        // Sports / Deportes
         "deporte": ["sport", "sports", "atletico", "athletic", "juego", "game"],
         "futbol": ["soccer", "football", "deporte", "sport"],
         "soccer": ["futbol", "football", "sport"],
-        
-        // Wedding / Boda
         "boda": ["wedding", "casamiento", "matrimonio", "marriage"],
         "wedding": ["boda", "casamiento", "matrimonio"],
-        
-        // Baby / Bebé
         "bebe": ["baby", "infant", "recien nacido", "newborn"],
         "baby": ["bebe", "infant", "newborn"],
-        
-        // Sunset / Atardecer
         "atardecer": ["sunset", "dusk", "evening sky", "puesta de sol"],
         "sunset": ["atardecer", "dusk", "puesta de sol"],
-        
-        // Sunrise / Amanecer
         "amanecer": ["sunrise", "dawn", "morning sky", "salida del sol"],
         "sunrise": ["amanecer", "dawn", "morning"]
     ]
@@ -228,19 +210,22 @@ class PhotoSearchService: ObservableObject {
     private func applyFilters(_ photos: [PersistedPhoto], filters: SearchFilters, queryTerms: [String]) -> [PersistedPhoto] {
         var results = photos
         
-        // Filter by people
         if !filters.people.isEmpty {
             results = results.filter { photo in
                 guard let faceDetections = photo.faceDetections else { return false }
-                return faceDetections.contains { face in
-                    filters.people.contains { personName in
-                        face.personName?.lowercased().contains(personName.lowercased()) ?? false
+                for face in faceDetections {
+                    if let personName = getPersonName(forClusterId: face.clusterId) {
+                        for filterPerson in filters.people {
+                            if personName.lowercased().contains(filterPerson.lowercased()) {
+                                return true
+                            }
+                        }
                     }
                 }
+                return false
             }
         }
         
-        // Filter by places
         if !filters.places.isEmpty {
             results = results.filter { photo in
                 for place in filters.places {
@@ -255,7 +240,6 @@ class PhotoSearchService: ObservableObject {
             }
         }
         
-        // Filter by date range
         if let dateRange = filters.dateRange {
             results = results.filter { photo in
                 guard let date = photo.creationDate else { return false }
@@ -263,54 +247,48 @@ class PhotoSearchService: ObservableObject {
             }
         }
         
-        // Filter by scene labels
         if !filters.sceneLabels.isEmpty {
             results = results.filter { photo in
-                let labels = photo.visionLabels ?? []
-                return filters.sceneLabels.contains { label in
-                    labels.contains { $0.lowercased().contains(label.lowercased()) }
-                }
+                guard let labelsStr = photo.visionLabels else { return false }
+                let labels = labelsStr.lowercased()
+                return filters.sceneLabels.contains { labels.contains($0.lowercased()) }
             }
         }
         
-        // Filter by text in image (OCR)
         if let textQuery = filters.textInImage, !textQuery.isEmpty {
             results = results.filter { photo in
                 photo.ocrText?.lowercased().contains(textQuery.lowercased()) ?? false
             }
         }
         
-        // Filter by media type
         switch filters.mediaType {
         case .all:
             break
         case .photos:
-            results = results.filter { $0.mediaTypeRaw == "image" && $0.sourceTypeRaw != "screenshot" }
+            results = results.filter { $0.mediaTypeRaw == "image" && $0.origin != .screenshot }
         case .videos:
             results = results.filter { $0.mediaTypeRaw == "video" }
         case .screenshots:
-            results = results.filter { $0.sourceTypeRaw == "screenshot" }
+            results = results.filter { $0.origin == .screenshot }
         case .livePhotos:
             results = results.filter { $0.mediaTypeRaw == "livePhoto" }
         }
         
-        // Filter by origin
         switch filters.origin {
         case .all:
             break
         case .camera:
-            results = results.filter { $0.sourceTypeRaw == "camera" }
+            results = results.filter { $0.origin == .camera }
         case .messaging:
-            results = results.filter { $0.sourceTypeRaw == "messaging" }
+            results = results.filter { $0.origin.isMessagingApp }
         case .downloaded:
-            results = results.filter { $0.sourceTypeRaw == "downloaded" || $0.sourceTypeRaw == "saved" }
+            results = results.filter { $0.origin == .download || $0.origin == .savedFromWeb }
         }
         
-        // Search in text fields (labels, OCR, searchable text)
         if !queryTerms.isEmpty {
             results = results.filter { photo in
                 let searchable = photo.searchableText.lowercased()
-                let labels = (photo.visionLabels ?? []).joined(separator: " ").lowercased()
+                let labels = (photo.visionLabels ?? "").lowercased()
                 let ocr = (photo.ocrText ?? "").lowercased()
                 let combined = "\(searchable) \(labels) \(ocr)"
                 
@@ -332,7 +310,7 @@ class PhotoSearchService: ObservableObject {
             var score: Double = 0
             
             let searchable = photo.searchableText.lowercased()
-            let labels = (photo.visionLabels ?? []).joined(separator: " ").lowercased()
+            let labels = (photo.visionLabels ?? "").lowercased()
             let ocr = (photo.ocrText ?? "").lowercased()
             
             for term in queryTerms {
@@ -342,7 +320,8 @@ class PhotoSearchService: ObservableObject {
                 
                 if let faceDetections = photo.faceDetections {
                     for face in faceDetections {
-                        if face.personName?.lowercased().contains(term) ?? false {
+                        if let personName = getPersonName(forClusterId: face.clusterId),
+                           personName.lowercased().contains(term) {
                             score += 5.0
                         }
                     }
@@ -370,12 +349,11 @@ class PhotoSearchService: ObservableObject {
     private func generateRefinementChips(from photos: [PersistedPhoto]) -> [SearchResult.RefinementChip] {
         var chips: [SearchResult.RefinementChip] = []
         
-        // People chips
         var peopleCounts: [String: Int] = [:]
         for photo in photos {
             if let faces = photo.faceDetections {
                 for face in faces {
-                    if let name = face.personName, !name.isEmpty {
+                    if let name = getPersonName(forClusterId: face.clusterId), !name.isEmpty {
                         peopleCounts[name, default: 0] += 1
                     }
                 }
@@ -386,7 +364,6 @@ class PhotoSearchService: ObservableObject {
             chips.append(.init(type: .person, value: name, count: count))
         }
         
-        // Place chips
         var placeCounts: [String: Int] = [:]
         for photo in photos {
             if let city = photo.placeCity {
@@ -398,7 +375,6 @@ class PhotoSearchService: ObservableObject {
             chips.append(.init(type: .place, value: place, count: count))
         }
         
-        // Date chips (group by month/year)
         var dateCounts: [String: Int] = [:]
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "es_AR")
@@ -414,9 +390,8 @@ class PhotoSearchService: ObservableObject {
             chips.append(.init(type: .date, value: dateStr, count: count))
         }
         
-        // Type chips
         let videoCount = photos.filter { $0.mediaTypeRaw == "video" }.count
-        let screenshotCount = photos.filter { $0.sourceTypeRaw == "screenshot" }.count
+        let screenshotCount = photos.filter { $0.origin == .screenshot }.count
         if videoCount > 3 {
             chips.append(.init(type: .type, value: "Videos", count: videoCount))
         }
@@ -425,46 +400,5 @@ class PhotoSearchService: ObservableObject {
         }
         
         return chips
-    }
-    
-    // MARK: - Feature Print Similarity Search
-    
-    func searchSimilar(to photo: PersistedPhoto, limit: Int = 20) async -> [PersistedPhoto] {
-        guard let context = modelContext,
-              let referenceData = photo.featurePrintData else {
-            return []
-        }
-        
-        let descriptor = FetchDescriptor<PersistedPhoto>(
-            predicate: #Predicate { $0.analysisCompleted && $0.featurePrintData != nil }
-        )
-        
-        guard let allPhotos = try? context.fetch(descriptor) else {
-            return []
-        }
-        
-        let scored = allPhotos.compactMap { candidate -> (PersistedPhoto, Float)? in
-            guard candidate.id != photo.id,
-                  let candidateData = candidate.featurePrintData,
-                  let similarity = computeFeaturePrintSimilarity(referenceData, candidateData) else {
-                return nil
-            }
-            return (candidate, similarity)
-        }
-        
-        return scored
-            .sorted { $0.1 > $1.1 }
-            .prefix(limit)
-            .map { $0.0 }
-    }
-    
-    private func computeFeaturePrintSimilarity(_ data1: Data, _ data2: Data) -> Float? {
-        guard let print1 = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data1),
-              let print2 = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data2) else {
-            return nil
-        }
-        var distance: Float = 0
-        try? print1.computeDistance(&distance, to: print2)
-        return max(0, 1 - distance)
     }
 }
