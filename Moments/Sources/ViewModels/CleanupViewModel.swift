@@ -688,6 +688,9 @@ class CleanupViewModel: ObservableObject {
             case .forwardedImage:
                 photosForCategory = cleanablePhotos.filter { $0.cleanupCategory == .forwardedImage }
                 defaultConfidence = .veryLikely // Forwarded images
+            case .livePhoto:
+                photosForCategory = cleanablePhotos.filter { $0.cleanupCategory == .livePhoto || $0.isLivePhoto }
+                defaultConfidence = .maybe
             case .none:
                 continue
             }

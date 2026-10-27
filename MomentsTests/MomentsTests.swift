@@ -2573,6 +2573,18 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(MetadataExtractionService.neverAllowsNetworkForMetadata())
     }
     
+    func testLivePhotoBecomesCleanupCandidate() {
+        XCTAssertTrue(CleanupCategoryType.allCases.contains(.livePhoto))
+        XCTAssertEqual(CleanupCategoryType.livePhoto.iconName, "livephoto")
+    }
+    
+    func testSourceDetectionFromFilename() {
+        XCTAssertEqual(PhotoOrigin.fromFilename("IMG-20260312-WA0004.jpg"), .whatsapp)
+        XCTAssertEqual(PhotoOrigin.fromFilename("Screenshot 2026-03-12.png"), .screenshot)
+        XCTAssertEqual(PhotoOrigin.fromFilename("download_file.png"), .download)
+        XCTAssertNil(PhotoOrigin.fromFilename("IMG_1001.HEIC"))
+    }
+    
     func testWhatsAppFilenameIsDetectedAsMessagingOrigin() {
         let meta = MetadataExtractionService.PhotoMetadata(
             hasExifData: false,
