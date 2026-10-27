@@ -74,6 +74,12 @@ struct SettingsView: View {
                     } label: {
                         Label("Fotos conservadas", systemImage: "checkmark.circle")
                     }
+                    
+                    NavigationLink {
+                        LearningSettingsView()
+                    } label: {
+                        Label("Aprendizaje", systemImage: "brain")
+                    }
                 } header: {
                     Text("Tus datos")
                 } footer: {
@@ -406,6 +412,437 @@ struct KeptPhotoRow: View {
         case .none:
             return "Sin decisión"
         }
+    }
+}
+
+// MARK: - Learning Settings View
+
+struct LearningSettingsView: View {
+    @StateObject private var learningService = PreferenceLearningService.shared
+    @State private var preferences: LearnedPreferences?
+    @State private var learningSummary: [String] = []
+    @State private var showResetConfirmation = false
+    @State private var suppressedCategories: [CleanupCategoryType] = []
+    @Environment(\.modelContext) private var modelContext
+    
+    var body: some View {
+        List {
+            // Learning Summary
+            Section {
+                if learningSummary.isEmpty {
+                    Text("Moments todavía está aprendiendo tus preferencias. Seguí revisando fotos para que aprenda qué te gusta conservar.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(learningSummary, id: \.self) { summary in
+                        HStack(spacing: 12) {
+                            Image(systemName: "lightbulb.fill")
+                                .foregroundStyle(.yellow)
+                            Text(summary)
+                        }
+                    }
+                }
+            } header: {
+                Text("Lo que aprendí")
+            } footer: {
+                if let prefs = preferences {
+                    Text("Basado en \(prefs.totalDecisions) decisiones")
+                }
+            }
+            
+            // Confidence indicator
+            if let prefs = preferences, prefs.totalDecisions > 0 {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Confianza del modelo")
+                            Spacer()
+                            Text("\(Int(prefs.confidenceWeight * 100))%")
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        ProgressView(value: prefs.confidenceWeight)
+                            .tint(.blue)
+                    }
+                } footer: {
+                    Text("Las predicciones son más precisas después de ~50 decisiones")
+                }
+            }
+            
+            // Suppressed categories
+            if !suppressedCategories.isEmpty {
+                Section {
+                    ForEach(suppressedCategories, id: \.rawValue) { category in
+                        HStack {
+                            Image(systemName: category.iconName)
+                                .foregroundStyle(.secondary)
+                            Text(LocalizedStringKey(category.localizedKey))
+                            Spacer()
+                            Button("Activar") {
+                                Task {
+                                    await learningService.unsuppressCategory(category)
+                                    await loadData()
+                                }
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.blue)
+                        }
+                    }
+                } header: {
+                    Text("Categorías desactivadas")
+                } footer: {
+                    Text("Estas categorías no se te sugerirán para eliminar")
+                }
+            }
+            
+            // Category keep rates
+            if let prefs = preferences, prefs.totalDecisions >= 5 {
+                Section {
+                    CategoryKeepRateRow(category: .screenshot, rate: prefs.screenshotKeepRate, count: prefs.screenshotDecisions)
+                    CategoryKeepRateRow(category: .blurry, rate: prefs.blurryKeepRate, count: prefs.blurryDecisions)
+                    CategoryKeepRateRow(category: .duplicate, rate: prefs.duplicateKeepRate, count: prefs.duplicateDecisions)
+                    CategoryKeepRateRow(category: .downloadedMeme, rate: prefs.downloadKeepRate, count: prefs.downloadDecisions)
+                    CategoryKeepRateRow(category: .receipt, rate: prefs.receiptKeepRate, count: prefs.receiptDecisions)
+                } header: {
+                    Text("Tasas de conservación por categoría")
+                }
+            }
+            
+            // Reset
+            Section {
+                Button(role: .destructive) {
+                    showResetConfirmation = true
+                } label: {
+                    Label("Resetear aprendizaje", systemImage: "arrow.counterclockwise")
+                }
+            } footer: {
+                Text("Esto borrará todas las preferencias aprendidas y empezará de nuevo")
+            }
+        }
+        .navigationTitle("Aprendizaje")
+        .onAppear {
+            learningService.initialize(modelContext: modelContext)
+            Task {
+                await loadData()
+            }
+        }
+        .confirmationDialog(
+            "¿Resetear aprendizaje?",
+            isPresented: $showResetConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Resetear", role: .destructive) {
+                Task {
+                    await learningService.resetLearning()
+                    await loadData()
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Se borrarán todas las preferencias aprendidas")
+        }
+    }
+    
+    private func loadData() async {
+        preferences = await learningService.getPreferences()
+        learningSummary = await learningService.getLearningSummary()
+        suppressedCategories = preferences?.suppressedCategories ?? []
+    }
+}
+
+struct CategoryKeepRateRow: View {
+    let category: CleanupCategoryType
+    let rate: Double
+    let count: Int
+    
+    var body: some View {
+        HStack {
+            Image(systemName: category.iconName)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+            
+            Text(LocalizedStringKey(category.localizedKey))
+            
+            Spacer()
+            
+            if count > 0 {
+                Text("\(Int(rate * 100))%")
+                    .foregroundStyle(rate > 0.7 ? .green : rate < 0.3 ? .red : .secondary)
+                    .font(.subheadline)
+            } else {
+                Text("-")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - Daily Review Settings View
+
+struct DailyReviewSettingsView: View {
+    @StateObject private var reviewService = DailyReviewService.shared
+    @State private var isEnabled = true
+    @State private var selectedHour = 21
+    @State private var selectedMinute = 0
+    @State private var showPermissionAlert = false
+    @Environment(\.modelContext) private var modelContext
+    
+    var body: some View {
+        List {
+            // Enable/Disable
+            Section {
+                Toggle(isOn: $isEnabled) {
+                    Label("Activar repaso diario", systemImage: "moon.stars")
+                }
+                .onChange(of: isEnabled) { _, newValue in
+                    Task {
+                        if newValue && !reviewService.isNotificationPermissionGranted {
+                            let granted = await reviewService.requestNotificationPermission()
+                            if !granted {
+                                showPermissionAlert = true
+                                isEnabled = false
+                                return
+                            }
+                        }
+                        await reviewService.updateSettings(isEnabled: newValue)
+                    }
+                }
+            } footer: {
+                Text("Recibí un resumen de las fotos del día para revisar")
+            }
+            
+            // Time picker
+            if isEnabled {
+                Section {
+                    HStack {
+                        Text("Hora del recordatorio")
+                        Spacer()
+                        Picker("Hora", selection: $selectedHour) {
+                            ForEach(0..<24, id: \.self) { hour in
+                                Text(String(format: "%02d", hour)).tag(hour)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        
+                        Text(":")
+                        
+                        Picker("Minuto", selection: $selectedMinute) {
+                            ForEach([0, 15, 30, 45], id: \.self) { minute in
+                                Text(String(format: "%02d", minute)).tag(minute)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    .onChange(of: selectedHour) { _, newHour in
+                        Task {
+                            await reviewService.updateSettings(hour: newHour)
+                        }
+                    }
+                    .onChange(of: selectedMinute) { _, newMinute in
+                        Task {
+                            await reviewService.updateSettings(minute: newMinute)
+                        }
+                    }
+                }
+                
+                // Today's preview
+                Section {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Fotos de hoy para revisar")
+                                .font(.subheadline)
+                            
+                            if reviewService.todayCandidateCount > 0 {
+                                Text("\(reviewService.todayCandidateCount) fotos (\(ByteCountFormatter.string(fromByteCount: reviewService.todayCandidateSize, countStyle: .file)))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("No hay fotos para revisar")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        if reviewService.todayCandidateCount > 0 {
+                            NavigationLink {
+                                TodayReviewView()
+                            } label: {
+                                Text("Revisar")
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Notification preview
+            if isEnabled && reviewService.todayCandidateCount > 0 {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Vista previa de la notificación:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        HStack {
+                            Image(systemName: "app.fill")
+                                .font(.title2)
+                                .foregroundStyle(.blue)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Repaso del día")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                
+                                Text("Hoy sacaste \(reviewService.todayCandidateCount) fotos, te recomiendo revisar \(Int(Double(reviewService.todayCandidateCount) * 0.3)) (\(ByteCountFormatter.string(fromByteCount: Int64(Double(reviewService.todayCandidateSize) * 0.3), countStyle: .file)))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Repaso del día")
+        .onAppear {
+            reviewService.initialize(modelContext: modelContext)
+            Task {
+                let settings = await reviewService.getSettings()
+                isEnabled = settings.isEnabled
+                selectedHour = settings.reviewHour
+                selectedMinute = settings.reviewMinute
+                await reviewService.updateTodayCandidates()
+            }
+        }
+        .alert("Permisos de notificación", isPresented: $showPermissionAlert) {
+            Button("Abrir Ajustes") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Para recibir el repaso diario, necesitás activar las notificaciones en Ajustes")
+        }
+    }
+}
+
+// MARK: - Today Review View
+
+struct TodayReviewView: View {
+    @StateObject private var reviewService = DailyReviewService.shared
+    @State private var candidates: [PersistedPhoto] = []
+    @State private var currentIndex = 0
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        VStack {
+            if candidates.isEmpty {
+                ContentUnavailableView {
+                    Label("No hay fotos para revisar", systemImage: "checkmark.circle")
+                } description: {
+                    Text("No hay fotos de hoy que necesiten revisión")
+                }
+            } else if currentIndex < candidates.count {
+                // Progress
+                ProgressView(value: Double(currentIndex), total: Double(candidates.count))
+                    .padding(.horizontal)
+                
+                Text("\(currentIndex + 1) de \(candidates.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Spacer()
+                
+                // Photo card
+                let photo = candidates[currentIndex]
+                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 400, height: 400))
+                    .aspectRatio(contentMode: .fit)
+                    .cornerRadius(16)
+                    .padding()
+                
+                if let category = photo.cleanupCategory, category != .none {
+                    Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                }
+                
+                Spacer()
+                
+                // Action buttons
+                HStack(spacing: 40) {
+                    Button {
+                        // Keep
+                        currentIndex += 1
+                    } label: {
+                        VStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(.green)
+                            Text("Conservar")
+                                .font(.caption)
+                        }
+                    }
+                    
+                    Button {
+                        // Delete
+                        currentIndex += 1
+                    } label: {
+                        VStack {
+                            Image(systemName: "trash.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(.red)
+                            Text("Eliminar")
+                                .font(.caption)
+                        }
+                    }
+                }
+                .padding(.bottom, 40)
+            } else {
+                // Complete
+                VStack(spacing: 24) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.green)
+                    
+                    Text("¡Listo!")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text("Revisaste todas las fotos de hoy")
+                        .foregroundStyle(.secondary)
+                    
+                    Button("Cerrar") {
+                        dismiss()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .navigationTitle("Fotos de hoy")
+        .onAppear {
+            reviewService.initialize(modelContext: modelContext)
+            Task {
+                candidates = await reviewService.getTodayCandidates()
+            }
+        }
+    }
+}
+
+// MARK: - General Notification Settings View
+
+struct GeneralNotificationSettingsView: View {
+    var body: some View {
+        List {
+            Section {
+                Text("Configuración de notificaciones general")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("Notificaciones")
     }
 }
 

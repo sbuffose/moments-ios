@@ -579,3 +579,35 @@
 "bg_task_subtitle_remaining" = "Faltan";
 "bg_task_title_finishing" = "Finalizando";
 "bg_task_subtitle_almost_done" = "Casi listo";
+
+/* Daily Review */
+"daily_review_notification_title" = "Repaso del día";
+"daily_review_notification_body" = "Hoy sacaste %lld fotos, te recomiendo revisar %@";
+"daily_review_action_review" = "Revisar fotos";
+"daily_review_settings_title" = "Repaso del día";
+"daily_review_settings_enable" = "Activar repaso diario";
+"daily_review_settings_time" = "Hora del recordatorio";
+"daily_review_settings_footer" = "Recibí un resumen de las fotos del día para revisar";
+"daily_review_today_count %lld" = "Fotos de hoy: %lld";
+"daily_review_empty" = "No hay fotos para revisar hoy";
+
+/* Preference Learning */
+"learning_settings_title" = "Aprendizaje";
+"learning_summary_header" = "Lo que aprendí";
+"learning_empty" = "Moments todavía está aprendiendo tus preferencias. Seguí revisando fotos para que aprenda qué te gusta conservar.";
+"learning_confidence" = "Confianza del modelo";
+"learning_confidence_footer" = "Las predicciones son más precisas después de ~50 decisiones";
+"learning_decisions_count %lld" = "Basado en %lld decisiones";
+"learning_category_rates" = "Tasas de conservación por categoría";
+"learning_suppressed_header" = "Categorías desactivadas";
+"learning_suppressed_footer" = "Estas categorías no se te sugerirán para eliminar";
+"learning_activate" = "Activar";
+"learning_reset" = "Resetear aprendizaje";
+"learning_reset_confirm_title" = "¿Resetear aprendizaje?";
+"learning_reset_confirm_message" = "Se borrarán todas las preferencias aprendidas";
+"learning_reset_footer" = "Esto borrará todas las preferencias aprendidas y empezará de nuevo";
+"learning_faces_positive" = "Solés conservar fotos con personas";
+"learning_aesthetics_positive" = "Preferís fotos de alta calidad";
+"learning_screenshot_delete" = "Solés borrar capturas de pantalla";
+"learning_blurry_keep" = "Conservás muchas fotos que parecen borrosas";
+"learning_duplicate_delete" = "Solés eliminar duplicados";

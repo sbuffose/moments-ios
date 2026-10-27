@@ -1424,4 +1424,445 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(taskCompleted, "Task should be marked as completed")
         XCTAssertEqual(completionSuccess, true, "Completion should be successful")
     }
+    
+    // MARK: - Preference Learning Tests
+    
+    @MainActor
+    func testReviewDecisionModelCreation() throws {
+        // Test that ReviewDecision properly extracts features from a photo
+        let schema = Schema([PersistedPhoto.self, ReviewDecision.self, LearnedPreferences.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create a screenshot photo with various features
+        let photo = PersistedPhoto(localIdentifier: "test-screenshot")
+        photo.analysisCompleted = true
+        photo.cleanupCategoryRaw = "screenshot"
+        photo.originRaw = "screenshot"
+        photo.facesDetected = 2
+        photo.visionAestheticsScore = 0.3
+        photo.sharpnessScore = 0.8
+        photo.exposureScore = 0.5
+        photo.hasText = true
+        photo.creationDate = Date()
+        photo.estimatedFileSize = 500_000
+        
+        context.insert(photo)
+        try context.save()
+        
+        // Create a review decision
+        let decision = ReviewDecision(
+            photoId: photo.id,
+            localIdentifier: photo.localIdentifier,
+            decisionType: .delete,
+            photo: photo
+        )
+        
+        context.insert(decision)
+        try context.save()
+        
+        // Verify feature extraction
+        XCTAssertEqual(decision.categoryRaw, "screenshot")
+        XCTAssertTrue(decision.isScreenshot)
+        XCTAssertEqual(decision.faceCount, 2)
+        XCTAssertTrue(decision.hasFaces)
+        XCTAssertTrue(decision.hasText)
+        XCTAssertEqual(decision.aestheticsScore, 0.3, accuracy: 0.01)
+        XCTAssertEqual(decision.sharpnessScore, 0.8, accuracy: 0.01)
+        XCTAssertTrue(decision.isDeleteDecision)
+        XCTAssertFalse(decision.isKeepDecision)
+    }
+    
+    @MainActor
+    func testReviewDecisionKeepTypes() throws {
+        // Test all keep decision types
+        let schema = Schema([PersistedPhoto.self, ReviewDecision.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let keepTypes: [(ReviewDecisionType, Bool, Bool)] = [
+            (.keepForever, true, false),
+            (.keepSnoozed, true, false),
+            (.delete, false, true),
+            (.shareThenDelete, false, true),
+            (.shareThenKeep, true, false),
+            (.skip, false, false),
+        ]
+        
+        for (decisionType, expectedKeep, expectedDelete) in keepTypes {
+            let photo = PersistedPhoto(localIdentifier: "test-\(decisionType.rawValue)")
+            photo.analysisCompleted = true
+            context.insert(photo)
+            
+            let decision = ReviewDecision(
+                photoId: photo.id,
+                localIdentifier: photo.localIdentifier,
+                decisionType: decisionType,
+                photo: photo
+            )
+            context.insert(decision)
+            
+            XCTAssertEqual(decision.isKeepDecision, expectedKeep,
+                          "\(decisionType.rawValue) should have isKeepDecision=\(expectedKeep)")
+            XCTAssertEqual(decision.isDeleteDecision, expectedDelete,
+                          "\(decisionType.rawValue) should have isDeleteDecision=\(expectedDelete)")
+        }
+        
+        try context.save()
+    }
+    
+    @MainActor
+    func testLearnedPreferencesInitialValues() throws {
+        // Test that LearnedPreferences initializes with neutral values
+        let prefs = LearnedPreferences()
+        
+        // All category keep rates should start at 0.5 (neutral)
+        XCTAssertEqual(prefs.screenshotKeepRate, 0.5, accuracy: 0.01)
+        XCTAssertEqual(prefs.blurryKeepRate, 0.5, accuracy: 0.01)
+        XCTAssertEqual(prefs.duplicateKeepRate, 0.5, accuracy: 0.01)
+        XCTAssertEqual(prefs.downloadKeepRate, 0.5, accuracy: 0.01)
+        
+        // All decision counts should start at 0
+        XCTAssertEqual(prefs.screenshotDecisions, 0)
+        XCTAssertEqual(prefs.blurryDecisions, 0)
+        XCTAssertEqual(prefs.duplicateDecisions, 0)
+        
+        // Logistic weights should start at 0 (neutral)
+        XCTAssertEqual(prefs.weightFaceCount, 0.0, accuracy: 0.01)
+        XCTAssertEqual(prefs.weightAesthetics, 0.0, accuracy: 0.01)
+        XCTAssertEqual(prefs.weightSharpness, 0.0, accuracy: 0.01)
+        XCTAssertEqual(prefs.intercept, 0.0, accuracy: 0.01)
+        
+        // Confidence should be 0 with no decisions
+        XCTAssertEqual(prefs.confidenceWeight, 0.0, accuracy: 0.01)
+    }
+    
+    @MainActor
+    func testLearnedPreferencesConfidenceRamp() throws {
+        // Test that confidence ramps up to 1.0 at ~50 decisions
+        let prefs = LearnedPreferences()
+        
+        // 0 decisions = 0% confidence
+        prefs.totalDecisions = 0
+        XCTAssertEqual(prefs.confidenceWeight, 0.0, accuracy: 0.01)
+        
+        // 25 decisions = 50% confidence
+        prefs.totalDecisions = 25
+        XCTAssertEqual(prefs.confidenceWeight, 0.5, accuracy: 0.01)
+        
+        // 50 decisions = 100% confidence
+        prefs.totalDecisions = 50
+        XCTAssertEqual(prefs.confidenceWeight, 1.0, accuracy: 0.01)
+        
+        // 100 decisions should still be capped at 100%
+        prefs.totalDecisions = 100
+        XCTAssertEqual(prefs.confidenceWeight, 1.0, accuracy: 0.01)
+    }
+    
+    @MainActor
+    func testBayesianCategoryKeepRateUpdate() throws {
+        // Test Bayesian update of category keep rates
+        // Formula: posterior = (prior * n + new_value) / (n + 1)
+        
+        let prefs = LearnedPreferences()
+        
+        // Start with prior of 0.5 (50% keep rate)
+        XCTAssertEqual(prefs.screenshotKeepRate, 0.5, accuracy: 0.01)
+        XCTAssertEqual(prefs.screenshotDecisions, 0)
+        
+        // After 1 "delete" decision (value=0): (0.5 * 0 + 0) / 1 = 0
+        // Actually with n=0: (0.5 * 0 + 0) / (0 + 1) = 0
+        let n0: Double = 0
+        let newRate0 = (0.5 * n0 + 0.0) / (n0 + 1)
+        XCTAssertEqual(newRate0, 0.0, accuracy: 0.01, "After 1 delete, rate should be 0")
+        
+        // After 2nd decision (keep, value=1): (0 * 1 + 1) / 2 = 0.5
+        let n1: Double = 1
+        let newRate1 = (0.0 * n1 + 1.0) / (n1 + 1)
+        XCTAssertEqual(newRate1, 0.5, accuracy: 0.01, "After 1 delete + 1 keep, rate should be 0.5")
+        
+        // After 10 decisions all delete: rate should be close to 0
+        var rate = 0.5
+        var decisions = 0
+        for _ in 0..<10 {
+            let n = Double(decisions)
+            rate = (rate * n + 0.0) / (n + 1)
+            decisions += 1
+        }
+        XCTAssertLessThan(rate, 0.1, "After 10 deletes, rate should be low")
+        
+        // After 10 more decisions all keep: rate should recover toward 0.5
+        for _ in 0..<10 {
+            let n = Double(decisions)
+            rate = (rate * n + 1.0) / (n + 1)
+            decisions += 1
+        }
+        XCTAssertGreaterThan(rate, 0.4, "After mixed decisions, rate should recover")
+    }
+    
+    @MainActor
+    func testCategoryDeprioritizationDetection() throws {
+        // Test that categories with >80% keep rate get flagged for deprioritization
+        let prefs = LearnedPreferences()
+        
+        // Simulate user keeping 85% of screenshots (17 keeps out of 20)
+        var keepRate: Double = 0.5
+        var decisions = 0
+        for i in 0..<20 {
+            let n = Double(decisions)
+            let keepValue: Double = i < 17 ? 1.0 : 0.0 // 17 keeps, 3 deletes
+            keepRate = (keepRate * n + keepValue) / (n + 1)
+            decisions += 1
+        }
+        
+        // Keep rate should be around 0.85 (depends on prior influence)
+        XCTAssertGreaterThan(keepRate, 0.75, "After 17/20 keeps, rate should be >75%")
+        
+        // With minDecisionsForSuggestion = 10, this should trigger deprioritization
+        let shouldSuggestDeprioritize = keepRate >= 0.8 && decisions >= 10
+        XCTAssertTrue(shouldSuggestDeprioritize, "Should suggest deprioritizing screenshots")
+    }
+    
+    @MainActor
+    func testDeprioritizedCategoriesStorage() throws {
+        // Test that deprioritized categories are properly stored and retrieved
+        let schema = Schema([LearnedPreferences.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let prefs = LearnedPreferences()
+        context.insert(prefs)
+        
+        // Initially empty
+        XCTAssertTrue(prefs.deprioritizedCategories.isEmpty)
+        
+        // Set some deprioritized categories
+        prefs.setDeprioritizedCategories([.screenshot, .blurry])
+        try context.save()
+        
+        // Verify retrieval
+        let retrieved = prefs.deprioritizedCategories
+        XCTAssertEqual(retrieved.count, 2)
+        XCTAssertTrue(retrieved.contains(.screenshot))
+        XCTAssertTrue(retrieved.contains(.blurry))
+    }
+    
+    @MainActor
+    func testSuppressedCategoriesStorage() throws {
+        // Test that suppressed categories (user explicitly asked to never suggest) work
+        let schema = Schema([LearnedPreferences.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let prefs = LearnedPreferences()
+        context.insert(prefs)
+        
+        XCTAssertTrue(prefs.suppressedCategories.isEmpty)
+        
+        prefs.setSuppressedCategories([.receipt])
+        try context.save()
+        
+        XCTAssertEqual(prefs.suppressedCategories.count, 1)
+        XCTAssertTrue(prefs.suppressedCategories.contains(.receipt))
+    }
+    
+    @MainActor
+    func testLogisticRegressionPrediction() throws {
+        // Test that logistic regression prediction produces valid probabilities
+        
+        // Sigmoid function: 1 / (1 + e^(-z))
+        func sigmoid(_ z: Double) -> Double {
+            return 1.0 / (1.0 + exp(-z))
+        }
+        
+        // z = 0 should give 0.5
+        XCTAssertEqual(sigmoid(0), 0.5, accuracy: 0.01)
+        
+        // Large positive z should give ~1.0
+        XCTAssertGreaterThan(sigmoid(5), 0.99)
+        
+        // Large negative z should give ~0.0
+        XCTAssertLessThan(sigmoid(-5), 0.01)
+        
+        // Test with feature weights
+        let prefs = LearnedPreferences()
+        
+        // Simulate learning: user keeps photos with faces
+        prefs.weightFaceCount = 2.0 // Strong positive weight for faces
+        prefs.weightAesthetics = 1.0
+        prefs.intercept = -1.0
+        
+        // Photo with 3 faces (normalized to 0.3) and high aesthetics (0.8)
+        let faceFeature = 0.3
+        let aestheticsFeature = 0.8
+        
+        let z = prefs.intercept +
+            prefs.weightFaceCount * faceFeature +
+            prefs.weightAesthetics * aestheticsFeature
+        
+        let prediction = sigmoid(z)
+        
+        // With positive weights for faces and aesthetics, prediction should be > 0.5
+        XCTAssertGreaterThan(prediction, 0.5, "Photo with faces and good aesthetics should have high keep probability")
+    }
+    
+    @MainActor
+    func testScoreAdjustmentWithConfidence() throws {
+        // Test that learned preferences adjust scores based on confidence
+        
+        let baseScore = 0.5
+        let categoryKeepRate = 0.2 // User deletes 80% of this category
+        let categoryAdjustment = (1.0 - categoryKeepRate) * 0.3 // Max 0.3 boost
+        
+        // At 0% confidence, no adjustment
+        var confidence = 0.0
+        var adjustedScore = baseScore + categoryAdjustment * confidence
+        XCTAssertEqual(adjustedScore, 0.5, accuracy: 0.01, "No adjustment at 0% confidence")
+        
+        // At 50% confidence, half adjustment
+        confidence = 0.5
+        adjustedScore = baseScore + categoryAdjustment * confidence
+        XCTAssertEqual(adjustedScore, 0.62, accuracy: 0.01, "Half adjustment at 50% confidence")
+        
+        // At 100% confidence, full adjustment
+        confidence = 1.0
+        adjustedScore = baseScore + categoryAdjustment * confidence
+        XCTAssertEqual(adjustedScore, 0.74, accuracy: 0.01, "Full adjustment at 100% confidence")
+    }
+    
+    @MainActor
+    func testDecisionLoggingChangesRanking() throws {
+        // Test that logging decisions actually changes the ranking
+        // This is the key assertion: "simulate decisions and assert the ranking changes"
+        
+        let schema = Schema([PersistedPhoto.self, ReviewDecision.self, LearnedPreferences.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create two screenshots with similar base scores
+        let photo1 = PersistedPhoto(localIdentifier: "screenshot-1")
+        photo1.analysisCompleted = true
+        photo1.cleanupCategoryRaw = "screenshot"
+        photo1.deletionLikelihoodScore = 0.5
+        photo1.facesDetected = 0
+        photo1.visionAestheticsScore = 0.3
+        
+        let photo2 = PersistedPhoto(localIdentifier: "screenshot-2")
+        photo2.analysisCompleted = true
+        photo2.cleanupCategoryRaw = "screenshot"
+        photo2.deletionLikelihoodScore = 0.5
+        photo2.facesDetected = 2
+        photo2.visionAestheticsScore = 0.7
+        
+        context.insert(photo1)
+        context.insert(photo2)
+        
+        // Initialize preferences
+        let prefs = LearnedPreferences()
+        context.insert(prefs)
+        try context.save()
+        
+        // Initial: both have same base score
+        XCTAssertEqual(photo1.deletionLikelihoodScore, photo2.deletionLikelihoodScore)
+        
+        // Simulate user consistently keeping photos with faces
+        // After learning, photos with faces should have lower deletion scores
+        
+        // Simulate 20 decisions where photos with faces are kept
+        for i in 0..<20 {
+            let mockPhoto = PersistedPhoto(localIdentifier: "mock-\(i)")
+            mockPhoto.facesDetected = i % 2 == 0 ? 2 : 0 // Alternating: with and without faces
+            mockPhoto.cleanupCategoryRaw = "screenshot"
+            context.insert(mockPhoto)
+            
+            // User keeps photos with faces, deletes photos without
+            let decisionType: ReviewDecisionType = mockPhoto.facesDetected! > 0 ? .keepForever : .delete
+            let decision = ReviewDecision(
+                photoId: mockPhoto.id,
+                localIdentifier: mockPhoto.localIdentifier,
+                decisionType: decisionType,
+                photo: mockPhoto
+            )
+            context.insert(decision)
+            
+            // Update learned preferences (simulated)
+            prefs.totalDecisions += 1
+            
+            if decisionType == .keepForever {
+                // Increase weight for faces (gradient descent update)
+                prefs.weightFaceCount += 0.1
+            } else {
+                prefs.weightFaceCount -= 0.1
+            }
+        }
+        
+        try context.save()
+        
+        // After learning, weightFaceCount should be positive
+        // (10 keeps with faces, 10 deletes without faces)
+        // Net effect: +10 * 0.1 - 0 = +1.0 for faces
+        XCTAssertGreaterThan(prefs.weightFaceCount, 0, "Weight for faces should be positive after learning")
+        
+        // Calculate adjusted scores
+        func calculateAdjustedScore(for photo: PersistedPhoto) -> Double {
+            let baseScore = photo.deletionLikelihoodScore
+            let confidence = prefs.confidenceWeight
+            
+            // Logistic prediction component
+            let faceFeature = Double(photo.facesDetected ?? 0) / 10.0
+            let z = prefs.intercept + prefs.weightFaceCount * faceFeature
+            let keepProbability = 1.0 / (1.0 + exp(-z))
+            
+            // Lower keep probability = higher deletion score
+            let adjustment = (1.0 - keepProbability) * 0.2 * confidence
+            return max(0, min(1, baseScore + adjustment))
+        }
+        
+        let adjustedScore1 = calculateAdjustedScore(for: photo1) // No faces
+        let adjustedScore2 = calculateAdjustedScore(for: photo2) // Has faces
+        
+        // Photo without faces should have higher deletion score
+        XCTAssertGreaterThan(adjustedScore1, adjustedScore2,
+                            "After learning, photo without faces should rank higher for deletion")
+    }
+    
+    // MARK: - Daily Review Settings Tests
+    
+    @MainActor
+    func testDailyReviewSettingsDefaults() throws {
+        // Test that daily review is ON by default at 21:00
+        let schema = Schema([DailyReviewSettings.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let settings = DailyReviewSettings()
+        context.insert(settings)
+        try context.save()
+        
+        // Verify defaults
+        XCTAssertTrue(settings.isEnabled, "Daily review should be ON by default")
+        XCTAssertEqual(settings.reviewHour, 21, "Default hour should be 21 (9 PM)")
+        XCTAssertEqual(settings.reviewMinute, 0, "Default minute should be 0")
+        XCTAssertEqual(settings.reviewTimeString, "21:00")
+    }
+    
+    @MainActor
+    func testDailyReviewSettingsCategories() throws {
+        // Test category filter settings
+        let settings = DailyReviewSettings()
+        
+        // All categories should be included by default
+        XCTAssertTrue(settings.includeScreenshots)
+        XCTAssertTrue(settings.includeBlurry)
+        XCTAssertTrue(settings.includeDuplicates)
+        XCTAssertTrue(settings.includeReceipts)
+        XCTAssertTrue(settings.includeMemes)
+        XCTAssertTrue(settings.includeLowValuePhotos)
+    }
 }

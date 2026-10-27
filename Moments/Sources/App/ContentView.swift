@@ -627,6 +627,10 @@ struct OnboardingView: View {
         Task {
             let granted = await appState.requestAuthorization()
             if granted {
+                // Request notification permission for daily review
+                // This is non-blocking - user can skip and we continue
+                _ = await DailyReviewService.shared.requestNotificationPermission()
+                
                 // Complete onboarding and go directly to home
                 // Background processing starts automatically in completeOnboarding()
                 appState.completeOnboarding()

@@ -579,3 +579,35 @@
 "bg_task_subtitle_remaining" = "Remaining";
 "bg_task_title_finishing" = "Finishing";
 "bg_task_subtitle_almost_done" = "Almost done";
+
+/* Daily Review */
+"daily_review_notification_title" = "Daily review";
+"daily_review_notification_body" = "You took %lld photos today, I recommend reviewing %@";
+"daily_review_action_review" = "Review photos";
+"daily_review_settings_title" = "Daily review";
+"daily_review_settings_enable" = "Enable daily review";
+"daily_review_settings_time" = "Reminder time";
+"daily_review_settings_footer" = "Get a summary of today's photos to review";
+"daily_review_today_count %lld" = "Today's photos: %lld";
+"daily_review_empty" = "No photos to review today";
+
+/* Preference Learning */
+"learning_settings_title" = "Learning";
+"learning_summary_header" = "What I've learned";
+"learning_empty" = "Moments is still learning your preferences. Keep reviewing photos so it learns what you like to keep.";
+"learning_confidence" = "Model confidence";
+"learning_confidence_footer" = "Predictions are more accurate after ~50 decisions";
+"learning_decisions_count %lld" = "Based on %lld decisions";
+"learning_category_rates" = "Keep rates by category";
+"learning_suppressed_header" = "Disabled categories";
+"learning_suppressed_footer" = "These categories won't be suggested for deletion";
+"learning_activate" = "Activate";
+"learning_reset" = "Reset learning";
+"learning_reset_confirm_title" = "Reset learning?";
+"learning_reset_confirm_message" = "All learned preferences will be deleted";
+"learning_reset_footer" = "This will delete all learned preferences and start over";
+"learning_faces_positive" = "You tend to keep photos with people";
+"learning_aesthetics_positive" = "You prefer high quality photos";
+"learning_screenshot_delete" = "You tend to delete screenshots";
+"learning_blurry_keep" = "You keep many photos that appear blurry";
+"learning_duplicate_delete" = "You tend to delete duplicates";
