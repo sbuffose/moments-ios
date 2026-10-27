@@ -71,6 +71,22 @@ enum ReviewItem: Identifiable {
     }
 }
 
+enum DailyReviewBatch {
+    static let size = 20
+    
+    /// A group counts as 1 item. Returns the top `size` items by deletion likelihood.
+    static func cap(_ items: [ReviewItem]) -> (batch: [ReviewItem], remaining: Int) {
+        let sorted = items.sorted { $0.maxDeletionScore > $1.maxDeletionScore }
+        return (Array(sorted.prefix(size)), max(0, sorted.count - size))
+    }
+    
+    static func progressLabel(reviewed: Int, batchCount: Int) -> String {
+        let total = min(size, max(batchCount, 0))
+        let position = min(max(reviewed, 0) + (total == 0 ? 0 : 1), max(total, 1))
+        return "\(position) de \(total)"
+    }
+}
+
 @MainActor
 class CleanupViewModel: ObservableObject {
     // MARK: - Published Properties
@@ -93,6 +109,7 @@ class CleanupViewModel: ObservableObject {
     // Grouped review queue
     @Published var reviewQueue: [ReviewItem] = []
     @Published var similarGroups: [SimilarGroup] = []
+    @Published var remainingAfterBatch: Int = 0
     
     // MARK: - Private Properties
     
@@ -354,10 +371,15 @@ class CleanupViewModel: ObservableObject {
             }
         }
         
-        // Sort by max deletion score (highest first)
-        queue.sort { $0.maxDeletionScore > $1.maxDeletionScore }
-        
-        reviewQueue = queue
+        let capped = DailyReviewBatch.cap(queue)
+        remainingAfterBatch = capped.remaining
+        reviewQueue = capped.batch
+    }
+    
+    func startNextDailyBatch() {
+        Task {
+            await loadCleanupSuggestions()
+        }
     }
     
     // MARK: - Group Review Actions
@@ -826,9 +848,6 @@ class CleanupViewModel: ObservableObject {
 
 extension CleanupViewModel {
     func formattedSize(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        SpaceFormatting.string(from: bytes)
     }
 }

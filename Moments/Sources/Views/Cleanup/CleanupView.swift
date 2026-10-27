@@ -568,7 +568,6 @@ struct OnThisDayView: View {
 struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
     @StateObject private var shareService = ShareLoadingService()
-    @State private var currentIndex = 0
     @State private var showFinishSheet = false
     @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
@@ -595,22 +594,24 @@ struct CleanupReviewView: View {
     }
     
     private var totalItems: Int {
-        viewModel.reviewQueue.count
+        min(DailyReviewBatch.size, viewModel.reviewQueue.count)
     }
     
     private var currentProgress: Double {
         guard totalItems > 0 else { return 0 }
-        let totalReviewed = viewModel.reviewedItemCount()
-        return Double(totalReviewed + currentIndex) / Double(totalItems)
+        return Double(viewModel.reviewedItemCount()) / Double(totalItems)
     }
     
     private var currentPosition: Int {
-        viewModel.reviewedItemCount() + currentIndex + 1
+        min(viewModel.reviewedItemCount() + 1, max(totalItems, 1))
+    }
+    
+    private var currentItem: ReviewItem? {
+        unreviewedItems.first
     }
     
     private var currentCategory: CleanupCategoryType? {
-        guard currentIndex < unreviewedItems.count else { return nil }
-        let item = unreviewedItems[currentIndex]
+        guard let item = currentItem else { return nil }
         switch item {
         case .single(let photo):
             return photo.cleanupCategory != .none ? photo.cleanupCategory : nil
@@ -623,22 +624,19 @@ struct CleanupReviewView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            if currentIndex < unreviewedItems.count {
-                let currentItem = unreviewedItems[currentIndex]
-                
-                // Progress indicator - synced with counter
+            if let currentItem {
                 ProgressView(value: currentProgress)
                     .padding(.horizontal)
                     .padding(.top)
                     .animation(.easeInOut(duration: 0.3), value: currentProgress)
                 
-                // Counter - shows position synced with progress
-                Text("\(currentPosition) de \(totalItems)")
+                Text(DailyReviewBatch.progressLabel(reviewed: viewModel.reviewedItemCount(), batchCount: totalItems))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
                     .contentTransition(.numericText())
                     .animation(.easeInOut(duration: 0.3), value: currentPosition)
+                    .accessibilityIdentifier("review.progress")
                 
                 // Category label for current photo
                 if let category = currentCategory {
@@ -942,49 +940,47 @@ struct CleanupReviewView: View {
             }
             
             VStack(spacing: 8) {
-                Text("¡Revisión completada!")
+                Text("Liberaste \(viewModel.formattedSize(deletionSize))")
                     .font(.title2)
                     .fontWeight(.bold)
+                    .accessibilityIdentifier("review.sessionSummary")
                 
-                if photosToDelete.count > 0 {
-                    Text("Seleccionaste \(MomentsPluralization.photos(photosToDelete.count)) para eliminar")
+                if photosToDelete.isEmpty {
+                    Text("No marcaste nada para borrar en este lote")
                         .foregroundStyle(.secondary)
-                    
-                    Text(viewModel.formattedSize(deletionSize))
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.tint)
                 } else {
-                    Text("No seleccionaste fotos para eliminar")
+                    Text("En este lote de \(totalItems)")
                         .foregroundStyle(.secondary)
                 }
             }
             
             Spacer()
             
-            if photosToDelete.count > 0 {
-                Button(role: .destructive) {
-                    showFinishSheet = true
+            if viewModel.remainingAfterBatch > 0 {
+                Button {
+                    viewModel.startNextDailyBatch()
                 } label: {
-                    HStack {
-                        Image(systemName: "trash")
-                        Text(MomentsPluralization.deletePhotos(photosToDelete.count))
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.red)
-                    .cornerRadius(14)
+                    Text("Otras 20")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(MomentsColors.accent)
+                        .cornerRadius(14)
                 }
                 .padding(.horizontal)
+                .accessibilityIdentifier("review.moreBatch")
             }
             
             Button {
-                viewModel.clearPersistedProgress()
-                dismiss()
+                if photosToDelete.isEmpty {
+                    viewModel.clearPersistedProgress()
+                    dismiss()
+                } else {
+                    showFinishSheet = true
+                }
             } label: {
-                Text("Listo")
+                Text("Listo por hoy")
                     .font(.headline)
                     .foregroundStyle(.tint)
                     .frame(maxWidth: .infinity)
@@ -994,6 +990,7 @@ struct CleanupReviewView: View {
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
+            .accessibilityIdentifier("review.doneForToday")
         }
     }
 }
