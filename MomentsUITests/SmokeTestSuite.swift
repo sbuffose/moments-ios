@@ -687,6 +687,20 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testDailyReviewSheetOpensFromDeepLinkIdentifier() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 3).tap()
+        let daily = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Repaso' OR label CONTAINS[c] 'diario'")).firstMatch
+        if daily.waitForExistence(timeout: 6) {
+            daily.tap()
+            let keep = app.buttons["dailyReview.keep"]
+            let empty = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'No hay fotos'")).firstMatch
+            XCTAssertTrue(keep.waitForExistence(timeout: 6) || empty.waitForExistence(timeout: 6))
+        }
+    }
+    
     func testBackgroundForegroundAfterHomeUsesThumbnails() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
