@@ -10,7 +10,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # One full pipeline for all PRs plus one for main. Stacked PR branches share
+  # this group so a new bottom-of-stack run cancels leftover stacked runs.
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || 'pull-requests' }}
   cancel-in-progress: true
 
 env:

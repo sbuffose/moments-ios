@@ -48,7 +48,7 @@ final class ScreenshotTests: XCTestCase {
                 input.typeText("mostrame fotos de viajes")
                 captureScreenshot(name: "04_assistant_typing")
                 
-                app.keyboards.buttons["Return"].tap()
+                app.submitKeyboard()
                 sleep(2)
                 captureScreenshot(name: "05_assistant_response")
             }
@@ -138,7 +138,7 @@ final class ScreenshotTests: XCTestCase {
             if input.exists {
                 input.tap()
                 input.clearAndTypeText("Buenos Aires")
-                app.keyboards.buttons["Return"].tap()
+                app.submitKeyboard()
                 sleep(2)
                 captureScreenshot(name: "16_search_results")
             }
@@ -222,35 +222,28 @@ final class ScreenshotTests: XCTestCase {
     }
     
     func testCaptureEmptyStates() throws {
-        // Would need a truly empty library to test this properly
-        // For now, capture what we can
+        // Seeded fixtures mean empty-state copy is not guaranteed. Capture the
+        // screens without CONTAINS queries — 'sin' matches most Spanish labels
+        // and times out evaluating the accessibility tree (~160s on CI).
         skipOnboardingIfNeeded()
         
-        // Navigate to places with no places
         let momentsTab = app.tabBars.buttons["Momentos"]
-        if momentsTab.exists {
-            momentsTab.tap()
-            
-            let placesChip = app.buttons["Lugares"]
-            if placesChip.exists {
-                placesChip.tap()
-                sleep(1)
-                
-                // Check for empty state
-                if app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'no hay' OR label CONTAINS[c] 'sin' OR label CONTAINS[c] 'vacío'")).count > 0 {
-                    captureScreenshot(name: "empty_state_places")
-                }
-            }
-            
-            let datesChip = app.buttons["Fechas"]
-            if datesChip.exists {
-                datesChip.tap()
-                sleep(1)
-                
-                if app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'no hay' OR label CONTAINS[c] 'sin' OR label CONTAINS[c] 'vacío'")).count > 0 {
-                    captureScreenshot(name: "empty_state_dates")
-                }
-            }
+        guard momentsTab.waitForExistence(timeout: 10) else { return }
+        momentsTab.tap()
+        captureScreenshot(name: "empty_or_content_moments")
+        
+        let placesChip = app.identified("chip.places")
+        if placesChip.waitForExistence(timeout: 3) || app.buttons["Lugares"].waitForExistence(timeout: 2) {
+            (placesChip.exists ? placesChip : app.buttons["Lugares"]).tap()
+            sleep(1)
+            captureScreenshot(name: "empty_or_content_places")
+        }
+        
+        let datesChip = app.identified("chip.dates")
+        if datesChip.waitForExistence(timeout: 3) || app.buttons["Fechas"].waitForExistence(timeout: 2) {
+            (datesChip.exists ? datesChip : app.buttons["Fechas"]).tap()
+            sleep(1)
+            captureScreenshot(name: "empty_or_content_dates")
         }
     }
     

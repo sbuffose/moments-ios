@@ -120,9 +120,9 @@ final class CleanupAnalyzerTests: XCTestCase {
     
     func testBurstBestSelectionPrefersRepresentative() {
         let photos = [
-            createPhoto(id: "1", burstIdentifier: "burst1", representsBurst: true, sharpnessScore: 0.5),
-            createPhoto(id: "2", burstIdentifier: "burst1", sharpnessScore: 0.6),
-            createPhoto(id: "3", burstIdentifier: "burst1", sharpnessScore: 0.7),
+            createPhoto(id: "1", sharpnessScore: 0.5, burstIdentifier: "burst1", representsBurst: true),
+            createPhoto(id: "2", sharpnessScore: 0.6, burstIdentifier: "burst1"),
+            createPhoto(id: "3", sharpnessScore: 0.7, burstIdentifier: "burst1"),
         ]
         
         let bursts = analyzer.detectBursts(in: photos)

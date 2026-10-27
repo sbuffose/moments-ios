@@ -168,8 +168,8 @@ final class TimelineAnalyzerTests: XCTestCase {
         let center = analyzer.calculateCentralLocation(from: photos)
         
         XCTAssertNotNil(center)
-        XCTAssertEqual(center?.latitude, 1.0, accuracy: 0.01)
-        XCTAssertEqual(center?.longitude, 1.0, accuracy: 0.01)
+        XCTAssertEqual(center?.latitude ?? -1, 1.0, accuracy: 0.01)
+        XCTAssertEqual(center?.longitude ?? -1, 1.0, accuracy: 0.01)
     }
     
     func testCalculateCentralLocationWithNoLocations() {

@@ -17,10 +17,6 @@ struct AssistantView: View {
             // Background
             MomentsColors.bgPrimary.ignoresSafeArea()
             
-            Color.clear
-                .frame(width: 1, height: 1)
-                .accessibilityIdentifier("assistant.root")
-            
             VStack(spacing: 0) {
                 // Messages/Cards feed
                 ScrollViewReader { proxy in
@@ -59,6 +55,9 @@ struct AssistantView: View {
                 inputBar
             }
         }
+        // Full-size identifier — a 1×1 Color.clear is invisible to XCUITest.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant.root")
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }

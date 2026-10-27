@@ -438,10 +438,6 @@ struct MomentsListView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .accessibilityIdentifier("moments.root")
-                
                 VStack(spacing: 0) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: MomentsSpacing.xs) {
@@ -480,6 +476,9 @@ struct MomentsListView: View {
                 }
                 }
             }
+            // Full-size identifier — a 1×1 Color.clear is invisible to XCUITest.
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("moments.root")
             .navigationTitle(selectedSection.navigationTitle)
             .background(MomentsColors.bgPrimary)
         }

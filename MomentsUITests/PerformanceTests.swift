@@ -160,7 +160,7 @@ final class PerformanceTests: XCTestCase {
             searchField.typeText(query)
             
             let searchStart = CFAbsoluteTimeGetCurrent()
-            app.keyboards.buttons["Return"].tap()
+            app.submitKeyboard()
             
             // Wait for results
             _ = app.cells.firstMatch.waitForExistence(timeout: 10) ||
