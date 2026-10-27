@@ -48,13 +48,8 @@ actor MetadataExtractionService {
                 return .camera
             }
             
-            if let filename = originalFilename?.lowercased() {
-                if filename.contains("-wa") || filename.contains("whatsapp") {
-                    return .whatsapp
-                }
-                if filename.contains("screenshot") || filename.hasPrefix("captura") {
-                    return .screenshot
-                }
+            if let fromName = PhotoOrigin.fromFilename(originalFilename) {
+                return fromName
             }
             
             // Check software for editing apps
@@ -305,13 +300,8 @@ actor MetadataExtractionService {
             break
         }
         
-        if let filename = metadata?.originalFilename?.lowercased() ?? Self.originalFilename(for: asset)?.lowercased() {
-            if filename.contains("-wa") || filename.contains("whatsapp") {
-                return OriginDetectionResult(origin: .whatsapp, confidence: 0.92, metadata: metadata)
-            }
-            if filename.contains("screenshot") || filename.hasPrefix("captura") {
-                return OriginDetectionResult(origin: .screenshot, confidence: 0.9, metadata: metadata)
-            }
+        if let fromName = PhotoOrigin.fromFilename(metadata?.originalFilename ?? Self.originalFilename(for: asset)) {
+            return OriginDetectionResult(origin: fromName, confidence: 0.92, metadata: metadata)
         }
         
         // Check metadata for origin clues

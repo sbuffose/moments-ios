@@ -51,6 +51,16 @@ enum PhotoOrigin: String, Codable, CaseIterable, Sendable {
         }
     }
     
+    static func fromFilename(_ filename: String?) -> PhotoOrigin? {
+        guard let raw = filename?.lowercased(), !raw.isEmpty else { return nil }
+        if raw.contains("-wa") || raw.contains("whatsapp") { return .whatsapp }
+        if raw.contains("screenshot") || raw.hasPrefix("captura") { return .screenshot }
+        if raw.contains("telegram") { return .telegram }
+        if raw.contains("instagram") { return .instagram }
+        if raw.hasPrefix("download") || raw.contains("file_from") { return .download }
+        return nil
+    }
+    
     var isMessagingApp: Bool {
         switch self {
         case .whatsapp, .telegram, .instagram, .messenger, .snapchat, .twitter, .tiktok:
@@ -112,6 +122,7 @@ enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
     case largeVideo = "largeVideo"
     case downloadedMeme = "downloadedMeme"
     case forwardedImage = "forwardedImage"
+    case livePhoto = "livePhoto"
     
     var localizedKey: String {
         "cleanup_category_\(rawValue)"
@@ -135,6 +146,7 @@ enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
         case .largeVideo: return "film"
         case .downloadedMeme: return "arrow.down.circle"
         case .forwardedImage: return "arrowshape.turn.up.right"
+        case .livePhoto: return "livephoto"
         }
     }
 }
