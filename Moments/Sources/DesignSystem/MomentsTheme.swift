@@ -2,6 +2,7 @@
 // Design system: Colors, Typography, Spacing - Dark-first premium design
 
 import SwiftUI
+import UIKit
 
 // MARK: - Theme Colors
 
@@ -15,33 +16,33 @@ struct MomentsColors {
     // Adaptive colors with fallbacks
     static var bgPrimary: Color {
         Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0) // Pure black
-                : UIColor.systemBackground
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0) // dark grey, not black
+                : UIColor(red: 0.98, green: 0.96, blue: 0.93, alpha: 1.0) // warm off-white
         })
     }
     
     static var bgSecondary: Color {
         Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1.0) // Graphite
-                : UIColor.secondarySystemBackground
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1.0)
+                : UIColor(red: 0.96, green: 0.94, blue: 0.90, alpha: 1.0)
         })
     }
     
     static var bgTertiary: Color {
         Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0) // Lighter graphite
-                : UIColor.tertiarySystemBackground
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0.20, green: 0.20, blue: 0.22, alpha: 1.0)
+                : UIColor(red: 0.94, green: 0.92, blue: 0.88, alpha: 1.0)
         })
     }
     
     static var bgCard: Color {
         Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.1, green: 0.1, blue: 0.11, alpha: 1.0)
-                : UIColor.systemBackground
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0.18, green: 0.18, blue: 0.20, alpha: 1.0)
+                : UIColor.white
         })
     }
     
@@ -68,9 +69,39 @@ struct MomentsColors {
         })
     }
     
-    // Accent - Vivid blue with gradient capability
-    static let accent = Color(red: 0.2, green: 0.5, blue: 1.0) // Vivid blue
-    static let accentSecondary = Color(red: 0.4, green: 0.3, blue: 0.95) // Purple tint
+    // Accent - brighter blue-to-violet
+    static let accent = Color(red: 0.29, green: 0.42, blue: 0.96)
+    static let accentSecondary = Color(red: 0.62, green: 0.36, blue: 0.98)
+    
+    static func pastelChip(for category: CleanupCategoryType) -> Color {
+        switch category {
+        case .screenshot, .screenRecording: return Color(red: 0.85, green: 0.93, blue: 1.0)
+        case .blurry, .underexposed: return Color(red: 0.90, green: 0.88, blue: 1.0)
+        case .overexposed: return Color(red: 1.0, green: 0.93, blue: 0.80)
+        case .duplicate, .nearDuplicate, .burst: return Color(red: 0.86, green: 0.95, blue: 0.90)
+        case .document, .receipt, .qrCode: return Color(red: 1.0, green: 0.90, blue: 0.86)
+        case .livePhoto: return Color(red: 0.93, green: 0.88, blue: 1.0)
+        default: return Color(red: 0.92, green: 0.92, blue: 0.96)
+        }
+    }
+    
+    /// Relative luminance (sRGB) for AA contrast checks.
+    static func relativeLuminance(_ color: UIColor) -> CGFloat {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        func channel(_ c: CGFloat) -> CGFloat {
+            c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
+    
+    static func contrastRatio(foreground: UIColor, background: UIColor) -> CGFloat {
+        let l1 = relativeLuminance(foreground)
+        let l2 = relativeLuminance(background)
+        let lighter = max(l1, l2)
+        let darker = min(l1, l2)
+        return (lighter + 0.05) / (darker + 0.05)
+    }
     
     static var accentGradient: LinearGradient {
         LinearGradient(
@@ -264,10 +295,10 @@ struct MomentsCardStyle: ViewModifier {
             .shadow(
                 color: colorScheme == .dark 
                     ? Color.black.opacity(0.4) 
-                    : Color.black.opacity(0.06),
-                radius: colorScheme == .dark ? 16 : 12,
+                    : Color.black.opacity(0.08),
+                radius: colorScheme == .dark ? 16 : 16,
                 x: 0,
-                y: colorScheme == .dark ? 6 : 4
+                y: colorScheme == .dark ? 6 : 6
             )
     }
 }

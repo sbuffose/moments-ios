@@ -645,7 +645,9 @@ struct CleanupReviewView: View {
                 if let category = currentCategory {
                     Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
                         .font(.caption)
-                        .foregroundStyle(.tint)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(MomentsColors.pastelChip(for: category), in: Capsule())
                         .padding(.top, 2)
                         .id(category)
                         .transition(.opacity)
