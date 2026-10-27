@@ -10,10 +10,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # One full pipeline for all PRs plus one for main. Stacked PR branches share
-  # this group so a new bottom-of-stack run cancels leftover stacked runs.
+  # PRs share one group and cancel leftovers to save macOS minutes.
+  # Main pushes keep cancel-in-progress false so a later merge cannot
+  # kill a TestFlight upload that already passed unit + UI.
   group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || 'pull-requests' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
   SCHEME: Moments
@@ -415,6 +416,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-15
     timeout-minutes: 25
+    concurrency:
+      group: testflight-main
+      cancel-in-progress: false
     
     steps:
       - name: Checkout repository
