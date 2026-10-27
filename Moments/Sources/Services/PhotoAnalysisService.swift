@@ -520,6 +520,13 @@ class PhotoAnalysisService: ObservableObject {
                         continue
                     }
                     
+                    guard DuplicateGrouping.shouldCompare(
+                        hashA: photo.imageDHash,
+                        hashB: otherPhoto.imageDHash,
+                        dateA: photo.creationDate,
+                        dateB: otherPhoto.creationDate
+                    ) else { continue }
+                    
                     let distance = await imageAnalyzer.compareFeaturePrints(featurePrint1, featurePrint2)
                     
                     if let dist = distance, dist < 0.15 {
@@ -532,6 +539,17 @@ class PhotoAnalysisService: ObservableObject {
                     groupId += 1
                     
                     let (bestPhoto, reasons) = selectBestPhotoWithReasons(from: duplicateGroup)
+                    
+                    let incomingIds = Set(duplicateGroup.map(\.id))
+                    let stale = DuplicateGrouping.groupsToDelete(
+                        existing: (try? modelContext.fetch(FetchDescriptor<SimilarGroup>())) ?? [],
+                        incomingPhotoIds: incomingIds,
+                        photoIds: { $0.photoIds },
+                        isNotSimilar: { $0.feedbackRaw == "notSimilar" }
+                    )
+                    for group in stale {
+                        modelContext.delete(group)
+                    }
                     
                     let similarGroup = SimilarGroup(
                         photoIds: duplicateGroup.map { $0.id },
@@ -602,6 +620,13 @@ class PhotoAnalysisService: ObservableObject {
                         continue
                     }
                     
+                    guard DuplicateGrouping.shouldCompare(
+                        hashA: photo.imageDHash,
+                        hashB: otherPhoto.imageDHash,
+                        dateA: photo.creationDate,
+                        dateB: otherPhoto.creationDate
+                    ) else { continue }
+                    
                     // dHash comparison - threshold of 5 bits difference for exact copies
                     let uint64Hash1 = UInt64(bitPattern: hash1)
                     let uint64Hash2 = UInt64(bitPattern: hash2)
@@ -616,6 +641,17 @@ class PhotoAnalysisService: ObservableObject {
                     exactDuplicateGroupId += 1
                     
                     let (bestPhoto, reasons) = selectBestPhotoWithReasons(from: exactGroup)
+                    
+                    let incomingIds = Set(exactGroup.map(\.id))
+                    let stale = DuplicateGrouping.groupsToDelete(
+                        existing: (try? modelContext.fetch(FetchDescriptor<SimilarGroup>())) ?? [],
+                        incomingPhotoIds: incomingIds,
+                        photoIds: { $0.photoIds },
+                        isNotSimilar: { $0.feedbackRaw == "notSimilar" }
+                    )
+                    for group in stale {
+                        modelContext.delete(group)
+                    }
                     
                     let similarGroup = SimilarGroup(
                         photoIds: exactGroup.map { $0.id },
