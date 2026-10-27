@@ -467,11 +467,11 @@ class HomeViewModel: ObservableObject {
     private let importantDatesService = ImportantDatesService.shared
     
     var formattedCanFree: String {
-        ByteCountFormatter.string(fromByteCount: canFreeSpace, countStyle: .file)
+        SpaceFormatting.string(from: canFreeSpace)
     }
     
     var formattedSpaceSaved: String {
-        ByteCountFormatter.string(fromByteCount: totalSpaceSaved, countStyle: .file)
+        SpaceFormatting.string(from: totalSpaceSaved)
     }
     
     var formattedMetadataSize: String {

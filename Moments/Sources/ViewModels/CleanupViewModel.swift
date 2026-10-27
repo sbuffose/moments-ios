@@ -845,6 +845,8 @@ class CleanupViewModel: ObservableObject {
             selectedPhotos.removeAll()
             spaceFreed = sizeFreed
             lastDeletedSize = sizeFreed
+            let previous = Int64(UserDefaults.standard.integer(forKey: "totalSpaceSaved"))
+            UserDefaults.standard.set(Int(previous + sizeFreed), forKey: "totalSpaceSaved")
             await loadCleanupSuggestions()
             
         } catch {

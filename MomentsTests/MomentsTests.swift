@@ -2556,6 +2556,12 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(text.contains("500+"))
     }
     
+    func testPendingLiberationLabelUsesFormatter() {
+        let label = SpaceFormatting.pendingLiberationLabel(bytes: 12_000_000)
+        XCTAssertTrue(label.hasPrefix("Vas a liberar"), label)
+        XCTAssertTrue(label.contains("MB") || label.contains("KB"), label)
+    }
+    
     func testBackgroundTaskCompletesExactlyOnce() {
         XCTAssertTrue(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: false))
         XCTAssertFalse(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: true))
