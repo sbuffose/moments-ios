@@ -365,10 +365,8 @@ extension BackgroundTaskManager {
     }
     
     /// Submit a continued processing task. Only call while a user-initiated scan is actively running.
-    /// - Parameters:
-    ///   - remainingPhotos: Number of photos remaining to process (must be > 0)
-    ///   - strategy: The submission strategy (.queue waits for slot, .fail returns immediately if no slot)
-    func submitContinuedProcessingTask(remainingPhotos: Int, strategy: BGContinuedProcessingTaskRequest.Strategy = .queue) {
+    /// - Parameter remainingPhotos: Number of photos remaining to process (must be > 0)
+    func submitContinuedProcessingTask(remainingPhotos: Int) {
         // Don't submit if no work remains
         guard remainingPhotos > 0 else {
             print("[BackgroundTaskManager] Skipping continued task - no photos remaining")
@@ -389,7 +387,6 @@ extension BackgroundTaskManager {
             title: NSLocalizedString("bg_task_title", comment: "Analizando fotos"),
             subtitle: NSLocalizedString("bg_task_subtitle_remaining", comment: "") + " \(remainingPhotos)"
         )
-        request.strategy = strategy
         
         do {
             try BGTaskScheduler.shared.submit(request)
