@@ -16,6 +16,7 @@ enum MomentsIntent: Sendable {
     case createMemory(query: String)
     case showPhotos(location: String?, date: DateInterval?, people: [String]?)
     case showPerson(name: String)
+    case monthlyRecap(month: Int?, year: Int?)
     case unknown(text: String)
     
     struct SearchFilters: Sendable {
@@ -57,10 +58,7 @@ class IntentParserService: ObservableObject {
     }
     
     private func checkAppleIntelligenceAvailable() -> Bool {
-        // Runtime check for Apple Intelligence availability
-        // This would be: SystemLanguageModel.default.availability != .unavailable
-        // For iOS 17-25 compatibility, return false
-        return false
+        FoundationModelsClient.isDefaultModelAvailable
     }
     
     // MARK: - Parse Intent
@@ -87,11 +85,12 @@ class IntentParserService: ObservableObject {
     
     @available(iOS 26, *)
     private func parseWithFoundationModels(_ text: String) async -> MomentsIntent? {
-        // This would use @Generable and tool calling:
-        // let session = SystemLanguageModel.default.session
-        // let result = try await session.generate(prompt, tools: [searchTool, cleanupTool, ...])
-        
-        // For now, return nil to fall back to rule-based
+        if let _ = await FoundationModelsClient.parseQuery(text) {
+            return parseWithRules(
+                text.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_AR")),
+                originalText: text
+            )
+        }
         return nil
     }
     
@@ -128,8 +127,26 @@ class IntentParserService: ObservableObject {
             return parsePersonIntent(text, originalText: originalText)
         }
         
+        if matchesRecapIntent(text) {
+            return parseRecapIntent(text)
+        }
+        
         // Default to search
         return .search(query: originalText, filters: MomentsIntent.SearchFilters())
+    }
+    
+    private func matchesRecapIntent(_ text: String) -> Bool {
+        text.contains("como fue") || text.contains("cómo fue") || text.contains("mi mes") || text.contains("recap")
+    }
+    
+    private func parseRecapIntent(_ text: String) -> MomentsIntent {
+        let months = [
+            "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+            "julio": 7, "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10,
+            "noviembre": 11, "diciembre": 12
+        ]
+        let month = months.first { text.contains($0.key) }?.value
+        return .monthlyRecap(month: month, year: nil)
     }
     
     // MARK: - Pattern Matchers

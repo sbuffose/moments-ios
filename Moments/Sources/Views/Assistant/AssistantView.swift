@@ -361,12 +361,27 @@ class AssistantViewModel: ObservableObject {
         case .showPerson(let name):
             return await handleShowPerson(name: name)
             
+        case .monthlyRecap(let month, let year):
+            return await handleMonthlyRecap(month: month, year: year)
+            
         case .unknown(let text):
             return AssistantMessage(
                 text: "No entendí bien. Probá preguntándome sobre tus fotos, espacio o fechas importantes.",
                 isUser: false
             )
         }
+    }
+    
+    private func handleMonthlyRecap(month: Int?, year: Int?) async -> AssistantMessage {
+        let calendar = Calendar.current
+        let now = Date()
+        let resolvedMonth = month ?? calendar.component(.month, from: now)
+        let resolvedYear = year ?? calendar.component(.year, from: now)
+        let stats = MonthlyRecapService.statsSummary(month: resolvedMonth, year: resolvedYear, context: modelContext)
+        let monthName = MonthlyRecapService.monthName(resolvedMonth)
+        let narrative = await FoundationModelsClient.recapNarrative(monthName: monthName, stats: stats)
+            ?? MonthlyRecapService.fallbackNarrative(monthName: monthName, stats: stats)
+        return AssistantMessage(text: narrative, isUser: false)
     }
     
     private func handleCheckSpace() -> AssistantMessage {
@@ -666,6 +681,13 @@ class AssistantViewModel: ObservableObject {
             )
             messages.append(dateMessage)
         }
+        
+        if let context = modelContext {
+            CatalogingService.shared.initialize(modelContext: context)
+            for prompt in CatalogingService.shared.frequentUnnamedPrompts() {
+                messages.append(prompt)
+            }
+        }
     }
     
     // MARK: - Card Actions
@@ -718,7 +740,10 @@ class AssistantViewModel: ObservableObject {
     
     func answerCatalogQuestion(_ optionId: String) {
         MomentsHaptics.selection()
-        // Handle catalog answer
+        guard let context = modelContext else { return }
+        CatalogingService.shared.initialize(modelContext: context)
+        CatalogingService.shared.applyAnswer(optionId)
+        messages.append(AssistantMessage(text: "Listo, lo guardé en tu catálogo.", isUser: false))
     }
     
     func dismissCatalogQuestion() {

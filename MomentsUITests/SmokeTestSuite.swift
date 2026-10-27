@@ -687,6 +687,20 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testAssistantCatalogAndRecapQuery() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 1).tap()
+        XCTAssertTrue(app.otherElements["assistant.root"].waitForExistence(timeout: 10))
+        let field = app.textFields.firstMatch
+        if field.waitForExistence(timeout: 6) {
+            field.tap()
+            field.typeText("como fue mi octubre")
+            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Enviar' OR identifier CONTAINS 'send'")).firstMatch.tap()
+        }
+    }
+    
     func testHomeUsesSystemAppearanceWithoutForcedDark() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
