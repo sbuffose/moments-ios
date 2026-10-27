@@ -41,7 +41,6 @@ struct ContentView: View {
                     }
             }
         }
-        .preferredColorScheme(.dark)
         .accessibilityIdentifier(isTestingMode ? "app.testing_mode" : "app.root")
         .sheet(isPresented: $appState.showProcessingSheet) {
             ProcessingStatusSheet()
@@ -174,7 +173,6 @@ struct FirstRunExplanationSheet: View {
             }
         }
         .interactiveDismissDisabled()
-        .preferredColorScheme(.dark)
         .accessibilityIdentifier("firstRun.explanation")
     }
 }
@@ -353,7 +351,6 @@ struct ProcessingStatusSheet: View {
         } message: {
             Text("Te vamos a enviar una notificación cuando terminemos de analizar tu biblioteca.")
         }
-        .preferredColorScheme(.dark)
         .accessibilityIdentifier("processing.sheet")
     }
 }
@@ -782,7 +779,6 @@ struct ScanningView: View {
                 Spacer()
             }
         }
-        .preferredColorScheme(.dark)
         .accessibilityIdentifier("scanning.root")
     }
 }
@@ -934,7 +930,6 @@ struct RepasoDelDiaView: View {
                 onSave: { addReminderToPhoto() }
             )
         }
-        .preferredColorScheme(.dark)
         .accessibilityIdentifier("repasoDia.root")
     }
     
@@ -1167,7 +1162,6 @@ struct AddTagSheet: View {
         .onAppear {
             existingTags = (try? modelContext.fetch(FetchDescriptor<PhotoTag>())) ?? []
         }
-        .preferredColorScheme(.dark)
     }
 }
 
@@ -1239,7 +1233,6 @@ struct AddReminderSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 }
 

@@ -2402,6 +2402,35 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(HomeView.todayReviewSubtitle(itemCount: 500).contains("500"))
     }
     
+    func testHomeHeroHeadlineUsesNextBatch() throws {
+        let headline = HomeView.heroHeadline(bytes: 1_900_000_000)
+        XCTAssertTrue(headline.contains("Hoy podés liberar"), headline)
+        XCTAssertTrue(headline.contains("~2 min"), headline)
+        XCTAssertFalse(headline.contains("Analizando"))
+    }
+    
+    func testAppDoesNotForceDarkColorScheme() throws {
+        let files = [
+            "Moments/Sources/App/ContentView.swift",
+            "Moments/Sources/Views/Home/HomeView.swift",
+            "Moments/Sources/Views/Assistant/AssistantView.swift"
+        ]
+        for relative in files {
+            let url = URL(fileURLWithPath: #file)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent(relative)
+            guard let source = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            XCTAssertFalse(source.contains("preferredColorScheme(.dark)"), "\(relative) must follow the system appearance")
+        }
+    }
+    
+    func testDeviceStorageSnapshotClampsRatio() throws {
+        let snapshot = DeviceStorage.Snapshot(available: 10, total: 40)
+        XCTAssertEqual(snapshot.usedRatio, 0.75, accuracy: 0.01)
+        XCTAssertEqual(DeviceStorage.Snapshot(available: 0, total: 0).usedRatio, 0)
+    }
+    
     func testSpaceFormattingUsesMegabytes() throws {
         let text = SpaceFormatting.string(from: 48_000_000)
         XCTAssertTrue(text.contains("MB") || text.contains("MB"), "Summary must show MB for tens of megabytes: \(text)")

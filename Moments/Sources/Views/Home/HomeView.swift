@@ -23,21 +23,27 @@ struct HomeView: View {
                 
                 ScrollView {
                     VStack(spacing: MomentsSpacing.lg) {
-                        headerSection
+                        searchBar
                         
-                        if appState.isAnalyzing {
-                            analysisProgressPill
+                        if isPreparingFirstScan {
+                            firstScanCard
+                        } else {
+                            heroCard
                         }
                         
-                        if viewModel.canFreeSpace > 0 || !viewModel.metadataCategories.isEmpty {
-                            spaceCard
+                        freedAndStorageCard
+                        
+                        memoryHero
+                        
+                        if !viewModel.metadataCategories.isEmpty {
+                            detailLink
                         }
                         
-                        ForEach(viewModel.feedCards) { card in
+                        ForEach(viewModel.feedCards.filter { !$0.isOnThisDay }) { card in
                             FeedCardView(card: card, viewModel: viewModel)
                         }
                         
-                        if viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty && viewModel.metadataCategories.isEmpty {
+                        if !isPreparingFirstScan && viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty && viewModel.metadataCategories.isEmpty {
                             emptyStateView
                         }
                     }
@@ -55,11 +61,18 @@ struct HomeView: View {
                 }
                 
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        SettingsView()
-                    } label: {
-                        Image(systemName: "gear")
-                            .foregroundStyle(MomentsColors.textSecondary)
+                    HStack(spacing: MomentsSpacing.sm) {
+                        if appState.isAnalyzing || appState.isIndexing {
+                            TimelineViewClock()
+                                .accessibilityIdentifier("home.scanClock")
+                                .accessibilityLabel("Preparando tu limpieza")
+                        }
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            Image(systemName: "gear")
+                                .foregroundStyle(MomentsColors.textSecondary)
+                        }
                     }
                 }
             }
@@ -72,6 +85,12 @@ struct HomeView: View {
                 viewModel.refreshCategories()
             }
         }
+    }
+    
+    private var isPreparingFirstScan: Bool {
+        (appState.isIndexing || appState.isAnalyzing)
+            && viewModel.cleanupItemCount == 0
+            && viewModel.metadataCategories.isEmpty
     }
     
     // MARK: - Header Section
@@ -112,24 +131,125 @@ struct HomeView: View {
         return "\(today) de \(DailyReviewBatch.size) para hoy"
     }
     
-    // MARK: - Analysis Progress Pill
+    static func heroHeadline(bytes: Int64, minutes: Int = 2) -> String {
+        "Hoy podés liberar \(SpaceFormatting.string(from: bytes)) en ~\(minutes) min"
+    }
     
-    private var analysisProgressPill: some View {
-        HStack(spacing: MomentsSpacing.sm) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .scaleEffect(0.7)
-                .tint(MomentsColors.accent)
-            
-            Text("Analizando \(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)")
-                .font(MomentsTypography.labelSmall)
-                .foregroundStyle(MomentsColors.textSecondary)
+    private var searchBar: some View {
+        Button {
+            appState.selectedTab = .assistant
+        } label: {
+            HStack(spacing: MomentsSpacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(MomentsColors.textSecondary)
+                Text("Buscá en tus fotos…")
+                    .font(MomentsTypography.bodyMedium)
+                    .foregroundStyle(MomentsColors.textSecondary)
+                Spacer()
+            }
+            .padding(.horizontal, MomentsSpacing.md)
+            .padding(.vertical, MomentsSpacing.sm)
+            .background(MomentsColors.bgSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
-        .padding(.horizontal, MomentsSpacing.md)
-        .padding(.vertical, MomentsSpacing.xs)
-        .background(MomentsColors.bgSecondary)
-        .cornerRadius(20)
-        .accessibilityIdentifier("home.analysisPill")
+        .accessibilityIdentifier("home.searchBar")
+        .accessibilityLabel("Buscá en tus fotos")
+    }
+    
+    private var firstScanCard: some View {
+        VStack(spacing: MomentsSpacing.md) {
+            ScanClockIcon()
+                .frame(width: 56, height: 56)
+            Text("Estamos preparando tu primera limpieza, tarda unos minutos, podés seguir usando el teléfono; te avisamos")
+                .font(MomentsTypography.bodyMedium)
+                .foregroundStyle(MomentsColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("home.firstScanMessage")
+        }
+        .frame(maxWidth: .infinity)
+        .momentsCard()
+        .accessibilityIdentifier("home.firstScanCard")
+    }
+    
+    private var heroCard: some View {
+        VStack(alignment: .leading, spacing: MomentsSpacing.md) {
+            Text(Self.heroHeadline(bytes: viewModel.nextBatchBytes))
+                .font(MomentsTypography.headlineLarge)
+                .foregroundStyle(MomentsColors.textPrimary)
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.nextBatchBytes)
+                .accessibilityIdentifier("home.heroHeadline")
+            
+            ForEach(viewModel.topHumanReasons.prefix(3), id: \.self) { reason in
+                HStack(spacing: MomentsSpacing.sm) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(MomentsColors.accent)
+                    Text(reason)
+                        .font(MomentsTypography.bodyMedium)
+                        .foregroundStyle(MomentsColors.textSecondary)
+                }
+            }
+            
+            NavigationLink {
+                CleanupReviewView(viewModel: viewModel.cleanupViewModel)
+            } label: {
+                Text("Empezar")
+                    .frame(maxWidth: .infinity)
+            }
+            .momentsAccentButton()
+            .accessibilityIdentifier("home.reviewButton")
+        }
+        .accessibilityIdentifier("home.spaceCard")
+        .momentsCard()
+    }
+    
+    private var freedAndStorageCard: some View {
+        VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
+            Text("Ya liberaste \(viewModel.formattedSpaceSaved) con Moments")
+                .font(MomentsTypography.headlineMedium)
+                .foregroundStyle(MomentsColors.textPrimary)
+                .accessibilityIdentifier("home.freedTotal")
+            
+            let storage = DeviceStorage.current()
+            VStack(alignment: .leading, spacing: MomentsSpacing.xs) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(MomentsColors.bgTertiary)
+                        Capsule()
+                            .fill(MomentsColors.accentGradient)
+                            .frame(width: geo.size.width * storage.usedRatio)
+                    }
+                }
+                .frame(height: 10)
+                
+                Text("Espacio del teléfono: \(SpaceFormatting.string(from: storage.available)) libres de \(SpaceFormatting.string(from: storage.total))")
+                    .font(MomentsTypography.labelSmall)
+                    .foregroundStyle(MomentsColors.textSecondary)
+                    .accessibilityIdentifier("home.storageBar")
+            }
+        }
+        .momentsCard()
+    }
+    
+    private var memoryHero: some View {
+        Group {
+            if let photos = viewModel.onThisDayPhotos, !photos.isEmpty {
+                ParallaxMemoryHero(photos: photos, title: "Hace un año hoy")
+                    .accessibilityIdentifier("home.memoryHero")
+            }
+        }
+    }
+    
+    private var detailLink: some View {
+        NavigationLink {
+            CleanupView()
+        } label: {
+            Text("Ver detalle")
+                .font(MomentsTypography.labelMedium)
+                .foregroundStyle(MomentsColors.accent)
+        }
+        .accessibilityIdentifier("home.verDetalle")
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
     
     // MARK: - Space Card
@@ -355,7 +475,28 @@ class HomeViewModel: ObservableObject {
     }
     
     var formattedMetadataSize: String {
-        ByteCountFormatter.string(fromByteCount: metadataSize, countStyle: .file)
+        SpaceFormatting.string(from: metadataSize)
+    }
+    
+    var nextBatchBytes: Int64 {
+        let photos = Array(cleanupViewModel.reviewQueue.prefix(DailyReviewBatch.size))
+        if !photos.isEmpty {
+            return photos.reduce(0) { $0 + $1.totalSize }
+        }
+        return metadataCategories.prefix(3).reduce(0) { $0 + $1.estimatedSize }
+    }
+    
+    var topHumanReasons: [String] {
+        metadataCategories.prefix(3).map(\.title)
+    }
+    
+    var onThisDayPhotos: [PersistedPhoto]? {
+        for card in feedCards {
+            if case .onThisDay(let photos) = card.type {
+                return photos
+            }
+        }
+        return nil
     }
     
     func initialize(modelContext: ModelContext) {
@@ -666,6 +807,11 @@ struct HomeFeedCard: Identifiable {
     let id = UUID()
     let type: CardType
     
+    var isOnThisDay: Bool {
+        if case .onThisDay = type { return true }
+        return false
+    }
+    
     enum CardType {
         case onThisDay(photos: [PersistedPhoto])
         case upcomingDate(date: PersistedImportantDate, photos: [PersistedPhoto])
@@ -680,9 +826,81 @@ struct HomeFeedCard: Identifiable {
     }
 }
 
+enum DeviceStorage {
+    struct Snapshot {
+        let available: Int64
+        let total: Int64
+        var usedRatio: CGFloat {
+            guard total > 0 else { return 0 }
+            return min(1, CGFloat(total - available) / CGFloat(total))
+        }
+    }
+    
+    static func current() -> Snapshot {
+        let url = URL(fileURLWithPath: NSHomeDirectory())
+        let values = try? url.resourceValues(forKeys: [
+            .volumeAvailableCapacityForImportantUsageKey,
+            .volumeTotalCapacityKey
+        ])
+        let available = values?.volumeAvailableCapacityForImportantUsage ?? 0
+        let total = Int64(values?.volumeTotalCapacity ?? 0)
+        return Snapshot(available: available, total: max(total, available))
+    }
+}
+
+struct ScanClockIcon: View {
+    @State private var spinning = false
+    
+    var body: some View {
+        Image(systemName: "clock.arrow.circlepath")
+            .font(.system(size: 36, weight: .medium))
+            .foregroundStyle(MomentsColors.accent)
+            .rotationEffect(.degrees(spinning ? 360 : 0))
+            .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: spinning)
+            .onAppear { spinning = true }
+            .accessibilityIdentifier("home.scanClock.icon")
+    }
+}
+
+struct TimelineViewClock: View {
+    var body: some View {
+        ScanClockIcon()
+            .font(.body)
+            .scaleEffect(0.45)
+            .frame(width: 28, height: 28)
+    }
+}
+
+struct ParallaxMemoryHero: View {
+    let photos: [PersistedPhoto]
+    let title: String
+    
+    var body: some View {
+        GeometryReader { geo in
+            let minY = geo.frame(in: .global).minY
+            ZStack(alignment: .bottomLeading) {
+                if let first = photos.first {
+                    AsyncPhotoThumbnail(localIdentifier: first.localIdentifier)
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: 220 + max(0, minY / 8))
+                        .clipped()
+                        .offset(y: minY > 0 ? -minY / 6 : 0)
+                }
+                LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .top, endPoint: .bottom)
+                Text(title)
+                    .font(MomentsTypography.headlineLarge)
+                    .foregroundStyle(.white)
+                    .padding(MomentsSpacing.md)
+            }
+            .frame(height: 220)
+            .clipShape(RoundedRectangle(cornerRadius: MomentsCorners.large))
+        }
+        .frame(height: 220)
+    }
+}
+
 #Preview {
     HomeView()
-        .preferredColorScheme(.dark)
         .modelContainer(for: PersistedPhoto.self)
         .environmentObject(AppState())
 }

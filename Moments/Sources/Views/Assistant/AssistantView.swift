@@ -758,6 +758,5 @@ enum AssistantCard {
 
 #Preview {
     AssistantView()
-        .preferredColorScheme(.dark)
         .modelContainer(for: PersistedPhoto.self)
 }
