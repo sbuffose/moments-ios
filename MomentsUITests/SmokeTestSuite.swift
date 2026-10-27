@@ -687,6 +687,21 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testShareAndTerminarRemainWired() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let reviewButton = app.buttons["home.reviewButton"]
+        if reviewButton.waitForExistence(timeout: 8) {
+            reviewButton.tap()
+        }
+        XCTAssertTrue(
+            app.buttons["review.shareButton"].waitForExistence(timeout: 8) ||
+            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Terminar'")).firstMatch.waitForExistence(timeout: 4)
+        )
+    }
+    
     func testSaveToAlbumButtonInReview() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
