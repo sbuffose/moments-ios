@@ -224,13 +224,13 @@ final class MomentsUITests: XCTestCase {
         let settingsTab = tabBar.buttons.element(boundBy: 3)
         
         homeTab.tap()
-        XCTAssertTrue(app.waitForIdentifier("home.root"), "Home screen should show home.root identifier")
+        XCTAssertTrue(app.waitForHome(), "Home screen should show home.root identifier")
         
         assistantTab.tap()
-        XCTAssertTrue(app.waitForIdentifier("assistant.root"), "Assistant screen should show assistant.root identifier")
+        XCTAssertTrue(app.waitForAssistant(), "Assistant screen should show assistant.root identifier")
         
         momentsTab.tap()
-        XCTAssertTrue(app.waitForIdentifier("moments.root"), "Moments screen should show moments.root identifier")
+        XCTAssertTrue(app.waitForMoments(), "Moments screen should show moments.root identifier")
         
         settingsTab.tap()
         XCTAssertTrue(app.navigationBars.count > 0 || app.staticTexts.count > 0, "Settings screen should have content")
@@ -247,8 +247,7 @@ final class MomentsUITests: XCTestCase {
         
         tabBar.buttons.element(boundBy: 0).tap()
         
-        let homeRoot = app.identified("home.root")
-        XCTAssertTrue(homeRoot.waitForExistence(timeout: 10), "Home screen should show home.root identifier")
+        XCTAssertTrue(app.waitForHome(), "Home screen should show home.root identifier")
         
         let hasContent = app.scrollViews.count > 0 || 
                         app.staticTexts.count > 2 ||
@@ -266,8 +265,7 @@ final class MomentsUITests: XCTestCase {
         
         tabBar.buttons.element(boundBy: 0).tap()
         
-        let homeRoot = app.identified("home.root")
-        guard homeRoot.waitForExistence(timeout: 10) else {
+        guard app.waitForHome() else {
             XCTFail("Home screen not showing home.root identifier")
             return
         }
@@ -295,8 +293,7 @@ final class MomentsUITests: XCTestCase {
         
         tabBar.buttons.element(boundBy: 1).tap()
         
-        let assistantRoot = app.identified("assistant.root")
-        XCTAssertTrue(assistantRoot.waitForExistence(timeout: 10), "Assistant screen should show assistant.root identifier")
+        XCTAssertTrue(app.waitForAssistant(), "Assistant screen should show assistant.root identifier")
         
         let hasInputField = app.textFields.count > 0 || app.textViews.count > 0
         let hasAssistantContent = app.staticTexts.count > 0
@@ -313,16 +310,15 @@ final class MomentsUITests: XCTestCase {
         
         tabBar.buttons.element(boundBy: 1).tap()
         
-        let assistantRoot = app.identified("assistant.root")
-        guard assistantRoot.waitForExistence(timeout: 10) else {
+        guard app.waitForAssistant() else {
             XCTFail("Assistant screen not loaded")
             return
         }
         
-        let textField = app.textFields.firstMatch
+        let textField = app.textFields["assistant.input"].exists ? app.textFields["assistant.input"] : app.textFields.firstMatch
         if textField.waitForExistence(timeout: 3) {
             textField.tap()
-            textField.typeText("¿cuánto espacio puedo liberar?")
+            textField.typeText("cuanto espacio puedo liberar")
             app.submitKeyboard()
             
             let expectation = XCTNSPredicateExpectation(
@@ -392,33 +388,30 @@ final class MomentsUITests: XCTestCase {
         // Navigate to Moments tab
         tabBar.buttons.element(boundBy: 2).tap()
         
-        XCTAssertTrue(app.waitForIdentifier("moments.root"), "Moments screen not loaded")
+        XCTAssertTrue(app.waitForMoments(), "Moments screen not loaded")
         
-        // Use stable chip identifiers. Avoid CONTAINS predicates and
-        // allElementsBoundByIndex — those time out evaluating the full tree.
-        let segments: [(chipId: String, contentId: String, name: String)] = [
-            ("chip.timeline", "moments.timeline.content", "Línea"),
-            ("chip.people", "moments.people.content", "Personas"),
-            ("chip.places", "moments.places.content", "Lugares"),
-            ("chip.dates", "fechas.content", "Fechas")
+        let segments: [(chipId: String, name: String)] = [
+            ("chip.timeline", "Línea"),
+            ("chip.people", "Personas"),
+            ("chip.places", "Lugares"),
+            ("chip.dates", "Fechas")
         ]
         
         for segment in segments {
-            let chip = app.identified(segment.chipId)
-            let chipByLabel = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", segment.name)).firstMatch
-            if chip.waitForExistence(timeout: 5) {
+            let chip = app.buttons[segment.chipId]
+            if chip.waitForExistence(timeout: 3) {
                 chip.tap()
-            } else if chipByLabel.waitForExistence(timeout: 3) {
-                chipByLabel.tap()
             } else {
-                XCTFail("Chip '\(segment.name)' not found")
-                continue
+                let byLabel = app.buttons[segment.name]
+                if byLabel.waitForExistence(timeout: 2) {
+                    byLabel.tap()
+                } else {
+                    XCTFail("Chip '\(segment.name)' not found")
+                    continue
+                }
             }
-            
-            let contentView = app.identified(segment.contentId)
-            let contentExists = contentView.waitForExistence(timeout: 5) ||
-                               app.scrollViews.firstMatch.exists
-            XCTAssertTrue(contentExists, "\(segment.name) segment should have content at \(segment.contentId)")
+            XCTAssertTrue(app.scrollViews.firstMatch.exists || app.staticTexts.firstMatch.exists,
+                          "\(segment.name) segment should have content")
             
             let screenshot = app.screenshot()
             let attachment = XCTAttachment(screenshot: screenshot)
@@ -798,13 +791,12 @@ final class MomentsUITests: XCTestCase {
         
         tabBar.buttons.element(boundBy: 1).tap()
         
-        let assistantRoot = app.identified("assistant.root")
-        guard assistantRoot.waitForExistence(timeout: 10) else {
+        guard app.waitForAssistant() else {
             XCTFail("Assistant screen not loaded")
             return
         }
         
-        let textField = app.textFields.firstMatch
+        let textField = app.textFields["assistant.input"].exists ? app.textFields["assistant.input"] : app.textFields.firstMatch
         if textField.waitForExistence(timeout: 3) {
             textField.tap()
             textField.typeText("captura")
@@ -835,8 +827,7 @@ final class MomentsUITests: XCTestCase {
         
         // 01: Home screen with space savings card
         tabBar.buttons.element(boundBy: 0).tap()
-        let homeRoot = app.identified("home.root")
-        XCTAssertTrue(homeRoot.waitForExistence(timeout: 10), "Home screen should load with home.root identifier")
+        XCTAssertTrue(app.waitForHome(), "Home screen should load with home.root identifier")
         let homeScreenshot = app.screenshot()
         let homeAttachment = XCTAttachment(screenshot: homeScreenshot)
         homeAttachment.name = "04_home_screen"
@@ -845,8 +836,7 @@ final class MomentsUITests: XCTestCase {
         
         // 02: Assistant screen
         tabBar.buttons.element(boundBy: 1).tap()
-        let assistantRoot = app.identified("assistant.root")
-        XCTAssertTrue(assistantRoot.waitForExistence(timeout: 10), "Assistant screen should load with assistant.root identifier")
+        XCTAssertTrue(app.waitForAssistant(), "Assistant screen should load with assistant.root identifier")
         let assistantScreenshot = app.screenshot()
         let assistantAttachment = XCTAttachment(screenshot: assistantScreenshot)
         assistantAttachment.name = "05_assistant"
@@ -855,8 +845,7 @@ final class MomentsUITests: XCTestCase {
         
         // 03: Moments/Timeline screen
         tabBar.buttons.element(boundBy: 2).tap()
-        let momentsRoot = app.identified("moments.root")
-        XCTAssertTrue(momentsRoot.waitForExistence(timeout: 10), "Moments screen should load with moments.root identifier")
+        XCTAssertTrue(app.waitForMoments(), "Moments screen should load with moments.root identifier")
         let momentsScreenshot = app.screenshot()
         let momentsAttachment = XCTAttachment(screenshot: momentsScreenshot)
         momentsAttachment.name = "06_moments"

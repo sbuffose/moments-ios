@@ -17,6 +17,10 @@ struct HomeView: View {
             ZStack {
                 MomentsColors.bgPrimary.ignoresSafeArea()
                 
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("home.root")
+                
                 ScrollView {
                     VStack(spacing: MomentsSpacing.lg) {
                         headerSection
@@ -42,9 +46,6 @@ struct HomeView: View {
                 }
                 .accessibilityIdentifier("home.scrollView")
             }
-            // Full-size identifier — a 1×1 Color.clear is invisible to XCUITest.
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("home.root")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {

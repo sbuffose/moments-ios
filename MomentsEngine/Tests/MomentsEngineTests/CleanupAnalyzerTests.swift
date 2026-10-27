@@ -45,23 +45,24 @@ final class CleanupAnalyzerTests: XCTestCase {
     
     func testDetectBlurryPhotos() {
         let photos = [
-            createPhoto(id: "1", sharpnessScore: 0.1),
+            createPhoto(id: "1", sharpnessScore: 0.05),
             createPhoto(id: "2", sharpnessScore: 0.5),
-            createPhoto(id: "3", sharpnessScore: 0.2),
+            createPhoto(id: "3", sharpnessScore: 0.10),
             createPhoto(id: "4", sharpnessScore: 0.8),
         ]
         
         let blurry = analyzer.detectBlurryPhotos(in: photos)
         
+        // Default sharpnessThreshold is 0.15
         XCTAssertEqual(blurry.count, 2)
-        XCTAssertTrue(blurry.allSatisfy { ($0.sharpnessScore ?? 1.0) < 0.3 })
+        XCTAssertTrue(blurry.allSatisfy { ($0.sharpnessScore ?? 1.0) < 0.15 })
     }
     
     func testBlurryPhotosAreSortedBySharpness() {
         let photos = [
-            createPhoto(id: "1", sharpnessScore: 0.2),
+            createPhoto(id: "1", sharpnessScore: 0.12),
             createPhoto(id: "2", sharpnessScore: 0.05),
-            createPhoto(id: "3", sharpnessScore: 0.15),
+            createPhoto(id: "3", sharpnessScore: 0.10),
         ]
         
         let blurry = analyzer.detectBlurryPhotos(in: photos)

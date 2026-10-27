@@ -232,16 +232,16 @@ final class ScreenshotTests: XCTestCase {
         momentsTab.tap()
         captureScreenshot(name: "empty_or_content_moments")
         
-        let placesChip = app.identified("chip.places")
-        if placesChip.waitForExistence(timeout: 3) || app.buttons["Lugares"].waitForExistence(timeout: 2) {
-            (placesChip.exists ? placesChip : app.buttons["Lugares"]).tap()
+        let placesChip = app.buttons["Lugares"]
+        if placesChip.waitForExistence(timeout: 3) {
+            placesChip.tap()
             sleep(1)
             captureScreenshot(name: "empty_or_content_places")
         }
         
-        let datesChip = app.identified("chip.dates")
-        if datesChip.waitForExistence(timeout: 3) || app.buttons["Fechas"].waitForExistence(timeout: 2) {
-            (datesChip.exists ? datesChip : app.buttons["Fechas"]).tap()
+        let datesChip = app.buttons["Fechas"]
+        if datesChip.waitForExistence(timeout: 3) {
+            datesChip.tap()
             sleep(1)
             captureScreenshot(name: "empty_or_content_dates")
         }

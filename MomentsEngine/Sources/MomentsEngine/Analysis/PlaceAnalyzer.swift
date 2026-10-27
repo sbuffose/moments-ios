@@ -276,7 +276,7 @@ public struct PlaceAnalyzer {
         
         if averageInterval <= 7 {
             return .weekly
-        } else if averageInterval <= 30 {
+        } else if averageInterval <= 31 {
             return .monthly
         } else if averageInterval <= 90 {
             return .quarterly

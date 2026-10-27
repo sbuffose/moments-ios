@@ -80,10 +80,13 @@ final class TimelineAnalyzerTests: XCTestCase {
         // Fotos en Mar del Plata (viaje)
         let tripLocation = Coordinate(latitude: -38.0023, longitude: -57.5575)
         
-        let photos = (0..<10).map { i in
-            createPhoto(
+        // 4 days × 3 photos (30 min apart) so they form moments and span tripMinimumDays.
+        let photos = (0..<12).map { i in
+            let day = i / 3
+            let slot = i % 3
+            return createPhoto(
                 id: "\(i)",
-                date: baseDate.addingTimeInterval(Double(i) * 3600),
+                date: baseDate.addingTimeInterval(Double(day) * 86_400 + Double(slot) * 1_800),
                 location: tripLocation
             )
         }
