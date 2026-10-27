@@ -479,7 +479,7 @@ class AssistantViewModel: ObservableObject {
         let subtitle = await MemoryTitleGenerator.shared.generateSummary(for: results)
         
         return AssistantMessage(
-            text: "Encontré \(results.count) fotos:",
+            text: "Encontré \(MomentsPluralization.photos(results.count)):",
             isUser: false,
             card: .photoGrid(
                 title: title,

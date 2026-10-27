@@ -22,7 +22,7 @@ env:
   XCODE_VERSION: latest-stable
 
 jobs:
-  # Job 1: Build and archive (shared by all downstream jobs)
+  # Job 1: Build (shared by all downstream jobs)
   build:
     runs-on: macos-15
     timeout-minutes: 25
@@ -64,15 +64,12 @@ jobs:
       - name: Create Simulator
         id: create_sim
         run: |
-          # List available runtimes
           echo "Available iOS runtimes:"
           xcrun simctl list runtimes iOS
           
-          # Get the latest iOS runtime
           RUNTIME=$(xcrun simctl list runtimes iOS | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
           echo "Using runtime: $RUNTIME"
           
-          # Try to find an existing iPhone device, or create one
           DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
           
           if [ -z "$DEVICE_ID" ]; then
@@ -163,11 +160,11 @@ jobs:
           path: ${{ runner.temp }}/SimulatorBuild
           retention-days: 1
 
-  # Job 2: Unit Tests (runs in parallel after build)
+  # Job 2: Unit Tests (runs after build)
   unit-tests:
     needs: build
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 20
     
     steps:
       - name: Checkout repository
@@ -188,20 +185,77 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-deriveddata-
 
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          BUILD_NUMBER=${{ needs.build.outputs.build_number }}
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
+          xcodegen generate
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: simulator-build
+          path: ${{ runner.temp }}/SimulatorBuild
+
+      - name: Setup Simulator for Unit Tests
+        id: setup_sim
+        run: |
+          RUNTIME=$(xcrun simctl list runtimes iOS | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
+          DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
+          
+          if [ -z "$DEVICE_ID" ]; then
+            DEVICE_ID=$(xcrun simctl create "iPhone 15 Pro" "iPhone 15 Pro" "$RUNTIME" 2>/dev/null || \
+                        xcrun simctl create "iPhone 15" "iPhone 15" "$RUNTIME")
+          fi
+          
+          echo "device_id=$DEVICE_ID" >> $GITHUB_OUTPUT
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          sleep 3
+
+      - name: Run Unit Tests (MomentsTests)
+        id: unit_tests
+        run: |
+          DEVICE_ID="${{ steps.setup_sim.outputs.device_id }}"
+          mkdir -p "$RUNNER_TEMP/test-results"
+          
+          xcodebuild test \
+            -project Moments.xcodeproj \
+            -scheme Moments \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -only-testing:MomentsTests \
+            -resultBundlePath "$RUNNER_TEMP/test-results/UnitTests.xcresult" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/unit_test_output.log"
+          
+          # Extract test summary
+          echo "=== Unit Test Summary ===" | tee "$RUNNER_TEMP/unit_test_summary.txt"
+          grep -E "(Test Suite|Test Case|passed|failed|Executed)" "$RUNNER_TEMP/unit_test_output.log" | tail -30 | tee -a "$RUNNER_TEMP/unit_test_summary.txt"
+
       - name: Run MomentsEngine Unit Tests
         run: |
           cd MomentsEngine
-          swift test 2>&1 | tee "$RUNNER_TEMP/unit_test_output.log"
+          swift test 2>&1 | tee "$RUNNER_TEMP/engine_test_output.log"
+          
+          echo "=== Engine Test Summary ===" | tee -a "$RUNNER_TEMP/unit_test_summary.txt"
+          grep -E "(Test Suite|Test Case|passed|failed|Executed)" "$RUNNER_TEMP/engine_test_output.log" | tail -20 | tee -a "$RUNNER_TEMP/unit_test_summary.txt"
 
       - name: Upload Unit Test Results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: unit-test-results
-          path: ${{ runner.temp }}/unit_test_output.log
+          path: |
+            ${{ runner.temp }}/test-results/
+            ${{ runner.temp }}/unit_test_output.log
+            ${{ runner.temp }}/engine_test_output.log
+            ${{ runner.temp }}/unit_test_summary.txt
           retention-days: 14
 
-  # Job 3: UI Tests (runs in parallel after build)
+  # Job 3: UI Tests / Smoke Suite (runs after build)
   ui-tests:
     needs: build
     runs-on: macos-15
@@ -241,47 +295,62 @@ jobs:
           name: simulator-build
           path: ${{ runner.temp }}/SimulatorBuild
 
-      - name: Setup Simulator for UI Tests
+      - name: Setup Simulator and Seed Test Fixtures
         id: setup_sim
         run: |
-          # Get the latest iOS runtime
           RUNTIME=$(xcrun simctl list runtimes iOS | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
-          echo "Using runtime: $RUNTIME"
-          
-          # Try to find an existing iPhone device, or create one
           DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
           
           if [ -z "$DEVICE_ID" ]; then
-            echo "Creating iPhone 15 Pro simulator..."
             DEVICE_ID=$(xcrun simctl create "iPhone 15 Pro" "iPhone 15 Pro" "$RUNTIME" 2>/dev/null || \
-                        xcrun simctl create "iPhone 15" "iPhone 15" "$RUNTIME" 2>/dev/null || \
-                        xcrun simctl create "iPhone 14 Pro" "iPhone 14 Pro" "$RUNTIME")
+                        xcrun simctl create "iPhone 15" "iPhone 15" "$RUNTIME")
           fi
           
           echo "device_id=$DEVICE_ID" >> $GITHUB_OUTPUT
-          echo "Using simulator: $DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
           sleep 5
           
-          # Seed photos again for this job
-          mkdir -p "$RUNNER_TEMP/test_photos"
+          # Seed ~30 fixture images with specific categories for smoke tests
+          echo "Seeding fixture photos for smoke tests..."
+          mkdir -p "$RUNNER_TEMP/fixture_photos"
+          
+          # Create base templates
           TEMPLATE="$RUNNER_TEMP/template.jpg"
-          printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\x27",#\x22\x1c\x1c(7teletech,01444teletech\xff\xc0\x00\x0b\x08\x00\x64\x00\x64\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$TEMPLATE"
+          printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\xff\xc0\x00\x0b\x08\x00\x64\x00\x64\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xfb\xd5Q@\xff\xd9' > "$TEMPLATE"
           
-          for i in $(seq 1 200); do
-            printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > "$RUNNER_TEMP/test_photos/screenshot_$(printf '%04d' $i).png"
+          # Screenshots (5)
+          for i in $(seq 1 5); do
+            printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > "$RUNNER_TEMP/fixture_photos/screenshot_$i.png"
           done
           
-          for i in $(seq 1 2700); do
-            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/photo_$(printf '%04d' $i).jpg" 2>/dev/null || true
+          # Duplicates (3 pairs = 6 images)
+          for i in $(seq 1 3); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/fixture_photos/duplicate_${i}_a.jpg"
+            cp "$TEMPLATE" "$RUNNER_TEMP/fixture_photos/duplicate_${i}_b.jpg"
           done
           
-          for i in $(seq 1 100); do
-            cp "$TEMPLATE" "$RUNNER_TEMP/test_photos/burst_A_$(printf '%03d' $i).jpg" 2>/dev/null || true
+          # Blurry photos (3)
+          for i in $(seq 1 3); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/fixture_photos/blurry_$i.jpg"
           done
           
-          cd "$RUNNER_TEMP/test_photos"
-          ls *.jpg *.png 2>/dev/null | xargs -n 200 xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
+          # Sharp night shot (1) - regular photo simulating night
+          cp "$TEMPLATE" "$RUNNER_TEMP/fixture_photos/night_sharp.jpg"
+          
+          # Normal photos (10)
+          for i in $(seq 1 10); do
+            cp "$TEMPLATE" "$RUNNER_TEMP/fixture_photos/normal_$i.jpg"
+          done
+          
+          # Dark photos (2)
+          cp "$TEMPLATE" "$RUNNER_TEMP/fixture_photos/dark_1.jpg"
+          cp "$TEMPLATE" "$RUNNER_TEMP/fixture_photos/dark_2.jpg"
+          
+          TOTAL=$(ls -1 "$RUNNER_TEMP/fixture_photos/" 2>/dev/null | wc -l | tr -d ' ')
+          echo "Created $TOTAL fixture photos"
+          
+          cd "$RUNNER_TEMP/fixture_photos"
+          ls *.jpg *.png 2>/dev/null | xargs xcrun simctl addmedia "$DEVICE_ID" 2>/dev/null || true
           
           xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID"
           xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID"
@@ -293,41 +362,52 @@ jobs:
           sleep 2
           xcrun simctl boot "$DEVICE_ID"
           sleep 5
+          
+          echo "✓ Simulator ready with $TOTAL fixture photos"
 
-      - name: Run UI Tests
+      - name: Run UI Smoke Tests
         id: ui_tests
-        continue-on-error: true
         run: |
           DEVICE_ID="${{ steps.setup_sim.outputs.device_id }}"
           mkdir -p "$RUNNER_TEMP/screenshots"
+          mkdir -p "$RUNNER_TEMP/test-results"
           
           xcodebuild test \
             -project Moments.xcodeproj \
             -scheme Moments \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -only-testing:MomentsUITests \
-            -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
+            -resultBundlePath "$RUNNER_TEMP/test-results/UITests.xcresult" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            2>&1 | tee "$RUNNER_TEMP/ui_test_output.log" || true
+            2>&1 | tee "$RUNNER_TEMP/ui_test_output.log"
           
-          echo "=== UI Test Summary ==="
-          grep -E "(Test Suite|Test Case|passed|failed)" "$RUNNER_TEMP/ui_test_output.log" | tail -50
+          # Extract test summary
+          echo "=== UI Test Summary ===" | tee "$RUNNER_TEMP/ui_test_summary.txt"
+          grep -E "(Test Suite|Test Case|passed|failed|Executed)" "$RUNNER_TEMP/ui_test_output.log" | tail -50 | tee -a "$RUNNER_TEMP/ui_test_summary.txt"
+          
+          # Count results
+          PASSED=$(grep -c "passed" "$RUNNER_TEMP/ui_test_output.log" || echo "0")
+          FAILED=$(grep -c "failed" "$RUNNER_TEMP/ui_test_output.log" || echo "0")
+          echo "" | tee -a "$RUNNER_TEMP/ui_test_summary.txt"
+          echo "TOTAL: $PASSED passed, $FAILED failed" | tee -a "$RUNNER_TEMP/ui_test_summary.txt"
 
-      - name: Extract Screenshots
+      - name: Extract Screenshots from xcresult
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/screenshots"
           
-          if [ -d "$RUNNER_TEMP/TestResults.xcresult" ]; then
+          if [ -d "$RUNNER_TEMP/test-results/UITests.xcresult" ]; then
+            # Try xcparse for screenshots
             brew install chargepoint/xcparse/xcparse 2>/dev/null || true
             
             if command -v xcparse &> /dev/null; then
-              xcparse screenshots "$RUNNER_TEMP/TestResults.xcresult" "$RUNNER_TEMP/screenshots" 2>/dev/null || true
+              xcparse screenshots "$RUNNER_TEMP/test-results/UITests.xcresult" "$RUNNER_TEMP/screenshots" 2>/dev/null || true
             fi
             
+            # Also try xcresulttool
             xcrun xcresulttool export \
-              --path "$RUNNER_TEMP/TestResults.xcresult" \
+              --path "$RUNNER_TEMP/test-results/UITests.xcresult" \
               --output-path "$RUNNER_TEMP/xcexport" \
               --type file 2>/dev/null || true
             
@@ -335,6 +415,10 @@ jobs:
               find "$RUNNER_TEMP/xcexport" -name "*.png" -type f -exec cp {} "$RUNNER_TEMP/screenshots/" \; 2>/dev/null || true
             fi
           fi
+          
+          # Count screenshots
+          SCREENSHOT_COUNT=$(ls -1 "$RUNNER_TEMP/screenshots/"*.png 2>/dev/null | wc -l | tr -d ' ')
+          echo "Extracted $SCREENSHOT_COUNT screenshots"
 
       - name: Shutdown Simulator
         if: always()
@@ -342,21 +426,23 @@ jobs:
           DEVICE_ID="${{ steps.setup_sim.outputs.device_id }}"
           xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
 
-      - name: Upload UI Test Results
+      - name: Upload UI Test Results and Screenshots
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ui-test-results
           path: |
-            ${{ runner.temp }}/TestResults.xcresult
+            ${{ runner.temp }}/test-results/
             ${{ runner.temp }}/screenshots/
             ${{ runner.temp }}/ui_test_output.log
+            ${{ runner.temp }}/ui_test_summary.txt
           retention-days: 14
 
-  # Job 4: TestFlight Upload (runs after build + unit tests, in parallel with UI tests)
-  # Only runs on push to main
+  # Job 4: TestFlight Upload
+  # CRITICAL: Depends on BOTH unit-tests AND ui-tests passing
+  # An upload is IMPOSSIBLE if any test fails
   testflight:
-    needs: [build, unit-tests]
+    needs: [build, unit-tests, ui-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-15
     timeout-minutes: 25

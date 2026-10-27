@@ -304,7 +304,7 @@ struct KeptPhotosListView: View {
                         }
                     }
                 } header: {
-                    Text("\(keptPhotos.count) fotos conservadas")
+                    Text(MomentsPluralization.photosConserved(keptPhotos.count))
                 } footer: {
                     Text("Estas fotos no aparecerán en las sugerencias de limpieza")
                 }
@@ -652,7 +652,7 @@ struct DailyReviewSettingsView: View {
                                 .font(.subheadline)
                             
                             if reviewService.todayCandidateCount > 0 {
-                                Text("\(reviewService.todayCandidateCount) fotos (\(ByteCountFormatter.string(fromByteCount: reviewService.todayCandidateSize, countStyle: .file)))")
+                                Text("\(MomentsPluralization.photosToReview(reviewService.todayCandidateCount)) (\(ByteCountFormatter.string(fromByteCount: reviewService.todayCandidateSize, countStyle: .file)))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             } else {
@@ -693,7 +693,7 @@ struct DailyReviewSettingsView: View {
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                 
-                                Text("Hoy sacaste \(reviewService.todayCandidateCount) fotos, te recomiendo revisar \(Int(Double(reviewService.todayCandidateCount) * 0.3)) (\(ByteCountFormatter.string(fromByteCount: Int64(Double(reviewService.todayCandidateSize) * 0.3), countStyle: .file)))")
+                                Text("Hoy sacaste \(MomentsPluralization.photosToReview(reviewService.todayCandidateCount)), te recomiendo revisar \(Int(Double(reviewService.todayCandidateCount) * 0.3)) (\(ByteCountFormatter.string(fromByteCount: Int64(Double(reviewService.todayCandidateSize) * 0.3), countStyle: .file)))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

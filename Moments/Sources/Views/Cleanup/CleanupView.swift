@@ -574,6 +574,8 @@ struct CleanupReviewView: View {
     @State private var showPostShareDeletePrompt = false
     @State private var sharedPhotoId: String?
     @State private var showShareError = false
+    @State private var showKeepDurationChip = false
+    @State private var lastKeptPhotoId: String?
     @Environment(\.dismiss) private var dismiss
     
     private var allPhotos: [PersistedPhoto] {
@@ -662,9 +664,7 @@ struct CleanupReviewView: View {
                         photos: photos,
                         viewModel: viewModel,
                         onComplete: {
-                            withAnimation(.spring(response: 0.3)) {
-                                currentIndex += 1
-                            }
+                            // Queue shrinks automatically - don't advance index
                         }
                     )
                     
@@ -674,9 +674,7 @@ struct CleanupReviewView: View {
                         photos: photos,
                         viewModel: viewModel,
                         onComplete: {
-                            withAnimation(.spring(response: 0.3)) {
-                                currentIndex += 1
-                            }
+                            // Queue shrinks automatically - don't advance index
                         }
                     )
                 }
@@ -751,19 +749,15 @@ struct CleanupReviewView: View {
         .alert("¿Eliminar después de compartir?", isPresented: $showPostShareDeletePrompt) {
             Button("Eliminar", role: .destructive) {
                 if let photoId = sharedPhotoId {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photoId, delete: true)
-                        currentIndex += 1
-                    }
+                    viewModel.markAsReviewed(photoId, delete: true)
+                    // Queue shrinks automatically - don't advance index
                 }
                 sharedPhotoId = nil
             }
             Button("Conservar", role: .cancel) {
                 if let photoId = sharedPhotoId {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photoId, delete: false)
-                        currentIndex += 1
-                    }
+                    viewModel.markAsReviewed(photoId, delete: false)
+                    // Queue shrinks automatically - don't advance index
                 }
                 sharedPhotoId = nil
             }
@@ -773,6 +767,18 @@ struct CleanupReviewView: View {
     }
     
     // MARK: - Single Photo Card (existing behavior)
+    
+    private func showChipRowAfterKeep(photoId: String) {
+        lastKeptPhotoId = photoId
+        showKeepDurationChip = true
+        
+        // Auto-hide chip after 2.5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation {
+                showKeepDurationChip = false
+            }
+        }
+    }
     
     @ViewBuilder
     private func singlePhotoCard(photo: PersistedPhoto) -> some View {
@@ -789,13 +795,14 @@ struct CleanupReviewView: View {
                     onKeep: {
                         withAnimation(.spring(response: 0.3)) {
                             viewModel.markAsReviewed(photo.id, delete: false)
-                            currentIndex += 1
+                            showChipRowAfterKeep(photoId: photo.id)
+                            // Queue shrinks automatically - don't advance index
                         }
                     },
                     onDelete: {
                         withAnimation(.spring(response: 0.3)) {
                             viewModel.markAsReviewed(photo.id, delete: true)
-                            currentIndex += 1
+                            // Queue shrinks automatically - don't advance index
                         }
                     }
                 )
@@ -806,35 +813,56 @@ struct CleanupReviewView: View {
             
             Spacer()
             
+            // Inline duration chip row - shows for 2.5s after keep
+            if showKeepDurationChip, let keptId = lastKeptPhotoId {
+                KeepDurationChipRow(
+                    onSelect: { duration in
+                        viewModel.keepPhoto(keptId, duration: duration)
+                        withAnimation {
+                            showKeepDurationChip = false
+                        }
+                    },
+                    onDismiss: {
+                        withAnimation {
+                            showKeepDurationChip = false
+                        }
+                    }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+            
             // Action buttons - fixed width, equal spacing, centered labels
             HStack(spacing: 0) {
-                // Keep button with menu for options
+                // Keep button with menu for options (long-press discoverable)
                 Menu {
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .forever)
-                            currentIndex += 1
-                        }
+                        viewModel.keepPhoto(photo.id, duration: .forever)
+                        // Queue shrinks automatically
                     } label: {
                         Label("Conservar siempre", systemImage: "checkmark.circle.fill")
                     }
                     
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .oneWeek)
-                            currentIndex += 1
-                        }
+                        viewModel.keepPhoto(photo.id, duration: .oneWeek)
+                        // Queue shrinks automatically
                     } label: {
-                        Label("Conservar, preguntar en 1 semana", systemImage: "clock")
+                        Label("Preguntar en 1 semana", systemImage: "clock")
                     }
                     
                     Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .oneMonth)
-                            currentIndex += 1
-                        }
+                        viewModel.keepPhoto(photo.id, duration: .oneMonth)
+                        // Queue shrinks automatically
                     } label: {
-                        Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
+                        Label("Preguntar en 1 mes", systemImage: "calendar")
+                    }
+                    
+                    Button {
+                        viewModel.keepPhoto(photo.id, duration: .threeMonths)
+                        // Queue shrinks automatically
+                    } label: {
+                        Label("Preguntar en 3 meses", systemImage: "calendar.badge.clock")
                     }
                 } label: {
                     ReviewActionButton(
@@ -844,10 +872,9 @@ struct CleanupReviewView: View {
                         isLoading: false
                     )
                 } primaryAction: {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.keepPhoto(photo.id, duration: .forever)
-                        currentIndex += 1
-                    }
+                    viewModel.keepPhoto(photo.id, duration: .forever)
+                    showChipRowAfterKeep(photoId: photo.id)
+                    // Queue shrinks automatically
                 }
                 .disabled(shareService.isLoading)
                 .frame(maxWidth: .infinity)
@@ -877,10 +904,8 @@ struct CleanupReviewView: View {
                 
                 // Delete button
                 Button {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photo.id, delete: true)
-                        currentIndex += 1
-                    }
+                    viewModel.markAsReviewed(photo.id, delete: true)
+                    // Queue shrinks automatically
                 } label: {
                     ReviewActionButton(
                         iconName: "trash.circle.fill",
@@ -1840,6 +1865,9 @@ struct CleanupCategoryDetailView: View {
     
     @State private var currentIndex = 0
     
+    @State private var showKeepDurationChip = false
+    @State private var lastKeptPhotoId: String?
+    
     private var swipeReviewView: some View {
         VStack {
             if currentIndex < category.photos.count {
@@ -1849,32 +1877,86 @@ struct CleanupCategoryDetailView: View {
                     photo: photo,
                     onKeep: {
                         withAnimation {
-                            viewModel.selectedPhotos.remove(photo.id)
-                            currentIndex += 1
+                            viewModel.keepPhoto(photo.id, duration: .forever)
+                            lastKeptPhotoId = photo.id
+                            showKeepDurationChip = true
+                            // Queue shrinks automatically - don't advance index
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                withAnimation {
+                                    showKeepDurationChip = false
+                                }
+                            }
                         }
                     },
                     onDelete: {
                         withAnimation {
-                            viewModel.selectedPhotos.insert(photo.id)
-                            currentIndex += 1
+                            viewModel.markAsReviewed(photo.id, delete: true)
+                            // Queue shrinks automatically
                         }
                     }
                 )
                 .padding()
                 
+                // Inline duration chip row - shows for 2.5s after keep
+                if showKeepDurationChip, let keptId = lastKeptPhotoId {
+                    KeepDurationChipRow(
+                        onSelect: { duration in
+                            viewModel.keepPhoto(keptId, duration: duration)
+                            withAnimation {
+                                showKeepDurationChip = false
+                            }
+                        },
+                        onDismiss: {
+                            withAnimation {
+                                showKeepDurationChip = false
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal)
+                }
+                
                 HStack(spacing: 40) {
-                    Button {
-                        viewModel.selectedPhotos.remove(photo.id)
-                        currentIndex += 1
+                    // Keep button with long-press menu
+                    Menu {
+                        Button {
+                            viewModel.keepPhoto(photo.id, duration: .forever)
+                        } label: {
+                            Label("Conservar siempre", systemImage: "checkmark.circle.fill")
+                        }
+                        
+                        Button {
+                            viewModel.keepPhoto(photo.id, duration: .oneWeek)
+                        } label: {
+                            Label("Preguntar en 1 semana", systemImage: "clock")
+                        }
+                        
+                        Button {
+                            viewModel.keepPhoto(photo.id, duration: .oneMonth)
+                        } label: {
+                            Label("Preguntar en 1 mes", systemImage: "calendar")
+                        }
                     } label: {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 60))
                             .foregroundStyle(.green)
+                    } primaryAction: {
+                        viewModel.keepPhoto(photo.id, duration: .forever)
+                        lastKeptPhotoId = photo.id
+                        showKeepDurationChip = true
+                        // Queue shrinks automatically
+                        
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            withAnimation {
+                                showKeepDurationChip = false
+                            }
+                        }
                     }
                     
                     Button {
-                        viewModel.selectedPhotos.insert(photo.id)
-                        currentIndex += 1
+                        viewModel.markAsReviewed(photo.id, delete: true)
+                        // Queue shrinks automatically
                     } label: {
                         Image(systemName: "trash.circle.fill")
                             .font(.system(size: 60))
@@ -1883,7 +1965,8 @@ struct CleanupCategoryDetailView: View {
                 }
                 .padding(.bottom, 40)
                 
-                Text("swipe_progress \(currentIndex + 1) \(category.photos.count)")
+                // Show position in queue based on reviewed count
+                Text("swipe_progress \(viewModel.reviewedItemCount() + 1) \(category.photos.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
@@ -1895,6 +1978,87 @@ struct CleanupCategoryDetailView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Keep Duration Chip Row
+
+struct KeepDurationChipRow: View {
+    let onSelect: (CleanupViewModel.KeepDuration) -> Void
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Text("Conservar:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Button {
+                    MomentsHaptics.selection()
+                    onSelect(.forever)
+                } label: {
+                    Text("Siempre")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.green.opacity(0.15))
+                        .foregroundStyle(.green)
+                        .cornerRadius(12)
+                }
+                
+                Button {
+                    MomentsHaptics.selection()
+                    onSelect(.oneWeek)
+                } label: {
+                    Text("1 semana")
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray5))
+                        .foregroundStyle(.primary)
+                        .cornerRadius(12)
+                }
+                
+                Button {
+                    MomentsHaptics.selection()
+                    onSelect(.oneMonth)
+                } label: {
+                    Text("1 mes")
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray5))
+                        .foregroundStyle(.primary)
+                        .cornerRadius(12)
+                }
+                
+                Button {
+                    MomentsHaptics.selection()
+                    onSelect(.threeMonths)
+                } label: {
+                    Text("3 meses")
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemGray5))
+                        .foregroundStyle(.primary)
+                        .cornerRadius(12)
+                }
+                
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(.ultraThinMaterial)
+        .cornerRadius(16)
     }
 }
 

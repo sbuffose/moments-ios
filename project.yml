@@ -81,10 +81,12 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - processing
+          - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - com.sbuffose.moments.scan
           - com.sbuffose.moments.analysis
           - "com.sbuffose.moments.continued.*"
+          - com.sbuffose.moments.dailyReview
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments

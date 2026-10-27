@@ -165,6 +165,44 @@ class CleanupViewModel: ObservableObject {
         if let keptData = UserDefaults.standard.array(forKey: keptPhotosKey) as? [String] {
             keptPhotos = Set(keptData)
         }
+        
+        // Migration: Convert legacy persisted kept photos to proper keepDecision
+        // This ensures past user decisions are not lost
+        migrateLegacyKeptPhotosIfNeeded()
+    }
+    
+    private let migrationCompletedKey = "com.moments.cleanup.migrationCompleted.v1"
+    
+    private func migrateLegacyKeptPhotosIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: migrationCompletedKey) else { return }
+        guard let context = modelContext else { return }
+        
+        // Get all photo IDs that were previously kept or reviewed (not deleted)
+        let legacyKeptIds = keptPhotos.union(reviewedPhotos.subtracting(selectedPhotos))
+        guard !legacyKeptIds.isEmpty else {
+            UserDefaults.standard.set(true, forKey: migrationCompletedKey)
+            return
+        }
+        
+        // Fetch photos and set keepDecision .forever for legacy kept photos
+        let descriptor = FetchDescriptor<PersistedPhoto>()
+        guard let photos = try? context.fetch(descriptor) else { return }
+        
+        var migratedCount = 0
+        for photo in photos {
+            if legacyKeptIds.contains(photo.id) && photo.keepDecision == .none {
+                photo.keepDecision = .forever
+                photo.keepDecisionDate = Date()
+                migratedCount += 1
+            }
+        }
+        
+        if migratedCount > 0 {
+            try? context.save()
+            print("[CleanupViewModel] Migrated \(migratedCount) legacy kept photos to keepDecision .forever")
+        }
+        
+        UserDefaults.standard.set(true, forKey: migrationCompletedKey)
     }
     
     func persistProgress() {
@@ -192,19 +230,25 @@ class CleanupViewModel: ObservableObject {
         if delete {
             selectedPhotos.insert(photoId)
             keptPhotos.remove(photoId)
+            
+            // Ensure keep decision is cleared when marking for deletion
+            if let photo = allPhotos.first(where: { $0.id == photoId }) {
+                photo.keepDecision = .none
+                photo.keepUntil = nil
+                photo.keepDecisionDate = nil
+                try? modelContext?.save()
+                
+                // Log decision for preference learning
+                Task {
+                    await preferenceLearningService.logDecision(for: photo, decision: .delete)
+                }
+            }
         } else {
-            selectedPhotos.remove(photoId)
-            keptPhotos.insert(photoId)
+            // CRITICAL FIX: For keep actions, use keepPhoto to persist the decision
+            // This was the bug: swipe-right called markAsReviewed but never persisted keepDecision
+            keepPhoto(photoId, duration: .forever)
         }
         persistProgress()
-        
-        // Log decision for preference learning
-        if let photo = allPhotos.first(where: { $0.id == photoId }) {
-            Task {
-                let decisionType: ReviewDecisionType = delete ? .delete : .skip
-                await preferenceLearningService.logDecision(for: photo, decision: decisionType)
-            }
-        }
     }
     
     func hasReviewProgress(for photos: [PersistedPhoto]) -> Bool {
@@ -373,19 +417,21 @@ class CleanupViewModel: ObservableObject {
         case forever
         case oneWeek
         case oneMonth
+        case threeMonths
         
         var keepUntilDate: Date? {
             switch self {
             case .forever: return nil
             case .oneWeek: return Calendar.current.date(byAdding: .day, value: 7, to: Date())
             case .oneMonth: return Calendar.current.date(byAdding: .month, value: 1, to: Date())
+            case .threeMonths: return Calendar.current.date(byAdding: .month, value: 3, to: Date())
             }
         }
         
         var decision: KeepDecision {
             switch self {
             case .forever: return .forever
-            case .oneWeek, .oneMonth: return .snoozed
+            case .oneWeek, .oneMonth, .threeMonths: return .snoozed
             }
         }
     }

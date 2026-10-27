@@ -86,20 +86,62 @@ actor MetadataExtractionService {
     // MARK: - Extraction Methods
     
     func extractMetadata(for asset: PHAsset) async -> PhotoMetadata? {
+        // First try to get metadata from PHAsset properties (no network needed)
+        let basicMetadata = extractBasicMetadata(from: asset)
+        
+        // Only request file metadata if available locally (no iCloud download)
         return await withCheckedContinuation { continuation in
             let options = PHContentEditingInputRequestOptions()
-            options.isNetworkAccessAllowed = true
+            options.isNetworkAccessAllowed = false // CRITICAL: Never download iCloud originals for metadata
             
             asset.requestContentEditingInput(with: options) { input, info in
-                guard let input = input, let url = input.fullSizeImageURL else {
-                    continuation.resume(returning: nil)
+                // Check if asset is only in iCloud
+                let isInCloud = (info[PHContentEditingInputResultIsInCloudKey] as? Bool) ?? false
+                
+                if isInCloud {
+                    // Use basic metadata from PHAsset properties only
+                    continuation.resume(returning: basicMetadata)
                     return
                 }
                 
-                let metadata = self.extractMetadataFromURL(url)
-                continuation.resume(returning: metadata)
+                guard let input = input, let url = input.fullSizeImageURL else {
+                    continuation.resume(returning: basicMetadata)
+                    return
+                }
+                
+                // Merge file metadata with basic metadata
+                if let fileMetadata = self.extractMetadataFromURL(url) {
+                    continuation.resume(returning: fileMetadata)
+                } else {
+                    continuation.resume(returning: basicMetadata)
+                }
             }
         }
+    }
+    
+    /// Extract basic metadata from PHAsset properties without file access
+    private func extractBasicMetadata(from asset: PHAsset) -> PhotoMetadata {
+        return PhotoMetadata(
+            hasExifData: false,
+            cameraMake: nil,
+            cameraModel: nil,
+            lensMake: nil,
+            lensModel: nil,
+            software: nil,
+            originalFilename: nil,
+            dateTimeOriginal: asset.creationDate,
+            gpsLatitude: asset.location?.coordinate.latitude,
+            gpsLongitude: asset.location?.coordinate.longitude,
+            gpsAltitude: asset.location?.altitude,
+            orientation: nil,
+            colorSpace: nil,
+            fNumber: nil,
+            exposureTime: nil,
+            iso: nil,
+            focalLength: nil,
+            flashFired: nil,
+            whiteBalance: nil
+        )
     }
     
     private nonisolated func extractMetadataFromURL(_ url: URL) -> PhotoMetadata? {

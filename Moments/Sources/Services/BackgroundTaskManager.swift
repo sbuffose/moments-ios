@@ -36,6 +36,15 @@ final class BackgroundTaskManager: ObservableObject {
     private weak var photoLibraryService: PhotoLibraryService?
     private weak var analysisService: PhotoAnalysisService?
     
+    // In-memory checkpoint sets (O(1) lookups instead of O(n) UserDefaults reads)
+    private var indexedIdsCache: Set<String>?
+    private var analyzedIdsCache: Set<String>?
+    private var pendingIndexedBatch: Set<String> = []
+    private var pendingAnalyzedBatch: Set<String> = []
+    private let batchPersistThreshold = 50
+    private var lastPersistTime: Date = .distantPast
+    private let minPersistInterval: TimeInterval = 5.0
+    
     private init() {}
     
     // MARK: - Setup
@@ -208,37 +217,85 @@ final class BackgroundTaskManager: ObservableObject {
     }
     
     func markIndexed(assetId: String) {
-        var indexedIds = Set(UserDefaults.standard.stringArray(forKey: checkpointIndexedIdsKey) ?? [])
-        indexedIds.insert(assetId)
-        UserDefaults.standard.set(Array(indexedIds), forKey: checkpointIndexedIdsKey)
-        UserDefaults.standard.set(assetId, forKey: checkpointLastIndexedIdKey)
+        loadCachesIfNeeded()
+        indexedIdsCache?.insert(assetId)
+        pendingIndexedBatch.insert(assetId)
+        
+        // Batch persist: only write to UserDefaults when batch is full or interval elapsed
+        if shouldPersistBatch() {
+            persistBatchedCheckpoints()
+        }
     }
     
     func markAnalyzed(photoId: String) {
-        var analyzedIds = Set(UserDefaults.standard.stringArray(forKey: checkpointAnalyzedIdsKey) ?? [])
-        analyzedIds.insert(photoId)
-        UserDefaults.standard.set(Array(analyzedIds), forKey: checkpointAnalyzedIdsKey)
-        UserDefaults.standard.set(photoId, forKey: checkpointLastAnalyzedIdKey)
+        loadCachesIfNeeded()
+        analyzedIdsCache?.insert(photoId)
+        pendingAnalyzedBatch.insert(photoId)
+        
+        // Batch persist: only write to UserDefaults when batch is full or interval elapsed
+        if shouldPersistBatch() {
+            persistBatchedCheckpoints()
+        }
     }
     
     func isAlreadyIndexed(_ assetId: String) -> Bool {
-        let indexedIds = Set(UserDefaults.standard.stringArray(forKey: checkpointIndexedIdsKey) ?? [])
-        return indexedIds.contains(assetId)
+        loadCachesIfNeeded()
+        return indexedIdsCache?.contains(assetId) ?? false
     }
     
     func isAlreadyAnalyzed(_ photoId: String) -> Bool {
-        let analyzedIds = Set(UserDefaults.standard.stringArray(forKey: checkpointAnalyzedIdsKey) ?? [])
-        return analyzedIds.contains(photoId)
+        loadCachesIfNeeded()
+        return analyzedIdsCache?.contains(photoId) ?? false
     }
     
     func getCheckpointProgress() -> (indexed: Int, analyzed: Int, total: Int) {
-        let indexedIds = UserDefaults.standard.stringArray(forKey: checkpointIndexedIdsKey) ?? []
-        let analyzedIds = UserDefaults.standard.stringArray(forKey: checkpointAnalyzedIdsKey) ?? []
+        loadCachesIfNeeded()
         let total = UserDefaults.standard.integer(forKey: checkpointTotalPhotosKey)
-        return (indexedIds.count, analyzedIds.count, total)
+        return (indexedIdsCache?.count ?? 0, analyzedIdsCache?.count ?? 0, total)
+    }
+    
+    private func loadCachesIfNeeded() {
+        if indexedIdsCache == nil {
+            indexedIdsCache = Set(UserDefaults.standard.stringArray(forKey: checkpointIndexedIdsKey) ?? [])
+        }
+        if analyzedIdsCache == nil {
+            analyzedIdsCache = Set(UserDefaults.standard.stringArray(forKey: checkpointAnalyzedIdsKey) ?? [])
+        }
+    }
+    
+    private func shouldPersistBatch() -> Bool {
+        let batchSize = pendingIndexedBatch.count + pendingAnalyzedBatch.count
+        let timeSinceLastPersist = Date().timeIntervalSince(lastPersistTime)
+        return batchSize >= batchPersistThreshold || timeSinceLastPersist >= minPersistInterval
+    }
+    
+    private func persistBatchedCheckpoints() {
+        guard !pendingIndexedBatch.isEmpty || !pendingAnalyzedBatch.isEmpty else { return }
+        
+        if let indexedIds = indexedIdsCache {
+            UserDefaults.standard.set(Array(indexedIds), forKey: checkpointIndexedIdsKey)
+            if let lastIndexed = pendingIndexedBatch.first {
+                UserDefaults.standard.set(lastIndexed, forKey: checkpointLastIndexedIdKey)
+            }
+        }
+        
+        if let analyzedIds = analyzedIdsCache {
+            UserDefaults.standard.set(Array(analyzedIds), forKey: checkpointAnalyzedIdsKey)
+            if let lastAnalyzed = pendingAnalyzedBatch.first {
+                UserDefaults.standard.set(lastAnalyzed, forKey: checkpointLastAnalyzedIdKey)
+            }
+        }
+        
+        pendingIndexedBatch.removeAll()
+        pendingAnalyzedBatch.removeAll()
+        lastPersistTime = Date()
+        
+        print("[BackgroundTaskManager] Batch checkpoint persisted")
     }
     
     private func saveCheckpoint() {
+        // Force persist any pending batches
+        persistBatchedCheckpoints()
         UserDefaults.standard.synchronize()
         print("[BackgroundTaskManager] Checkpoint saved")
     }
@@ -249,6 +306,13 @@ final class BackgroundTaskManager: ObservableObject {
     }
     
     func clearCheckpoint() {
+        // Clear in-memory caches
+        indexedIdsCache = nil
+        analyzedIdsCache = nil
+        pendingIndexedBatch.removeAll()
+        pendingAnalyzedBatch.removeAll()
+        
+        // Clear persisted data
         UserDefaults.standard.removeObject(forKey: checkpointLastIndexedIdKey)
         UserDefaults.standard.removeObject(forKey: checkpointLastAnalyzedIdKey)
         UserDefaults.standard.removeObject(forKey: checkpointIndexedIdsKey)
@@ -340,18 +404,26 @@ final class BackgroundTaskManager: ObservableObject {
 extension BackgroundTaskManager {
     
     // Continued processing tasks use a wildcard identifier pattern
-    // Must be registered in Info.plist as: com.sbuffose.moments.continued.*
+    // Must register with the EXACT identifier from Info.plist including the asterisk
+    private static let continuedTaskIdentifierWildcard = "com.sbuffose.moments.continued.*"
     private static let continuedTaskIdentifierPrefix = "com.sbuffose.moments.continued."
     
     // Track the active continued processing task
     private static var activeContinuedTask: BGContinuedProcessingTask?
     private static var continuedTaskWorkItem: Task<Void, Never>?
     
+    // Track whether registration succeeded - Swift do/catch cannot catch NSException,
+    // so we must guard submissions against this flag
+    private static var isContinuedProcessingRegistered = false
+    
     /// Register the continued processing task handler. Call once at app launch.
-    func registerContinuedProcessingTaskHandler() {
-        // Register with wildcard pattern to handle any continued.* identifier
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: Self.continuedTaskIdentifierPrefix,
+    /// Returns true if registration succeeded, false otherwise.
+    @discardableResult
+    func registerContinuedProcessingTaskHandler() -> Bool {
+        // Register with the EXACT wildcard identifier from BGTaskSchedulerPermittedIdentifiers
+        // Must match "com.sbuffose.moments.continued.*" exactly
+        let registered = BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.continuedTaskIdentifierWildcard,
             using: nil
         ) { [weak self] task in
             guard let continuedTask = task as? BGContinuedProcessingTask else {
@@ -362,11 +434,24 @@ extension BackgroundTaskManager {
                 self?.handleContinuedProcessingTask(continuedTask)
             }
         }
+        Self.isContinuedProcessingRegistered = registered
+        if !registered {
+            print("[BackgroundTaskManager] WARNING: Failed to register continued processing task handler")
+        }
+        return registered
     }
     
     /// Submit a continued processing task. Only call while a user-initiated scan is actively running.
     /// - Parameter remainingPhotos: Number of photos remaining to process (must be > 0)
     func submitContinuedProcessingTask(remainingPhotos: Int) {
+        // Guard against registration not having succeeded - NSException from submit
+        // cannot be caught by Swift do/catch, so we must check this flag
+        guard Self.isContinuedProcessingRegistered else {
+            print("[BackgroundTaskManager] Skipping continued task - handler not registered")
+            scheduleScanTaskIfNeeded()
+            return
+        }
+        
         // Don't submit if no work remains
         guard remainingPhotos > 0 else {
             print("[BackgroundTaskManager] Skipping continued task - no photos remaining")
@@ -379,7 +464,8 @@ extension BackgroundTaskManager {
             return
         }
         
-        // Generate unique identifier for this task
+        // Generate unique identifier for this task: prefix + UUID
+        // The wildcard registration "com.sbuffose.moments.continued.*" matches this
         let taskId = Self.continuedTaskIdentifierPrefix + UUID().uuidString
         
         let request = BGContinuedProcessingTaskRequest(
@@ -418,15 +504,20 @@ extension BackgroundTaskManager {
         task.expirationHandler = { [weak self] in
             Task { @MainActor in
                 print("[BackgroundTaskManager] Continued task expiring, checkpointing...")
-                self?.saveCheckpoint()
+                
+                // Cancel ongoing work first
                 Self.continuedTaskWorkItem?.cancel()
                 Self.continuedTaskWorkItem = nil
+                
+                // Save checkpoint before completing
+                self?.saveCheckpoint()
+                
+                // Clear state
                 Self.activeContinuedTask = nil
                 self?.isBackgroundScanActive = false
                 
-                // Complete with success:false for expected expiration
-                // This doesn't show an error banner - it's normal behavior
-                task.setTaskCompleted(success: true)
+                // Complete with success:false - task was interrupted
+                task.setTaskCompleted(success: false)
                 
                 // Schedule BGProcessingTask to continue later
                 self?.scheduleScanTaskIfNeeded()
