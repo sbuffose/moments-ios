@@ -563,7 +563,7 @@ struct OnThisDayView: View {
     }
 }
 
-// MARK: - Cleanup Review View (All categories combined)
+// MARK: - Cleanup Review View (All categories combined - Now with Groups)
 
 struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
@@ -580,8 +580,8 @@ struct CleanupReviewView: View {
         viewModel.categories.flatMap { $0.photos }
     }
     
-    private var unreviewedPhotos: [PersistedPhoto] {
-        viewModel.unreviewedPhotos(from: allPhotos)
+    private var unreviewedItems: [ReviewItem] {
+        viewModel.unreviewedItems()
     }
     
     private var photosToDelete: [PersistedPhoto] {
@@ -592,121 +592,60 @@ struct CleanupReviewView: View {
         viewModel.deletionSizeForReview(from: allPhotos)
     }
     
+    private var totalItems: Int {
+        viewModel.reviewQueue.count
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
-            if currentIndex < unreviewedPhotos.count {
-                let currentPhoto = unreviewedPhotos[currentIndex]
-                let totalReviewed = viewModel.reviewedCount(from: allPhotos)
-                let totalPhotos = allPhotos.count
+            if currentIndex < unreviewedItems.count {
+                let currentItem = unreviewedItems[currentIndex]
+                let totalReviewed = viewModel.reviewedItemCount()
                 
                 // Progress indicator
-                ProgressView(value: Double(totalReviewed + currentIndex), total: Double(totalPhotos))
+                ProgressView(value: Double(totalReviewed + currentIndex), total: Double(totalItems))
                     .padding(.horizontal)
                     .padding(.top)
                 
-                Text("\(totalReviewed + currentIndex + 1) de \(totalPhotos)")
+                Text("\(totalReviewed + currentIndex + 1) de \(totalItems)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
                 
-                // Current photo category
-                if let category = categoryFor(photo: currentPhoto) {
-                    Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
-                        .font(.caption)
-                        .foregroundStyle(.tint)
-                        .padding(.top, 4)
-                }
-                
                 Spacer()
                 
-                // Swipeable card
-                SwipeablePhotoCard(
-                    photo: currentPhoto,
-                    onKeep: {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: false)
-                            currentIndex += 1
-                        }
-                    },
-                    onDelete: {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: true)
-                            currentIndex += 1
-                        }
-                    }
-                )
-                .padding()
-                
-                // Action buttons
-                HStack(spacing: 40) {
-                    // Keep button
-                    Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: false)
-                            currentIndex += 1
-                        }
-                    } label: {
-                        VStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundStyle(.green)
-                            Text("Conservar")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .disabled(shareService.isLoading)
+                // Show appropriate card based on item type
+                switch currentItem {
+                case .single(let photo):
+                    singlePhotoCard(photo: photo)
                     
-                    // Share button
-                    Button {
-                        Task {
-                            sharedPhotoId = currentPhoto.id
-                            if let item = await shareService.loadShareItem(for: currentPhoto) {
-                                shareItem = item
-                            } else {
-                                showShareError = true
+                case .exactDuplicateGroup(let group, let photos):
+                    ExactDuplicateGroupCard(
+                        group: group,
+                        photos: photos,
+                        viewModel: viewModel,
+                        onComplete: {
+                            withAnimation(.spring(response: 0.3)) {
+                                currentIndex += 1
                             }
                         }
-                    } label: {
-                        VStack {
-                            if shareService.isLoading && shareService.loadingPhotoId == currentPhoto.id {
-                                ProgressView()
-                                    .frame(width: 56, height: 56)
-                            } else {
-                                Image(systemName: "square.and.arrow.up.circle.fill")
-                                    .font(.system(size: 56))
-                                    .foregroundStyle(.blue)
-                            }
-                            Text("Compartir")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .disabled(shareService.isLoading)
-                    .accessibilityIdentifier("review.shareButton")
+                    )
                     
-                    // Delete button
-                    Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(currentPhoto.id, delete: true)
-                            currentIndex += 1
+                case .similarGroup(let group, let photos):
+                    SimilarGroupCard(
+                        group: group,
+                        photos: photos,
+                        viewModel: viewModel,
+                        onComplete: {
+                            withAnimation(.spring(response: 0.3)) {
+                                currentIndex += 1
+                            }
                         }
-                    } label: {
-                        VStack {
-                            Image(systemName: "trash.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundStyle(.red)
-                            Text("Eliminar")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .disabled(shareService.isLoading)
+                    )
                 }
-                .padding(.bottom, 40)
                 
             } else {
-                // Review complete (all photos reviewed)
+                // Review complete (all items reviewed)
                 reviewCompleteView
             }
         }
@@ -796,6 +735,137 @@ struct CleanupReviewView: View {
         }
     }
     
+    // MARK: - Single Photo Card (existing behavior)
+    
+    @ViewBuilder
+    private func singlePhotoCard(photo: PersistedPhoto) -> some View {
+        VStack(spacing: 0) {
+            // Current photo category
+            if let category = categoryFor(photo: photo) {
+                Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
+                    .font(.caption)
+                    .foregroundStyle(.tint)
+                    .padding(.top, 4)
+            }
+            
+            Spacer()
+            
+            // Swipeable card
+            SwipeablePhotoCard(
+                photo: photo,
+                onKeep: {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photo.id, delete: false)
+                        currentIndex += 1
+                    }
+                },
+                onDelete: {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photo.id, delete: true)
+                        currentIndex += 1
+                    }
+                }
+            )
+            .padding()
+            
+            // Action buttons
+            HStack(spacing: 40) {
+                // Keep button with menu for options
+                Menu {
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.keepPhoto(photo.id, duration: .forever)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        Label("Conservar siempre", systemImage: "checkmark.circle.fill")
+                    }
+                    
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.keepPhoto(photo.id, duration: .oneWeek)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        Label("Conservar, preguntar en 1 semana", systemImage: "clock")
+                    }
+                    
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.keepPhoto(photo.id, duration: .oneMonth)
+                            currentIndex += 1
+                        }
+                    } label: {
+                        Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
+                    }
+                } label: {
+                    VStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundStyle(.green)
+                        Text("Conservar")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } primaryAction: {
+                    // Default tap = forever
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.keepPhoto(photo.id, duration: .forever)
+                        currentIndex += 1
+                    }
+                }
+                .disabled(shareService.isLoading)
+                
+                // Share button
+                Button {
+                    Task {
+                        sharedPhotoId = photo.id
+                        if let item = await shareService.loadShareItem(for: photo) {
+                            shareItem = item
+                        } else {
+                            showShareError = true
+                        }
+                    }
+                } label: {
+                    VStack {
+                        if shareService.isLoading && shareService.loadingPhotoId == photo.id {
+                            ProgressView()
+                                .frame(width: 56, height: 56)
+                        } else {
+                            Image(systemName: "square.and.arrow.up.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(.blue)
+                        }
+                        Text("Compartir")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(shareService.isLoading)
+                .accessibilityIdentifier("review.shareButton")
+                
+                // Delete button
+                Button {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photo.id, delete: true)
+                        currentIndex += 1
+                    }
+                } label: {
+                    VStack {
+                        Image(systemName: "trash.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundStyle(.red)
+                        Text("Eliminar")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(shareService.isLoading)
+            }
+            .padding(.bottom, 40)
+        }
+    }
+    
     private func categoryFor(photo: PersistedPhoto) -> CleanupCategoryType? {
         return photo.cleanupCategory != .none ? photo.cleanupCategory : nil
     }
@@ -868,6 +938,380 @@ struct CleanupReviewView: View {
             .padding(.horizontal)
             .padding(.bottom, 32)
         }
+    }
+}
+
+// MARK: - Exact Duplicate Group Card
+
+struct ExactDuplicateGroupCard: View {
+    let group: SimilarGroup
+    let photos: [PersistedPhoto]
+    @ObservedObject var viewModel: CleanupViewModel
+    let onComplete: () -> Void
+    
+    private var bestPhoto: PersistedPhoto? {
+        photos.first { $0.id == group.bestPhotoId } ?? photos.first
+    }
+    
+    private var duplicateCount: Int {
+        photos.count - 1
+    }
+    
+    private var deletionSize: Int64 {
+        photos.filter { $0.id != bestPhoto?.id }.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Header
+            Label("Fotos idénticas", systemImage: "doc.on.doc.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            
+            Spacer()
+            
+            // Main preview of best photo
+            if let best = bestPhoto {
+                AsyncPhotoThumbnail(localIdentifier: best.localIdentifier, targetSize: CGSize(width: 400, height: 400))
+                    .aspectRatio(contentMode: .fit)
+                    .cornerRadius(16)
+                    .shadow(radius: 8)
+                    .padding(.horizontal)
+                    .overlay(alignment: .topLeading) {
+                        Label("Mejor copia", systemImage: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange)
+                            .cornerRadius(8)
+                            .padding(24)
+                    }
+            }
+            
+            // Duplicate thumbnails strip
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(photos, id: \.id) { photo in
+                        AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                            .frame(width: 60, height: 60)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(alignment: .topTrailing) {
+                                if photo.id == bestPhoto?.id {
+                                    Image(systemName: "star.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.yellow)
+                                        .padding(4)
+                                }
+                            }
+                            .overlay {
+                                if photo.id != bestPhoto?.id {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.red.opacity(0.3))
+                                }
+                            }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            
+            // Info text
+            VStack(spacing: 4) {
+                Text("\(MomentsPluralization.photos(photos.count)) idénticas")
+                    .font(.headline)
+                
+                Text("Conservar la mejor y eliminar \(MomentsPluralization.deleteOthers(duplicateCount))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                Text(formattedSize(deletionSize))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            
+            Spacer()
+            
+            // Action buttons
+            VStack(spacing: 12) {
+                // Primary action: Keep best, delete others
+                Button {
+                    // Keep the best photo forever, mark others for deletion
+                    if let bestId = bestPhoto?.id {
+                        viewModel.keepPhotos([bestId], duration: .forever, groupId: group.id)
+                    }
+                    let deleteIds = photos.filter { $0.id != bestPhoto?.id }.map { $0.id }
+                    for photoId in deleteIds {
+                        viewModel.markAsReviewed(photoId, delete: true)
+                    }
+                    onComplete()
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Conservar una copia")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .cornerRadius(14)
+                }
+                .accessibilityIdentifier("group.keepBest")
+                
+                // Secondary action: Keep all (with menu for duration)
+                Menu {
+                    Button {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                        onComplete()
+                    } label: {
+                        Label("Conservar todas siempre", systemImage: "checkmark.circle.fill")
+                    }
+                    
+                    Button {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .oneWeek, groupId: group.id)
+                        onComplete()
+                    } label: {
+                        Label("Conservar, preguntar en 1 semana", systemImage: "clock")
+                    }
+                    
+                    Button {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .oneMonth, groupId: group.id)
+                        onComplete()
+                    } label: {
+                        Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
+                    }
+                } label: {
+                    Text("Conservar todas")
+                        .font(.subheadline)
+                        .foregroundStyle(.tint)
+                } primaryAction: {
+                    viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                    onComplete()
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 32)
+        }
+        .accessibilityIdentifier("review.exactDuplicateGroup")
+    }
+    
+    private func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - Similar Group Card (for near-duplicates, bursts)
+
+struct SimilarGroupCard: View {
+    let group: SimilarGroup
+    let photos: [PersistedPhoto]
+    @ObservedObject var viewModel: CleanupViewModel
+    let onComplete: () -> Void
+    
+    @State private var selectedToKeep: Set<String> = []
+    @State private var previewPhoto: PersistedPhoto?
+    
+    private var bestPhoto: PersistedPhoto? {
+        photos.first { $0.id == group.bestPhotoId } ?? photos.first
+    }
+    
+    private var photosToDelete: [PersistedPhoto] {
+        photos.filter { !selectedToKeep.contains($0.id) }
+    }
+    
+    private var deletionSize: Int64 {
+        photosToDelete.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Header
+            Label("Fotos similares", systemImage: "square.on.square")
+                .font(.caption)
+                .foregroundStyle(.purple)
+            
+            Spacer()
+            
+            // Preview of selected/hovered photo or best
+            let displayPhoto = previewPhoto ?? photos.first { selectedToKeep.contains($0.id) } ?? bestPhoto
+            if let photo = displayPhoto {
+                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 400, height: 400))
+                    .aspectRatio(contentMode: .fit)
+                    .cornerRadius(16)
+                    .shadow(radius: 8)
+                    .padding(.horizontal)
+                    .overlay(alignment: .topLeading) {
+                        if photo.id == bestPhoto?.id {
+                            Label("Mejor foto", systemImage: "star.fill")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange)
+                                .cornerRadius(8)
+                                .padding(24)
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if selectedToKeep.contains(photo.id) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title)
+                                .foregroundStyle(.green)
+                                .padding(24)
+                        }
+                    }
+            }
+            
+            // Selectable thumbnails strip
+            Text("Seleccioná las que querés conservar")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(photos, id: \.id) { photo in
+                        Button {
+                            if selectedToKeep.contains(photo.id) {
+                                selectedToKeep.remove(photo.id)
+                            } else {
+                                selectedToKeep.insert(photo.id)
+                            }
+                            previewPhoto = photo
+                        } label: {
+                            AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                                .frame(width: 70, height: 70)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(alignment: .topTrailing) {
+                                    Image(systemName: selectedToKeep.contains(photo.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.caption)
+                                        .foregroundStyle(selectedToKeep.contains(photo.id) ? .green : .white.opacity(0.8))
+                                        .shadow(radius: 2)
+                                        .padding(4)
+                                }
+                                .overlay(alignment: .topLeading) {
+                                    if photo.id == bestPhoto?.id {
+                                        Image(systemName: "star.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.yellow)
+                                            .shadow(radius: 2)
+                                            .padding(4)
+                                    }
+                                }
+                                .overlay {
+                                    if selectedToKeep.contains(photo.id) {
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.green, lineWidth: 3)
+                                    }
+                                }
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+            
+            // Info text
+            VStack(spacing: 4) {
+                Text("\(MomentsPluralization.photos(photos.count)) similares")
+                    .font(.headline)
+                
+                if photosToDelete.count > 0 {
+                    Text("Eliminar \(MomentsPluralization.deleteOthers(photosToDelete.count)) (\(formattedSize(deletionSize)))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Seleccioná al menos una para conservar")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            // Action buttons
+            VStack(spacing: 12) {
+                // Primary action: Keep selected, delete unselected
+                Button {
+                    // Keep selected photos forever
+                    viewModel.keepPhotos(Array(selectedToKeep), duration: .forever, groupId: group.id)
+                    // Mark unselected for deletion
+                    let deleteIds = photos.filter { !selectedToKeep.contains($0.id) }.map { $0.id }
+                    for photoId in deleteIds {
+                        viewModel.markAsReviewed(photoId, delete: true)
+                    }
+                    onComplete()
+                } label: {
+                    HStack {
+                        if photosToDelete.count > 0 {
+                            Image(systemName: "trash")
+                            Text(MomentsPluralization.deleteOthers(photosToDelete.count))
+                        } else {
+                            Image(systemName: "checkmark")
+                            Text("Conservar todas")
+                        }
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(photosToDelete.count > 0 ? Color.red : Color.green)
+                    .cornerRadius(14)
+                }
+                .disabled(selectedToKeep.isEmpty)
+                .accessibilityIdentifier("group.confirmSelection")
+                
+                // Secondary action: Keep all (with menu for duration)
+                if photosToDelete.count > 0 {
+                    Menu {
+                        Button {
+                            viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                            onComplete()
+                        } label: {
+                            Label("Conservar todas siempre", systemImage: "checkmark.circle.fill")
+                        }
+                        
+                        Button {
+                            viewModel.keepPhotos(photos.map { $0.id }, duration: .oneWeek, groupId: group.id)
+                            onComplete()
+                        } label: {
+                            Label("Conservar, preguntar en 1 semana", systemImage: "clock")
+                        }
+                        
+                        Button {
+                            viewModel.keepPhotos(photos.map { $0.id }, duration: .oneMonth, groupId: group.id)
+                            onComplete()
+                        } label: {
+                            Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
+                        }
+                    } label: {
+                        Text("Conservar todas")
+                            .font(.subheadline)
+                            .foregroundStyle(.tint)
+                    } primaryAction: {
+                        viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
+                        onComplete()
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 32)
+        }
+        .accessibilityIdentifier("review.similarGroup")
+        .onAppear {
+            // Pre-select best photo
+            if let best = bestPhoto {
+                selectedToKeep.insert(best.id)
+            }
+        }
+    }
+    
+    private func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 }
 

@@ -543,3 +543,33 @@
 "person_count_singular" = "1 persona";
 "person_count_plural %lld" = "%lld personas";
 "person_count_zero" = "0 personas";
+
+/* Keep Decisions */
+"keep_decision_forever" = "Conservar siempre";
+"keep_decision_snoozed" = "Conservar temporalmente";
+"keep_always" = "Conservar siempre";
+"keep_ask_week" = "Conservar, preguntar en 1 semana";
+"keep_ask_month" = "Conservar, preguntar en 1 mes";
+"kept_photos_title" = "Fotos conservadas";
+"kept_photos_empty" = "No hay fotos conservadas";
+"kept_photos_empty_description" = "Las fotos que elijas conservar aparecerán aquí";
+"kept_photos_count %lld" = "%lld fotos conservadas";
+"kept_photos_footer" = "Estas fotos no aparecerán en las sugerencias de limpieza";
+"kept_photo_forever" = "Conservar siempre";
+"kept_photo_snoozed" = "Conservar temporalmente";
+"kept_photo_since" = "Conservada %@";
+"kept_photo_until" = "Vuelve a aparecer %@";
+"kept_undo_title" = "¿Volver a preguntar?";
+"kept_undo_message" = "La foto volverá a aparecer en las sugerencias de limpieza";
+"kept_undo_confirm" = "Deshacer decisión";
+
+/* Grouped Review */
+"group_identical_photos" = "Fotos idénticas";
+"group_similar_photos" = "Fotos similares";
+"group_keep_one_copy" = "Conservar una copia";
+"group_best_copy" = "Mejor copia";
+"group_best_photo" = "Mejor foto";
+"group_keep_all" = "Conservar todas";
+"group_keep_all_forever" = "Conservar todas siempre";
+"group_select_to_keep" = "Seleccioná las que querés conservar";
+"group_delete_others %lld" = "Borrar las otras %lld";

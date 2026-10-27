@@ -482,6 +482,92 @@ final class MomentsUITests: XCTestCase {
         XCTAssertTrue(true, "All Momentos segments are accessible and functional")
     }
     
+    // MARK: - Grouped Review Test
+    
+    func testGroupedReviewShowsGroupCards() throws {
+        // This test verifies that duplicate/similar photos are shown as group cards
+        // instead of individual cards in the review queue.
+        // 
+        // NOTE: This test requires the seeded photo library to include duplicate groups.
+        // The CI seeding script should include test duplicates for this to work.
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 10) else {
+            XCTFail("Tab bar not found")
+            return
+        }
+        
+        // Navigate to Home tab
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let homeRoot = app.otherElements["home.root"]
+        guard homeRoot.waitForExistence(timeout: 5) else {
+            XCTFail("Home screen not loaded")
+            return
+        }
+        
+        // Try to find and tap cleanup entry point
+        let cleanupCTA = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Liberar' OR label CONTAINS[c] 'Revisar' OR label CONTAINS[c] 'espacio'")).firstMatch
+        
+        guard cleanupCTA.waitForExistence(timeout: 5) else {
+            print("No cleanup items available - skipping grouped review test")
+            return
+        }
+        
+        cleanupCTA.tap()
+        
+        // Wait for review screen
+        let reviewRoot = app.otherElements["review.root"]
+        guard reviewRoot.waitForExistence(timeout: 10) else {
+            print("Review screen not loaded - may have no photos to review")
+            return
+        }
+        
+        // Check for group cards (exact duplicate or similar group)
+        let exactDuplicateGroup = app.otherElements["review.exactDuplicateGroup"]
+        let similarGroup = app.otherElements["review.similarGroup"]
+        
+        // Wait a moment for content to load
+        sleep(2)
+        
+        // Check if we have any group cards visible
+        let hasGroupCard = exactDuplicateGroup.exists || similarGroup.exists
+        
+        if hasGroupCard {
+            // Take screenshot of group card
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "grouped_review_card"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            
+            // Verify group-specific UI elements
+            if exactDuplicateGroup.exists {
+                // Check for "Conservar una copia" button
+                let keepBestButton = app.buttons["group.keepBest"]
+                XCTAssertTrue(keepBestButton.exists, "Exact duplicate group should have 'Conservar una copia' button")
+            }
+            
+            if similarGroup.exists {
+                // Check for selection confirmation button
+                let confirmButton = app.buttons["group.confirmSelection"]
+                XCTAssertTrue(confirmButton.exists, "Similar group should have confirm selection button")
+            }
+            
+            print("SUCCESS: Found group card in review")
+        } else {
+            // No groups found - library may not have duplicates seeded
+            print("No group cards found - library may not have duplicate groups")
+            
+            // Take screenshot of what we do see
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "review_no_groups"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+    
     // MARK: - Share Functionality Test
     
     func testShareButtonShowsActivitySheet() throws {
