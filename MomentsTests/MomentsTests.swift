@@ -2142,6 +2142,29 @@ final class MomentsTests: XCTestCase {
     
     // MARK: - Blur Detection Variance Tests (Issue 2 Fix)
     
+    func testSyntheticBlurIsFlaggedAndSharpNightIsNot() throws {
+        let blurSharpness = BlurDetection.sharpness(
+            fromTileVariances: BlurDetection.syntheticBlurTiles(),
+            exposure: 0.45
+        )
+        XCTAssertTrue(
+            BlurDetection.isBlurry(sharpness: blurSharpness, aesthetics: 0.15, isUtility: true, hasFaces: false),
+            "Synthetic blur must be flagged (sharpness \(blurSharpness))"
+        )
+        
+        let nightSharpness = BlurDetection.sharpness(
+            fromTileVariances: BlurDetection.syntheticSharpNightTiles(),
+            exposure: 0.10
+        )
+        XCTAssertFalse(
+            BlurDetection.isBlurry(sharpness: nightSharpness, aesthetics: 0.55, isUtility: false, hasFaces: false),
+            "A sharp night photo must not be flagged (sharpness \(nightSharpness))"
+        )
+        
+        let signedBias = BlurDetection.variance([-0.4, -0.2, 0.1, 0.3].map { $0 }) 
+        XCTAssertGreaterThan(signedBias, 0, "True variance is not the signed mean + 0.5")
+    }
+    
     func testBlurDetectionVarianceCalculation() throws {
         // Test that variance calculation produces meaningful differences
         // between blurry (low variance) and sharp (high variance) images
