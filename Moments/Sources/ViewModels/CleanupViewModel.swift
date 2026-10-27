@@ -6,6 +6,9 @@ import SwiftData
 import Photos
 import Combine
 
+// Preference learning integration
+private let preferenceLearningService = PreferenceLearningService.shared
+
 // MARK: - Review Item (Single photo or Group)
 
 enum ReviewItem: Identifiable {
@@ -141,6 +144,7 @@ class CleanupViewModel: ObservableObject {
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
         loadPersistedProgress()
+        preferenceLearningService.initialize(modelContext: modelContext)
         Task {
             await loadCleanupSuggestions()
         }
@@ -193,6 +197,14 @@ class CleanupViewModel: ObservableObject {
             keptPhotos.insert(photoId)
         }
         persistProgress()
+        
+        // Log decision for preference learning
+        if let photo = allPhotos.first(where: { $0.id == photoId }) {
+            Task {
+                let decisionType: ReviewDecisionType = delete ? .delete : .skip
+                await preferenceLearningService.logDecision(for: photo, decision: decisionType)
+            }
+        }
     }
     
     func hasReviewProgress(for photos: [PersistedPhoto]) -> Bool {
@@ -313,12 +325,26 @@ class CleanupViewModel: ObservableObject {
             reviewedPhotos.insert(photoId)
             keptPhotos.insert(photoId)
             selectedPhotos.remove(photoId)
+            
+            // Log keep decision for preference learning
+            if let photo = allPhotos.first(where: { $0.id == photoId }) {
+                Task {
+                    await preferenceLearningService.logDecision(for: photo, decision: .keepForever)
+                }
+            }
         }
         
         for photoId in deletePhotoIds {
             reviewedPhotos.insert(photoId)
             selectedPhotos.insert(photoId)
             keptPhotos.remove(photoId)
+            
+            // Log delete decision for preference learning
+            if let photo = allPhotos.first(where: { $0.id == photoId }) {
+                Task {
+                    await preferenceLearningService.logDecision(for: photo, decision: .delete)
+                }
+            }
         }
         
         persistProgress()
@@ -378,9 +404,17 @@ class CleanupViewModel: ObservableObject {
         
         try? modelContext?.save()
         persistProgress()
+        
+        // Log decision for preference learning
+        Task {
+            let decisionType: ReviewDecisionType = duration == .forever ? .keepForever : .keepSnoozed
+            await preferenceLearningService.logDecision(for: photo, decision: decisionType)
+        }
     }
     
     func keepPhotos(_ photoIds: [String], duration: KeepDuration, groupId: String? = nil) {
+        let decisionType: ReviewDecisionType = duration == .forever ? .keepForever : .keepSnoozed
+        
         for photoId in photoIds {
             guard let photo = allPhotos.first(where: { $0.id == photoId }) else { continue }
             
@@ -392,6 +426,11 @@ class CleanupViewModel: ObservableObject {
             reviewedPhotos.insert(photoId)
             keptPhotos.insert(photoId)
             selectedPhotos.remove(photoId)
+            
+            // Log decision for preference learning
+            Task {
+                await preferenceLearningService.logDecision(for: photo, decision: decisionType)
+            }
         }
         
         if let groupId = groupId {

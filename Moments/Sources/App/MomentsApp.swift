@@ -33,7 +33,9 @@ struct MomentsApp: App {
             DeletionRecord.self,
             PhotoTag.self,
             PhotoReminder.self,
-            DailyReviewSettings.self
+            DailyReviewSettings.self,
+            ReviewDecision.self,
+            LearnedPreferences.self
         ])
         
         if let persistentContainer = MomentsApp.createContainer(schema: schema, inMemory: false) {

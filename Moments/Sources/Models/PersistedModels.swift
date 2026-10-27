@@ -1416,7 +1416,7 @@ final class DailyReviewSettings {
     
     init(id: String = "main") {
         self.id = id
-        self.isEnabled = false
+        self.isEnabled = true  // ON by default
         self.reviewHour = 21
         self.reviewMinute = 0
         self.includeLowValuePhotos = true
@@ -1429,5 +1429,273 @@ final class DailyReviewSettings {
     
     var reviewTimeString: String {
         String(format: "%02d:%02d", reviewHour, reviewMinute)
+    }
+}
+
+// MARK: - Review Decision (for preference learning)
+
+enum ReviewDecisionType: String, Codable, CaseIterable, Sendable {
+    case keepForever = "keepForever"
+    case keepSnoozed = "keepSnoozed"
+    case delete = "delete"
+    case shareThenDelete = "shareThenDelete"
+    case shareThenKeep = "shareThenKeep"
+    case skip = "skip"
+}
+
+@Model
+final class ReviewDecision {
+    @Attribute(.unique) var id: String
+    var photoId: String
+    var localIdentifier: String
+    var decisionType: String  // ReviewDecisionType rawValue
+    var timestamp: Date
+    
+    // Feature vector - category reasons
+    var categoryRaw: String?  // CleanupCategoryType rawValue
+    var originRaw: String?  // PhotoOrigin rawValue
+    var isScreenshot: Bool
+    var isBlurry: Bool
+    var isDark: Bool
+    var isOverexposed: Bool
+    var isBurst: Bool
+    var isDuplicate: Bool
+    var isDownload: Bool
+    var isForwarded: Bool
+    var isReceipt: Bool
+    var isDocument: Bool
+    var hasFaces: Bool
+    var faceCount: Int
+    var isTrip: Bool
+    var hasText: Bool
+    
+    // Quality metrics
+    var aestheticsScore: Double?
+    var sharpnessScore: Double?
+    var exposureScore: Double?
+    var deletionScore: Double?
+    
+    // Temporal features
+    var photoAgeInDays: Int
+    var photoHourOfDay: Int
+    var photoSizeBytes: Int64
+    
+    // Feature print for nearest-neighbor matching (stored as Data)
+    var featurePrintData: Data?
+    
+    init(
+        photoId: String,
+        localIdentifier: String,
+        decisionType: ReviewDecisionType,
+        photo: PersistedPhoto
+    ) {
+        self.id = UUID().uuidString
+        self.photoId = photoId
+        self.localIdentifier = localIdentifier
+        self.decisionType = decisionType.rawValue
+        self.timestamp = Date()
+        
+        // Extract features from photo
+        self.categoryRaw = photo.cleanupCategoryRaw
+        self.originRaw = photo.originRaw
+        self.isScreenshot = photo.cleanupCategory == .screenshot
+        self.isBlurry = photo.cleanupCategory == .blurry
+        self.isDark = photo.cleanupCategory == .underexposed
+        self.isOverexposed = photo.cleanupCategory == .overexposed
+        self.isBurst = photo.cleanupCategory == .burst
+        self.isDuplicate = photo.cleanupCategory == .duplicate || photo.cleanupCategory == .nearDuplicate
+        self.isDownload = photo.cleanupCategory == .downloadedMeme
+        self.isForwarded = photo.cleanupCategory == .forwardedImage
+        self.isReceipt = photo.cleanupCategory == .receipt
+        self.isDocument = photo.cleanupCategory == .document
+        self.hasFaces = (photo.facesDetected ?? 0) > 0
+        self.faceCount = photo.facesDetected ?? 0
+        self.isTrip = false  // TODO: derive from moments
+        self.hasText = photo.hasText ?? false
+        
+        self.aestheticsScore = photo.visionAestheticsScore
+        self.sharpnessScore = photo.sharpnessScore
+        self.exposureScore = photo.exposureScore
+        self.deletionScore = photo.deletionLikelihoodScore
+        
+        // Temporal features
+        if let creationDate = photo.creationDate {
+            self.photoAgeInDays = Int(Date().timeIntervalSince(creationDate) / 86400)
+            self.photoHourOfDay = Calendar.current.component(.hour, from: creationDate)
+        } else {
+            self.photoAgeInDays = 0
+            self.photoHourOfDay = 12
+        }
+        self.photoSizeBytes = photo.estimatedFileSize ?? 0
+        
+        self.featurePrintData = photo.imageFeaturePrintData
+    }
+    
+    var decision: ReviewDecisionType {
+        ReviewDecisionType(rawValue: decisionType) ?? .skip
+    }
+    
+    var isKeepDecision: Bool {
+        decision == .keepForever || decision == .keepSnoozed || decision == .shareThenKeep
+    }
+    
+    var isDeleteDecision: Bool {
+        decision == .delete || decision == .shareThenDelete
+    }
+}
+
+// MARK: - Learned Preferences
+
+@Model
+final class LearnedPreferences {
+    @Attribute(.unique) var id: String
+    var lastUpdated: Date
+    var totalDecisions: Int
+    
+    // Per-category keep rates (Bayesian approach)
+    var screenshotKeepRate: Double
+    var blurryKeepRate: Double
+    var darkKeepRate: Double
+    var overexposedKeepRate: Double
+    var burstKeepRate: Double
+    var duplicateKeepRate: Double
+    var downloadKeepRate: Double
+    var forwardedKeepRate: Double
+    var receiptKeepRate: Double
+    var documentKeepRate: Double
+    
+    // Per-category decision counts for Bayesian update
+    var screenshotDecisions: Int
+    var blurryDecisions: Int
+    var darkDecisions: Int
+    var overexposedDecisions: Int
+    var burstDecisions: Int
+    var duplicateDecisions: Int
+    var downloadDecisions: Int
+    var forwardedDecisions: Int
+    var receiptDecisions: Int
+    var documentDecisions: Int
+    
+    // Logistic regression weights (for continuous features)
+    var weightFaceCount: Double
+    var weightAesthetics: Double
+    var weightSharpness: Double
+    var weightPhotoAge: Double
+    var weightPhotoSize: Double
+    var weightHasText: Double
+    var intercept: Double
+    
+    // Categories to deprioritize (user keeps >80%)
+    var deprioritizedCategoriesRaw: String?  // JSON array of category rawValues
+    var suppressedCategoriesRaw: String?  // Categories user asked to never suggest
+    
+    // Learning summary for display
+    var learningSummaryJson: String?
+    
+    init(id: String = "main") {
+        self.id = id
+        self.lastUpdated = Date()
+        self.totalDecisions = 0
+        
+        // Initialize with prior (50% keep rate)
+        self.screenshotKeepRate = 0.5
+        self.blurryKeepRate = 0.5
+        self.darkKeepRate = 0.5
+        self.overexposedKeepRate = 0.5
+        self.burstKeepRate = 0.5
+        self.duplicateKeepRate = 0.5
+        self.downloadKeepRate = 0.5
+        self.forwardedKeepRate = 0.5
+        self.receiptKeepRate = 0.5
+        self.documentKeepRate = 0.5
+        
+        self.screenshotDecisions = 0
+        self.blurryDecisions = 0
+        self.darkDecisions = 0
+        self.overexposedDecisions = 0
+        self.burstDecisions = 0
+        self.duplicateDecisions = 0
+        self.downloadDecisions = 0
+        self.forwardedDecisions = 0
+        self.receiptDecisions = 0
+        self.documentDecisions = 0
+        
+        // Logistic weights initialized to 0 (neutral)
+        self.weightFaceCount = 0.0
+        self.weightAesthetics = 0.0
+        self.weightSharpness = 0.0
+        self.weightPhotoAge = 0.0
+        self.weightPhotoSize = 0.0
+        self.weightHasText = 0.0
+        self.intercept = 0.0
+    }
+    
+    var deprioritizedCategories: [CleanupCategoryType] {
+        guard let raw = deprioritizedCategoriesRaw,
+              let data = raw.data(using: .utf8),
+              let array = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return array.compactMap { CleanupCategoryType(rawValue: $0) }
+    }
+    
+    func setDeprioritizedCategories(_ categories: [CleanupCategoryType]) {
+        let rawValues = categories.map { $0.rawValue }
+        if let data = try? JSONEncoder().encode(rawValues) {
+            deprioritizedCategoriesRaw = String(data: data, encoding: .utf8)
+        }
+    }
+    
+    var suppressedCategories: [CleanupCategoryType] {
+        guard let raw = suppressedCategoriesRaw,
+              let data = raw.data(using: .utf8),
+              let array = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return array.compactMap { CleanupCategoryType(rawValue: $0) }
+    }
+    
+    func setSuppressedCategories(_ categories: [CleanupCategoryType]) {
+        let rawValues = categories.map { $0.rawValue }
+        if let data = try? JSONEncoder().encode(rawValues) {
+            suppressedCategoriesRaw = String(data: data, encoding: .utf8)
+        }
+    }
+    
+    // Confidence ramp: learned weights dominate after ~50 decisions
+    var confidenceWeight: Double {
+        min(1.0, Double(totalDecisions) / 50.0)
+    }
+    
+    func keepRate(for category: CleanupCategoryType) -> Double {
+        switch category {
+        case .screenshot: return screenshotKeepRate
+        case .blurry: return blurryKeepRate
+        case .underexposed: return darkKeepRate
+        case .overexposed: return overexposedKeepRate
+        case .burst: return burstKeepRate
+        case .duplicate, .nearDuplicate: return duplicateKeepRate
+        case .downloadedMeme: return downloadKeepRate
+        case .forwardedImage: return forwardedKeepRate
+        case .receipt: return receiptKeepRate
+        case .document: return documentKeepRate
+        default: return 0.5
+        }
+    }
+    
+    func decisionCount(for category: CleanupCategoryType) -> Int {
+        switch category {
+        case .screenshot: return screenshotDecisions
+        case .blurry: return blurryDecisions
+        case .underexposed: return darkDecisions
+        case .overexposed: return overexposedDecisions
+        case .burst: return burstDecisions
+        case .duplicate, .nearDuplicate: return duplicateDecisions
+        case .downloadedMeme: return downloadDecisions
+        case .forwardedImage: return forwardedDecisions
+        case .receipt: return receiptDecisions
+        case .document: return documentDecisions
+        default: return 0
+        }
     }
 }
