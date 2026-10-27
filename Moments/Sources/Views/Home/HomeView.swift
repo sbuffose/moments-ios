@@ -104,6 +104,14 @@ struct HomeView: View {
         }
     }
     
+    static func todayReviewSubtitle(itemCount: Int) -> String {
+        let today = min(max(itemCount, 0), DailyReviewBatch.size)
+        if today == 0 {
+            return "Nada para revisar hoy"
+        }
+        return "\(today) de \(DailyReviewBatch.size) para hoy"
+    }
+    
     // MARK: - Analysis Progress Pill
     
     private var analysisProgressPill: some View {
@@ -135,7 +143,7 @@ struct HomeView: View {
                             .font(MomentsTypography.headlineMedium)
                             .foregroundStyle(MomentsColors.textPrimary)
                         
-                        Text("\(viewModel.cleanupItemCount) elementos para revisar")
+                        Text(Self.todayReviewSubtitle(itemCount: viewModel.cleanupItemCount))
                             .font(MomentsTypography.bodySmall)
                             .foregroundStyle(MomentsColors.textSecondary)
                     } else {
@@ -202,7 +210,7 @@ struct HomeView: View {
             } label: {
                 HStack {
                     Image(systemName: "sparkles")
-                    Text("Revisar \(viewModel.cleanupItemCount > 0 ? MomentsPluralization.photos(viewModel.cleanupItemCount) : "ahora")")
+                    Text(viewModel.cleanupItemCount > 0 ? "Revisar \(MomentsPluralization.photos(min(viewModel.cleanupItemCount, DailyReviewBatch.size)))" : "Revisar ahora")
                 }
             }
             .momentsAccentButton()
