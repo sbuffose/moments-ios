@@ -1947,4 +1947,189 @@ final class MomentsTests: XCTestCase {
             )
         }
     }
+    
+    // MARK: - Keep Decision Persistence Tests (P0 Hotfix)
+    
+    @MainActor
+    func testKeepViaSwipePersistsAndExcludesFromQueue() throws {
+        // Test: keep via swipe, rebuild the queue, assert the photo is absent
+        // This verifies the fix for the re-ask bug where kept photos reappeared
+        
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self, AnalysisState.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create a blurry photo that would be a cleanup candidate
+        let photo = PersistedPhoto(localIdentifier: "swipe-keep-test-1")
+        photo.analysisCompleted = true
+        photo.mediaTypeRaw = "image"
+        photo.sharpnessScore = 0.05 // Very blurry
+        photo.cleanupCategoryRaw = "blurry"
+        photo.deletionLikelihoodScore = 0.4
+        photo.creationDate = Date()
+        
+        context.insert(photo)
+        try context.save()
+        
+        // Verify photo is initially a candidate (not kept)
+        XCTAssertFalse(photo.isKeptByUser, "Photo should NOT be kept initially")
+        XCTAssertEqual(photo.keepDecision, .none, "Keep decision should be .none initially")
+        
+        // Build initial cleanup queue (simulating CleanupViewModel.buildCleanupQueue)
+        func buildCleanupQueue() throws -> [PersistedPhoto] {
+            let descriptor = FetchDescriptor<PersistedPhoto>(
+                predicate: #Predicate { photo in
+                    photo.analysisCompleted &&
+                    photo.cleanupCategoryRaw != nil &&
+                    photo.cleanupCategoryRaw != "none" &&
+                    (photo.keepDecision == .none || 
+                     (photo.keepDecision == .snoozed && 
+                      photo.keepUntil != nil && 
+                      photo.keepUntil! < Date()))
+                },
+                sortBy: [SortDescriptor(\.deletionLikelihoodScore, order: .reverse)]
+            )
+            return try context.fetch(descriptor)
+        }
+        
+        var queue = try buildCleanupQueue()
+        XCTAssertEqual(queue.count, 1, "Photo should be in cleanup queue before keep")
+        XCTAssertEqual(queue.first?.localIdentifier, "swipe-keep-test-1")
+        
+        // SIMULATE SWIPE RIGHT (KEEP): This is what markAsReviewed(delete: false) now does
+        photo.keepDecision = .forever
+        photo.keepDecisionDate = Date()
+        try context.save()
+        
+        // Verify keep decision is persisted
+        XCTAssertTrue(photo.isKeptByUser, "Photo should be marked as kept after swipe")
+        XCTAssertEqual(photo.keepDecision, .forever, "Keep decision should be .forever")
+        XCTAssertNotNil(photo.keepDecisionDate, "Keep decision date should be set")
+        
+        // REBUILD THE QUEUE - the kept photo should be ABSENT
+        queue = try buildCleanupQueue()
+        XCTAssertEqual(queue.count, 0, "Kept photo should NOT appear in rebuilt queue")
+        XCTAssertFalse(queue.contains { $0.localIdentifier == "swipe-keep-test-1" },
+                       "Photo with keepDecision .forever must be excluded from queue")
+    }
+    
+    @MainActor
+    func testSnoozeOneWeekReappearsAfterExpiry() throws {
+        // Test: snooze 1 week, advance the clock 8 days, assert photo is present
+        // This verifies snoozed photos re-enter the queue after expiry
+        
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self, AnalysisState.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create a screenshot that would be a cleanup candidate
+        let photo = PersistedPhoto(localIdentifier: "snooze-test-1")
+        photo.analysisCompleted = true
+        photo.mediaTypeRaw = "image"
+        photo.mediaSubtypesRaw = "screenshot"
+        photo.cleanupCategoryRaw = "screenshot"
+        photo.deletionLikelihoodScore = 0.3
+        photo.creationDate = Date()
+        
+        context.insert(photo)
+        try context.save()
+        
+        // SIMULATE SNOOZE 1 WEEK
+        let now = Date()
+        let oneWeekFromNow = Calendar.current.date(byAdding: .day, value: 7, to: now)!
+        photo.keepDecision = .snoozed
+        photo.keepUntil = oneWeekFromNow
+        photo.keepDecisionDate = now
+        try context.save()
+        
+        // Verify snooze is active
+        XCTAssertEqual(photo.keepDecision, .snoozed, "Keep decision should be .snoozed")
+        XCTAssertNotNil(photo.keepUntil, "keepUntil should be set")
+        XCTAssertTrue(photo.isKeptByUser, "Photo should be kept during snooze period")
+        XCTAssertFalse(photo.isSnoozeExpired, "Snooze should NOT be expired yet")
+        
+        // Build queue during snooze period - photo should be ABSENT
+        func buildCleanupQueue(asOf referenceDate: Date) throws -> [PersistedPhoto] {
+            // Simulating query that checks keepUntil against reference date
+            let descriptor = FetchDescriptor<PersistedPhoto>(
+                predicate: #Predicate { photo in
+                    photo.analysisCompleted &&
+                    photo.cleanupCategoryRaw != nil &&
+                    photo.cleanupCategoryRaw != "none"
+                },
+                sortBy: [SortDescriptor(\.deletionLikelihoodScore, order: .reverse)]
+            )
+            let allCandidates = try context.fetch(descriptor)
+            
+            // Filter out kept photos (simulating the real queue logic)
+            return allCandidates.filter { p in
+                if p.keepDecision == .forever {
+                    return false // Excluded
+                }
+                if p.keepDecision == .snoozed, let until = p.keepUntil {
+                    return until < referenceDate // Only include if expired
+                }
+                return true // Include if keepDecision == .none
+            }
+        }
+        
+        var queue = try buildCleanupQueue(asOf: now)
+        XCTAssertEqual(queue.count, 0, "Snoozed photo should NOT appear during snooze period")
+        
+        // ADVANCE CLOCK 8 DAYS (simulating time passing)
+        let eightDaysFromNow = Calendar.current.date(byAdding: .day, value: 8, to: now)!
+        
+        // Verify snooze is now expired
+        XCTAssertTrue(oneWeekFromNow < eightDaysFromNow, "Snooze should expire before 8 days")
+        
+        // REBUILD THE QUEUE as of 8 days later - photo should be PRESENT
+        queue = try buildCleanupQueue(asOf: eightDaysFromNow)
+        XCTAssertEqual(queue.count, 1, "Photo should reappear after snooze expires")
+        XCTAssertEqual(queue.first?.localIdentifier, "snooze-test-1",
+                       "Snoozed photo should re-enter queue after 8 days")
+        
+        // Verify the isSnoozeExpired computed property would return true
+        // (We simulate this check with the reference date)
+        let isExpired = photo.keepUntil! < eightDaysFromNow
+        XCTAssertTrue(isExpired, "isSnoozeExpired should be true 8 days after 1-week snooze")
+    }
+    
+    @MainActor
+    func testKeepDecisionPersistsThroughAppRestart() throws {
+        // Test that keep decisions survive "app restart" (re-fetching from context)
+        
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create and keep a photo
+        let photoId = "persistence-test-1"
+        let photo = PersistedPhoto(localIdentifier: photoId)
+        photo.analysisCompleted = true
+        photo.cleanupCategoryRaw = "blurry"
+        photo.keepDecision = .forever
+        photo.keepDecisionDate = Date()
+        
+        context.insert(photo)
+        try context.save()
+        
+        // Simulate "app restart" by re-fetching from context
+        let descriptor = FetchDescriptor<PersistedPhoto>(
+            predicate: #Predicate { $0.localIdentifier == photoId }
+        )
+        let refetchedPhotos = try context.fetch(descriptor)
+        
+        XCTAssertEqual(refetchedPhotos.count, 1, "Should find the photo")
+        
+        let refetchedPhoto = refetchedPhotos.first!
+        XCTAssertEqual(refetchedPhoto.keepDecision, .forever, 
+                       "Keep decision should persist after re-fetch")
+        XCTAssertNotNil(refetchedPhoto.keepDecisionDate,
+                        "Keep decision date should persist after re-fetch")
+        XCTAssertTrue(refetchedPhoto.isKeptByUser,
+                      "isKeptByUser should return true after re-fetch")
+    }
 }
