@@ -763,6 +763,7 @@ extension Array {
 // MARK: - Image Analyzer
 
 final class ImageAnalyzer: Sendable {
+    private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
     
     struct QualityMetrics: Sendable {
         let sharpness: Double
@@ -870,7 +871,7 @@ final class ImageAnalyzer: Sendable {
     /// 3. Takes the top 10% of tiles (highest gradient regions)
     /// 4. Normalizes by exposure to avoid penalizing dark images
     private func calculateLaplacianVariance(_ image: CIImage) -> Double {
-        let context = ciContext
+        let context = ImageAnalyzer.sharedCIContext
         
         // Normalize image to standard size
         let normalizedSize: CGFloat = 512
@@ -1032,7 +1033,7 @@ final class ImageAnalyzer: Sendable {
             toBitmap: &pixel,
             rowBytes: 4,
             bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
+            format: CIFormat.RGBA8,
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
         
@@ -1056,7 +1057,7 @@ final class ImageAnalyzer: Sendable {
             toBitmap: &pixel,
             rowBytes: 4,
             bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
+            format: CIFormat.RGBA8,
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
         
@@ -1065,7 +1066,7 @@ final class ImageAnalyzer: Sendable {
     }
     
     private func calculateExposure(_ image: CIImage) -> Double {
-        let context = ciContext
+        let context = ImageAnalyzer.sharedCIContext
         guard let filter = CIFilter(name: "CIAreaAverage") else { return 0.5 }
         
         let extent = image.extent
@@ -1082,7 +1083,7 @@ final class ImageAnalyzer: Sendable {
             toBitmap: &pixel,
             rowBytes: 4,
             bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
+            format: CIFormat.RGBA8,
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
         
@@ -1095,7 +1096,7 @@ final class ImageAnalyzer: Sendable {
     }
     
     private func calculateDetailScore(_ image: CIImage) -> Double {
-        let context = ciContext
+        let context = ImageAnalyzer.sharedCIContext
         
         guard let histogramFilter = CIFilter(name: "CIAreaHistogram") else { return 0.5 }
         
@@ -1124,7 +1125,7 @@ final class ImageAnalyzer: Sendable {
             toBitmap: &histogramData,
             rowBytes: 64 * 4,
             bounds: CGRect(x: 0, y: 0, width: 64, height: 1),
-            format: .RGBA8,
+            format: CIFormat.RGBA8,
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
         
