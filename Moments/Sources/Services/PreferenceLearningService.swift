@@ -126,7 +126,7 @@ final class PreferenceLearningService: ObservableObject {
             preferences.downloadKeepRate = (preferences.downloadKeepRate * n + keepValue) / (n + 1)
             preferences.downloadDecisions += 1
         case .forwardedImage:
-            let n = Double(preferences.forwardDecisions)
+            let n = Double(preferences.forwardedDecisions)
             preferences.forwardedKeepRate = (preferences.forwardedKeepRate * n + keepValue) / (n + 1)
             preferences.forwardedDecisions += 1
         case .receipt:
@@ -295,8 +295,8 @@ final class PreferenceLearningService: ObservableObject {
     }
     
     private func computeFeaturePrintSimilarity(_ data1: Data, _ data2: Data) -> Float? {
-        guard let print1 = try? VNFeaturePrintObservation(data: data1),
-              let print2 = try? VNFeaturePrintObservation(data: data2) else {
+        guard let print1 = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data1),
+              let print2 = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data2) else {
             return nil
         }
         

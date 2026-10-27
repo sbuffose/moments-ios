@@ -764,7 +764,8 @@ struct TodayReviewView: View {
                     .cornerRadius(16)
                     .padding()
                 
-                if let category = photo.cleanupCategory, category != .none {
+                let category = photo.cleanupCategory
+                if category != .none {
                     Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
                         .font(.caption)
                         .foregroundStyle(.tint)
@@ -843,6 +844,99 @@ struct GeneralNotificationSettingsView: View {
             }
         }
         .navigationTitle("Notificaciones")
+    }
+}
+
+// MARK: - Tags List View
+
+struct TagsListView: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var tags: [PhotoTag] = []
+    @State private var showAddTag = false
+    @State private var newTagName = ""
+    
+    var body: some View {
+        List {
+            if tags.isEmpty {
+                ContentUnavailableView(
+                    "Sin etiquetas",
+                    systemImage: "tag",
+                    description: Text("Las etiquetas que crees aparecerán acá")
+                )
+            } else {
+                ForEach(tags, id: \.id) { tag in
+                    HStack {
+                        Circle()
+                            .fill(Color(hex: tag.colorHex) ?? MomentsColors.accent)
+                            .frame(width: 12, height: 12)
+                        
+                        Text(tag.name)
+                        
+                        Spacer()
+                        
+                        Text("\(tag.usageCount)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onDelete(perform: deleteTags)
+            }
+        }
+        .navigationTitle("Etiquetas")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showAddTag = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .alert("Nueva etiqueta", isPresented: $showAddTag) {
+            TextField("Nombre", text: $newTagName)
+            Button("Crear") { createTag() }
+            Button("Cancelar", role: .cancel) { newTagName = "" }
+        }
+        .onAppear { loadTags() }
+    }
+    
+    private func loadTags() {
+        let descriptor = FetchDescriptor<PhotoTag>(
+            sortBy: [SortDescriptor(\.usageCount, order: .reverse)]
+        )
+        tags = (try? modelContext.fetch(descriptor)) ?? []
+    }
+    
+    private func createTag() {
+        guard !newTagName.isEmpty else { return }
+        let tag = PhotoTag(name: newTagName)
+        modelContext.insert(tag)
+        try? modelContext.save()
+        newTagName = ""
+        loadTags()
+    }
+    
+    private func deleteTags(at offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(tags[index])
+        }
+        try? modelContext.save()
+        loadTags()
+    }
+}
+
+extension Color {
+    init?(hex: String) {
+        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+        
+        var rgb: UInt64 = 0
+        guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else { return nil }
+        
+        let r = Double((rgb & 0xFF0000) >> 16) / 255.0
+        let g = Double((rgb & 0x00FF00) >> 8) / 255.0
+        let b = Double(rgb & 0x0000FF) / 255.0
+        
+        self.init(red: r, green: g, blue: b)
     }
 }
 
