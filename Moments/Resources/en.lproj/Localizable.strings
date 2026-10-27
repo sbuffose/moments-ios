@@ -573,3 +573,8 @@
 "group_keep_all_forever" = "Keep all forever";
 "group_select_to_keep" = "Select which to keep";
 "group_delete_others %lld" = "Delete the other %lld";
+
+/* Background Tasks */
+"bg_task_title" = "Analyzing photos";
+"bg_task_subtitle_remaining" = "Remaining";
+"bg_task_title_finishing" = "Finishing";

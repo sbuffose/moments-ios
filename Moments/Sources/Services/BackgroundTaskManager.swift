@@ -63,6 +63,11 @@ final class BackgroundTaskManager: ObservableObject {
                 self?.handleAnalysisTask(task)
             }
         }
+        
+        // Register iOS 26+ continued processing task handler
+        if #available(iOS 26.0, *) {
+            registerContinuedProcessingTaskHandler()
+        }
     }
     
     // MARK: - Task Scheduling
@@ -333,22 +338,192 @@ final class BackgroundTaskManager: ObservableObject {
 
 @available(iOS 26.0, *)
 extension BackgroundTaskManager {
-    func submitContinuedProcessingTask() {
-        // iOS 26+ allows BGContinuedProcessingTask with progress UI
-        // This shows a system UI when the app is backgrounded during processing
+    
+    // Continued processing tasks use a wildcard identifier pattern
+    // Must be registered in Info.plist as: com.sbuffose.moments.continued.*
+    private static let continuedTaskIdentifierPrefix = "com.sbuffose.moments.continued."
+    
+    // Track the active continued processing task
+    private static var activeContinuedTask: BGContinuedProcessingTask?
+    private static var continuedTaskWorkItem: Task<Void, Never>?
+    
+    /// Register the continued processing task handler. Call once at app launch.
+    func registerContinuedProcessingTaskHandler() {
+        // Register with wildcard pattern to handle any continued.* identifier
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.continuedTaskIdentifierPrefix,
+            using: nil
+        ) { [weak self] task in
+            guard let continuedTask = task as? BGContinuedProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            Task { @MainActor in
+                self?.handleContinuedProcessingTask(continuedTask)
+            }
+        }
+    }
+    
+    /// Submit a continued processing task. Only call while a user-initiated scan is actively running.
+    /// - Parameters:
+    ///   - remainingPhotos: Number of photos remaining to process (must be > 0)
+    ///   - strategy: The submission strategy (.queue waits for slot, .fail returns immediately if no slot)
+    func submitContinuedProcessingTask(remainingPhotos: Int, strategy: BGContinuedProcessingTaskRequest.Strategy = .queue) {
+        // Don't submit if no work remains
+        guard remainingPhotos > 0 else {
+            print("[BackgroundTaskManager] Skipping continued task - no photos remaining")
+            return
+        }
+        
+        // Don't submit if scan isn't in progress
+        guard hasPendingWork else {
+            print("[BackgroundTaskManager] Skipping continued task - no scan in progress")
+            return
+        }
+        
+        // Generate unique identifier for this task
+        let taskId = Self.continuedTaskIdentifierPrefix + UUID().uuidString
         
         let request = BGContinuedProcessingTaskRequest(
-            identifier: scanTaskIdentifier,
-            title: "Analizando fotos",
-            subtitle: "Moments está organizando tu biblioteca"
+            identifier: taskId,
+            title: NSLocalizedString("bg_task_title", comment: "Analizando fotos"),
+            subtitle: NSLocalizedString("bg_task_subtitle_remaining", comment: "") + " \(remainingPhotos)"
         )
+        request.strategy = strategy
         
         do {
             try BGTaskScheduler.shared.submit(request)
-            print("[BackgroundTaskManager] Submitted continued processing task (iOS 26+)")
+            print("[BackgroundTaskManager] Submitted continued processing task: \(taskId)")
+        } catch BGTaskScheduler.Error.unavailable {
+            print("[BackgroundTaskManager] Continued processing unavailable, falling back to BGProcessingTask")
+            scheduleScanTaskIfNeeded()
         } catch {
             print("[BackgroundTaskManager] Failed to submit continued processing task: \(error)")
+            // Silent fallback - don't surface error to user
             scheduleScanTaskIfNeeded()
         }
+    }
+    
+    /// Handle a continued processing task with proper progress reporting
+    private func handleContinuedProcessingTask(_ task: BGContinuedProcessingTask) {
+        Self.activeContinuedTask = task
+        isBackgroundScanActive = true
+        
+        // Get current progress state
+        let checkpoint = getCheckpointProgress()
+        let totalRemaining = max(1, checkpoint.total - checkpoint.analyzed)
+        
+        // Initialize progress - system displays this in the banner
+        task.progress.totalUnitCount = Int64(totalRemaining)
+        task.progress.completedUnitCount = 0
+        
+        // Set expiration handler - must checkpoint and complete exactly once
+        task.expirationHandler = { [weak self] in
+            Task { @MainActor in
+                print("[BackgroundTaskManager] Continued task expiring, checkpointing...")
+                self?.saveCheckpoint()
+                Self.continuedTaskWorkItem?.cancel()
+                Self.continuedTaskWorkItem = nil
+                Self.activeContinuedTask = nil
+                self?.isBackgroundScanActive = false
+                
+                // Complete with success:false for expected expiration
+                // This doesn't show an error banner - it's normal behavior
+                task.setTaskCompleted(success: true)
+                
+                // Schedule BGProcessingTask to continue later
+                self?.scheduleScanTaskIfNeeded()
+                self?.scheduleAnalysisTaskIfNeeded()
+            }
+        }
+        
+        // Start the actual work
+        Self.continuedTaskWorkItem = Task { [weak self] in
+            guard let self = self else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            
+            let success = await self.performContinuedProcessing(task: task)
+            
+            await MainActor.run {
+                Self.activeContinuedTask = nil
+                Self.continuedTaskWorkItem = nil
+                self.isBackgroundScanActive = false
+                task.setTaskCompleted(success: success)
+                
+                if success && !self.hasPendingWork && !self.hasAnalysisPending {
+                    self.sendScanCompleteNotification()
+                } else if self.hasPendingWork || self.hasAnalysisPending {
+                    // More work remains - schedule background task
+                    self.scheduleScanTaskIfNeeded()
+                    self.scheduleAnalysisTaskIfNeeded()
+                }
+            }
+        }
+    }
+    
+    /// Perform the continued processing work with progress updates
+    private func performContinuedProcessing(task: BGContinuedProcessingTask) async -> Bool {
+        guard let analysisService = self.analysisService else { return false }
+        
+        var processedCount: Int64 = 0
+        let totalCount = task.progress.totalUnitCount
+        var lastTitleUpdate = Date()
+        let titleUpdateInterval: TimeInterval = 5.0 // Update subtitle every 5 seconds
+        
+        let success = await analysisService.analyzeUnprocessedPhotosInBackground { [weak self] progress in
+            Task { @MainActor in
+                guard let self = self, Self.activeContinuedTask === task else { return }
+                
+                // Update completed count
+                processedCount = Int64(Double(totalCount) * progress)
+                task.progress.completedUnitCount = processedCount
+                self.backgroundProgress = progress
+                
+                // Periodically update the subtitle with remaining count
+                let now = Date()
+                if now.timeIntervalSince(lastTitleUpdate) >= titleUpdateInterval {
+                    lastTitleUpdate = now
+                    let remaining = Int(totalCount - processedCount)
+                    if remaining > 0 {
+                        task.updateTitle(
+                            NSLocalizedString("bg_task_title", comment: "Analizando fotos"),
+                            subtitle: NSLocalizedString("bg_task_subtitle_remaining", comment: "Faltan") + " \(remaining)"
+                        )
+                    } else {
+                        task.updateTitle(
+                            NSLocalizedString("bg_task_title_finishing", comment: "Finalizando"),
+                            subtitle: nil
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Ensure progress shows completion
+        await MainActor.run {
+            task.progress.completedUnitCount = totalCount
+            self.backgroundProgress = 1.0
+        }
+        
+        return success
+    }
+    
+    /// Check if there's an active continued processing task
+    var hasContinuedProcessingTask: Bool {
+        Self.activeContinuedTask != nil
+    }
+    
+    /// Cancel any active continued processing task
+    func cancelContinuedProcessingTask() {
+        Self.continuedTaskWorkItem?.cancel()
+        Self.continuedTaskWorkItem = nil
+        if let task = Self.activeContinuedTask {
+            saveCheckpoint()
+            task.setTaskCompleted(success: true)
+            Self.activeContinuedTask = nil
+        }
+        isBackgroundScanActive = false
     }
 }

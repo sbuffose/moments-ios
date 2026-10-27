@@ -84,6 +84,7 @@ targets:
         BGTaskSchedulerPermittedIdentifiers:
           - com.sbuffose.moments.scan
           - com.sbuffose.moments.analysis
+          - "com.sbuffose.moments.continued.*"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbuffose.moments

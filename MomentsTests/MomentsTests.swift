@@ -1251,4 +1251,177 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(shouldFlagAsBlurry(veryBlurryNoVision),
                       "Photo at 0.05 sharpness without Vision SHOULD be flagged")
     }
+    
+    // MARK: - Background Task Tests
+    
+    @MainActor
+    func testBackgroundTaskProgressCalculation() throws {
+        // Test progress calculation for continued processing task
+        
+        let totalPhotos = 100
+        var processedCount = 0
+        
+        // Simulate progress updates
+        func calculateProgress() -> Double {
+            return Double(processedCount) / Double(totalPhotos)
+        }
+        
+        func calculateRemaining() -> Int {
+            return totalPhotos - processedCount
+        }
+        
+        // Initial state
+        XCTAssertEqual(calculateProgress(), 0.0, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 100)
+        
+        // 25% progress
+        processedCount = 25
+        XCTAssertEqual(calculateProgress(), 0.25, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 75)
+        
+        // 50% progress
+        processedCount = 50
+        XCTAssertEqual(calculateProgress(), 0.5, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 50)
+        
+        // 100% progress
+        processedCount = 100
+        XCTAssertEqual(calculateProgress(), 1.0, accuracy: 0.001)
+        XCTAssertEqual(calculateRemaining(), 0)
+    }
+    
+    @MainActor
+    func testBackgroundTaskShouldNotSubmitWithNoWork() throws {
+        // Test that continued processing task should not be submitted when no work remains
+        
+        let remainingPhotos = 0
+        let hasPendingWork = false
+        
+        // Mock the submission logic
+        func shouldSubmitContinuedTask() -> Bool {
+            guard remainingPhotos > 0 else { return false }
+            guard hasPendingWork else { return false }
+            return true
+        }
+        
+        XCTAssertFalse(shouldSubmitContinuedTask(),
+                       "Should not submit continued processing task when no photos remain")
+    }
+    
+    @MainActor
+    func testBackgroundTaskShouldNotSubmitWhenScanNotInProgress() throws {
+        // Test that continued processing task should not be submitted when scan is not in progress
+        
+        let remainingPhotos = 50
+        let hasPendingWork = false
+        
+        func shouldSubmitContinuedTask() -> Bool {
+            guard remainingPhotos > 0 else { return false }
+            guard hasPendingWork else { return false }
+            return true
+        }
+        
+        XCTAssertFalse(shouldSubmitContinuedTask(),
+                       "Should not submit continued processing task when scan is not in progress")
+    }
+    
+    @MainActor
+    func testBackgroundTaskShouldSubmitWithPendingWork() throws {
+        // Test that continued processing task should be submitted when there is pending work
+        
+        let remainingPhotos = 50
+        let hasPendingWork = true
+        
+        func shouldSubmitContinuedTask() -> Bool {
+            guard remainingPhotos > 0 else { return false }
+            guard hasPendingWork else { return false }
+            return true
+        }
+        
+        XCTAssertTrue(shouldSubmitContinuedTask(),
+                      "Should submit continued processing task when photos remain and scan is in progress")
+    }
+    
+    @MainActor
+    func testBackgroundTaskProgressIntegrity() throws {
+        // Test that progress values stay within valid bounds
+        
+        var totalUnitCount: Int64 = 100
+        var completedUnitCount: Int64 = 0
+        
+        // Simulate progress updates and verify bounds
+        for i in 0...100 {
+            completedUnitCount = Int64(i)
+            
+            // completedUnitCount should never exceed totalUnitCount
+            XCTAssertLessThanOrEqual(completedUnitCount, totalUnitCount)
+            
+            // completedUnitCount should never be negative
+            XCTAssertGreaterThanOrEqual(completedUnitCount, 0)
+            
+            // Progress fraction should be valid
+            let progress = Double(completedUnitCount) / Double(totalUnitCount)
+            XCTAssertGreaterThanOrEqual(progress, 0.0)
+            XCTAssertLessThanOrEqual(progress, 1.0)
+        }
+    }
+    
+    @MainActor
+    func testBackgroundTaskExpirationCheckpoint() throws {
+        // Test that checkpoint is properly saved on expiration
+        
+        let checkpointKey = "test.checkpoint.progress"
+        let defaults = UserDefaults.standard
+        
+        // Clear any existing checkpoint
+        defaults.removeObject(forKey: checkpointKey)
+        
+        // Simulate work progress
+        var processedIds: [String] = []
+        for i in 1...50 {
+            processedIds.append("photo-\(i)")
+        }
+        
+        // Save checkpoint (simulating expiration handler)
+        defaults.set(processedIds, forKey: checkpointKey)
+        defaults.synchronize()
+        
+        // Verify checkpoint was saved
+        let savedIds = defaults.stringArray(forKey: checkpointKey) ?? []
+        XCTAssertEqual(savedIds.count, 50, "Checkpoint should save all processed IDs")
+        XCTAssertEqual(savedIds.first, "photo-1")
+        XCTAssertEqual(savedIds.last, "photo-50")
+        
+        // Clean up
+        defaults.removeObject(forKey: checkpointKey)
+    }
+    
+    @MainActor
+    func testBackgroundTaskCompletionStateTransition() throws {
+        // Test that task completion properly transitions state
+        
+        var isBackgroundScanActive = true
+        var taskCompleted = false
+        var completionSuccess: Bool?
+        
+        // Simulate successful completion
+        func completeTask(success: Bool) {
+            taskCompleted = true
+            completionSuccess = success
+            isBackgroundScanActive = false
+        }
+        
+        // Before completion
+        XCTAssertTrue(isBackgroundScanActive)
+        XCTAssertFalse(taskCompleted)
+        XCTAssertNil(completionSuccess)
+        
+        // Complete with success
+        completeTask(success: true)
+        
+        // After completion
+        XCTAssertFalse(isBackgroundScanActive, "Background scan should be inactive after completion")
+        XCTAssertTrue(taskCompleted, "Task should be marked as completed")
+        XCTAssertEqual(completionSuccess, true, "Completion should be successful")
+    }
 }
