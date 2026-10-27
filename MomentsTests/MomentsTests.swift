@@ -2402,6 +2402,66 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(HomeView.todayReviewSubtitle(itemCount: 500).contains("500"))
     }
     
+    func testDuplicateGroupingUsesBucketsAndTimeWindow() throws {
+        let now = Date()
+        XCTAssertEqual(DuplicateGrouping.bucket(forDHash: Int64(1) << 50), DuplicateGrouping.bucket(forDHash: Int64(1) << 50))
+        XCTAssertTrue(DuplicateGrouping.shouldCompare(hashA: Int64(1) << 50, hashB: Int64(1) << 50, dateA: now, dateB: now))
+        XCTAssertFalse(DuplicateGrouping.shouldCompare(
+            hashA: 0,
+            hashB: Int64.max,
+            dateA: now,
+            dateB: now.addingTimeInterval(DuplicateGrouping.timeWindow * 3)
+        ))
+        
+        struct FakeGroup {
+            let ids: [String]
+            let notSimilar: Bool
+        }
+        let stale = DuplicateGrouping.groupsToDelete(
+            existing: [
+                FakeGroup(ids: ["a", "b"], notSimilar: false),
+                FakeGroup(ids: ["a", "b"], notSimilar: true),
+                FakeGroup(ids: ["c"], notSimilar: false)
+            ],
+            incomingPhotoIds: ["a", "x"],
+            photoIds: { $0.ids },
+            isNotSimilar: { $0.notSimilar }
+        )
+        XCTAssertEqual(stale.count, 1)
+        XCTAssertEqual(stale.first?.ids, ["a", "b"])
+    }
+    
+    @MainActor
+    func testSimilarGroupsIncludeBestPhotoWithoutCategory() throws {
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let best = PersistedPhoto(localIdentifier: "best")
+        best.analysisCompleted = true
+        best.cleanupCategoryRaw = "none"
+        best.deletionLikelihoodScore = 0.1
+        best.isBestInGroup = true
+        let copy = PersistedPhoto(localIdentifier: "copy")
+        copy.analysisCompleted = true
+        copy.cleanupCategoryRaw = "nearDuplicate"
+        copy.deletionLikelihoodScore = 0.8
+        context.insert(best)
+        context.insert(copy)
+        let group = SimilarGroup(photoIds: [best.id, copy.id], bestPhotoId: best.id)
+        context.insert(group)
+        try context.save()
+        
+        let queue = CleanupViewModel.makeQueue(photos: [best, copy], groups: [group])
+        XCTAssertEqual(queue.count, 1)
+        guard case .similarGroup(_, let photos) = queue[0] else {
+            return XCTFail("Expected a similar group card")
+        }
+        XCTAssertEqual(photos.count, 2, "Best photo must stay in the group even with cleanupCategory.none")
+        XCTAssertTrue(photos.contains { $0.id == best.id })
+    }
+    
     @MainActor
     func testKeepViaEveryPathExcludesFromQueue() throws {
         let schema = Schema([PersistedPhoto.self, SimilarGroup.self, ReviewDecision.self, LearnedPreferences.self])
