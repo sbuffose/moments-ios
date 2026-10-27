@@ -10,7 +10,7 @@ final class MomentsUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-skipOnboarding", "-AppleLanguages", "(es-AR)", "-AppleLocale", "es_AR"]
+        app.launchArguments = ["-skipOnboarding", "-seedFixturePhotos", "-AppleLanguages", "(es-AR)", "-AppleLocale", "es_AR"]
         app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
         app.launch()
     }

@@ -687,6 +687,28 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testSeededFixturesAppearOnHome() throws {
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch with -seedFixturePhotos")
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let hint = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'liber' OR label CONTAINS[c] 'Revisar' OR label CONTAINS[c] 'Capturas' OR label CONTAINS[c] 'espacio'")
+        ).firstMatch
+        XCTAssertTrue(
+            hint.waitForExistence(timeout: 12),
+            "Home must show cleanup copy from seeded fixtures (duplicates, screenshots, blurry, video)"
+        )
+        
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_seeded_home"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+    
     // MARK: - Full Smoke Suite Summary
     
     func testSmokeTestSummary() throws {

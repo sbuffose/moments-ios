@@ -232,7 +232,27 @@ class AppState: ObservableObject {
             )
         }
         
+        if FixturePhotoSeeder.isRequested {
+            do {
+                let summary = try FixturePhotoSeeder.seedIfNeeded(into: modelContext)
+                totalPhotosIndexed = summary.photos
+                totalPhotosAnalyzed = summary.photos
+                totalPhotosToAnalyze = summary.photos
+                isLibraryAuthorized = true
+                hasCompletedOnboarding = true
+                print("[FixturePhotoSeeder] seeded \(summary.photos) photos")
+            } catch {
+                print("[FixturePhotoSeeder] failed: \(error)")
+            }
+        }
+        
         Task {
+            if FixturePhotoSeeder.isRequested {
+                await checkNotificationStatus()
+                scheduleDailyReviewIfNeeded()
+                return
+            }
+            
             await checkAuthorizationStatus()
             await checkNotificationStatus()
             

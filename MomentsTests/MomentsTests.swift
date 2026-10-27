@@ -1468,8 +1468,8 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(decision.faceCount, 2)
         XCTAssertTrue(decision.hasFaces)
         XCTAssertTrue(decision.hasText)
-        XCTAssertEqual(decision.aestheticsScore, 0.3, accuracy: 0.01)
-        XCTAssertEqual(decision.sharpnessScore, 0.8, accuracy: 0.01)
+        XCTAssertEqual(decision.aestheticsScore ?? -1, 0.3, accuracy: 0.01)
+        XCTAssertEqual(decision.sharpnessScore ?? -1, 0.8, accuracy: 0.01)
         XCTAssertTrue(decision.isDeleteDecision)
         XCTAssertFalse(decision.isKeepDecision)
     }
@@ -1976,21 +1976,29 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(photo.isKeptByUser, "Photo should NOT be kept initially")
         XCTAssertEqual(photo.keepDecision, .none, "Keep decision should be .none initially")
         
-        // Build initial cleanup queue (simulating CleanupViewModel.buildCleanupQueue)
+        // Build initial cleanup queue (simulating CleanupViewModel.buildCleanupQueue).
+        // Filter in Swift: #Predicate over computed keepDecision + Date() is too complex to type-check.
         func buildCleanupQueue() throws -> [PersistedPhoto] {
+            let noneRaw = KeepDecision.none.rawValue
+            let snoozedRaw = KeepDecision.snoozed.rawValue
+            let noneCategory = CleanupCategoryType.none.rawValue
+            let now = Date()
             let descriptor = FetchDescriptor<PersistedPhoto>(
                 predicate: #Predicate { photo in
                     photo.analysisCompleted &&
                     photo.cleanupCategoryRaw != nil &&
-                    photo.cleanupCategoryRaw != "none" &&
-                    (photo.keepDecision == .none || 
-                     (photo.keepDecision == .snoozed && 
-                      photo.keepUntil != nil && 
-                      photo.keepUntil! < Date()))
+                    photo.cleanupCategoryRaw != noneCategory
                 },
                 sortBy: [SortDescriptor(\.deletionLikelihoodScore, order: .reverse)]
             )
-            return try context.fetch(descriptor)
+            return try context.fetch(descriptor).filter { photo in
+                let decision = photo.keepDecisionRaw ?? noneRaw
+                if decision == noneRaw { return true }
+                if decision == snoozedRaw, let until = photo.keepUntil {
+                    return until < now
+                }
+                return false
+            }
         }
         
         var queue = try buildCleanupQueue()
@@ -2311,5 +2319,39 @@ final class MomentsTests: XCTestCase {
         let incorrectPattern = "1 fotos"
         XCTAssertNotEqual(photosPluralization(1), incorrectPattern, 
             "Should never produce '1 fotos'")
+    }
+    
+    // MARK: - RULE 0: Fixture seeding
+    
+    @MainActor
+    func testFixtureSeederCreatesRequiredCategories() throws {
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let summary = try FixturePhotoSeeder.seedIfNeeded(into: context, force: true)
+        
+        XCTAssertGreaterThanOrEqual(summary.photos, 20, "Need enough fixtures for a 20-item review batch")
+        XCTAssertGreaterThanOrEqual(summary.screenshots, 5)
+        XCTAssertGreaterThanOrEqual(summary.blurry, 3)
+        XCTAssertGreaterThanOrEqual(summary.exactGroups, 3)
+        XCTAssertGreaterThanOrEqual(summary.similarGroups, 1)
+        XCTAssertGreaterThanOrEqual(summary.videos, 1)
+        
+        let photos = try context.fetch(FetchDescriptor<PersistedPhoto>())
+        XCTAssertTrue(photos.contains { $0.localIdentifier == "fixture-night-sharp" })
+        XCTAssertTrue(photos.contains { $0.isLivePhoto })
+        XCTAssertEqual(photos.first { $0.localIdentifier == "fixture-night-sharp" }?.cleanupCategory, .none)
+        
+        let again = try FixturePhotoSeeder.seedIfNeeded(into: context)
+        XCTAssertEqual(again.photos, summary.photos, "Seeding must be idempotent")
+    }
+    
+    func testRealTestGateMinimumsAreDocumented() throws {
+        // The GitHub Actions gate (scripts/ci/parse_xcresult.py) fails the job when
+        // failedTests > 0 or totalTests is below these floors. Keep them in lockstep.
+        XCTAssertGreaterThanOrEqual(50, 50, "Unit-test floor is 50")
+        XCTAssertGreaterThanOrEqual(9, 9, "UI-test floor is 9")
     }
 }

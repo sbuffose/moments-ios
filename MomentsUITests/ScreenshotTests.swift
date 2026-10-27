@@ -10,7 +10,7 @@ final class ScreenshotTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = true
         app = XCUIApplication()
-        app.launchArguments = ["--uitesting"]
+        app.launchArguments = ["--uitesting", "-skipOnboarding", "-seedFixturePhotos"]
         app.launch()
     }
     
