@@ -48,6 +48,12 @@ struct ContentView: View {
         .sheet(isPresented: $appState.showFirstRunExplanation) {
             FirstRunExplanationSheet()
         }
+        .sheet(isPresented: $appState.showDailyReview) {
+            NavigationStack {
+                TodayReviewView()
+            }
+            .accessibilityIdentifier("dailyReview.root")
+        }
     }
 }
 

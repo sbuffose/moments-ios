@@ -16,6 +16,8 @@ final class DailyReviewService: ObservableObject {
     static let dailyReviewTaskIdentifier = "com.sbuffose.moments.dailyReview"
     static let notificationCategoryIdentifier = "DAILY_REVIEW"
     static let reviewDeepLinkAction = "REVIEW_TODAY"
+    static let notificationIdentifier = "daily-review"
+    static let legacyNotificationIdentifiers = ["daily-review-21-0", "daily-review"]
     
     @Published var isNotificationPermissionGranted = false
     @Published var todayCandidateCount = 0
@@ -149,25 +151,23 @@ final class DailyReviewService: ObservableObject {
         // Update candidates count first
         await updateTodayCandidates()
         
-        // Don't schedule if no candidates
-        guard todayCandidateCount > 0 else {
-            print("[DailyReviewService] No candidates, skipping notification")
-            return
-        }
-        
         let content = UNMutableNotificationContent()
         content.title = NSLocalizedString("daily_review_notification_title", comment: "Repaso del día")
         
-        let sizeFormatted = ByteCountFormatter.string(fromByteCount: todayCandidateSize, countStyle: .file)
-        content.body = String(
-            format: NSLocalizedString("daily_review_notification_body", comment: ""),
-            todayCandidateCount,
-            sizeFormatted
-        )
+        if todayCandidateCount > 0 {
+            let sizeFormatted = ByteCountFormatter.string(fromByteCount: todayCandidateSize, countStyle: .file)
+            content.body = String(
+                format: NSLocalizedString("daily_review_notification_body", comment: ""),
+                todayCandidateCount,
+                sizeFormatted
+            )
+        } else {
+            content.body = "Revisá las fotos de hoy y organizá tu biblioteca"
+        }
         
         content.sound = .default
         content.categoryIdentifier = Self.notificationCategoryIdentifier
-        content.userInfo = ["type": "dailyReview"]
+        content.userInfo = ["type": "dailyReview", "deepLink": "review"]
         
         // Calendar trigger for the specified time
         var dateComponents = DateComponents()
@@ -177,7 +177,7 @@ final class DailyReviewService: ObservableObject {
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
         
         let request = UNNotificationRequest(
-            identifier: "daily-review-\(hour)-\(minute)",
+            identifier: Self.notificationIdentifier,
             content: content,
             trigger: trigger
         )
@@ -198,14 +198,13 @@ final class DailyReviewService: ObservableObject {
     private func cancelNotification() async {
         let settings = await getSettings()
         
+        var ids = Self.legacyNotificationIdentifiers
         if let notificationId = settings.notificationId {
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
-            settings.notificationId = nil
-            try? modelContext?.save()
+            ids.append(notificationId)
         }
-        
-        // Also remove any with the daily-review prefix
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["daily-review-21-0"])
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+        settings.notificationId = nil
+        try? modelContext?.save()
     }
     
     // MARK: - Today's Candidates
@@ -276,8 +275,12 @@ final class DailyReviewService: ObservableObject {
             forTaskWithIdentifier: Self.dailyReviewTaskIdentifier,
             using: nil
         ) { [weak self] task in
+            guard let refresh = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
             Task { @MainActor in
-                self?.handleBackgroundRefresh(task as! BGAppRefreshTask)
+                self?.handleBackgroundRefresh(refresh)
             }
         }
     }
@@ -348,4 +351,32 @@ final class DailyReviewService: ObservableObject {
 
 extension Notification.Name {
     static let openDailyReview = Notification.Name("openDailyReview")
+}
+
+final class MomentsNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = MomentsNotificationDelegate()
+    
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound, .list]
+    }
+    
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        await MainActor.run {
+            DailyReviewService.shared.handleNotificationResponse(response)
+            let info = response.notification.request.content.userInfo
+            if info["type"] as? String == "newPhotoCheck" {
+                NotificationCenter.default.post(name: .openNewPhotoCheck, object: nil)
+            }
+        }
+    }
+}
+
+extension Notification.Name {
+    static let openNewPhotoCheck = Notification.Name("openNewPhotoCheck")
 }
