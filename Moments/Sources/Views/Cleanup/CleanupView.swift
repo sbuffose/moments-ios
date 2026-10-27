@@ -567,11 +567,13 @@ struct OnThisDayView: View {
 
 struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
+    @StateObject private var shareService = ShareLoadingService()
     @State private var currentIndex = 0
     @State private var showFinishSheet = false
-    @State private var showShareSheet = false
+    @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
     @State private var sharedPhotoId: String?
+    @State private var showShareError = false
     @Environment(\.dismiss) private var dismiss
     
     private var allPhotos: [PersistedPhoto] {
@@ -653,21 +655,35 @@ struct CleanupReviewView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .disabled(shareService.isLoading)
                     
                     // Share button
                     Button {
-                        sharedPhotoId = currentPhoto.id
-                        showShareSheet = true
+                        Task {
+                            sharedPhotoId = currentPhoto.id
+                            if let item = await shareService.loadShareItem(for: currentPhoto) {
+                                shareItem = item
+                            } else {
+                                showShareError = true
+                            }
+                        }
                     } label: {
                         VStack {
-                            Image(systemName: "square.and.arrow.up.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundStyle(.blue)
+                            if shareService.isLoading && shareService.loadingPhotoId == currentPhoto.id {
+                                ProgressView()
+                                    .frame(width: 56, height: 56)
+                            } else {
+                                Image(systemName: "square.and.arrow.up.circle.fill")
+                                    .font(.system(size: 56))
+                                    .foregroundStyle(.blue)
+                            }
                             Text("Compartir")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .disabled(shareService.isLoading)
+                    .accessibilityIdentifier("review.shareButton")
                     
                     // Delete button
                     Button {
@@ -685,6 +701,7 @@ struct CleanupReviewView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .disabled(shareService.isLoading)
                 }
                 .padding(.bottom, 40)
                 
@@ -738,15 +755,22 @@ struct CleanupReviewView: View {
                 }
             )
         }
-        .sheet(isPresented: $showShareSheet) {
-            if let photoId = sharedPhotoId,
-               let photo = unreviewedPhotos.first(where: { $0.id == photoId }) {
-                PhotoShareSheet(photo: photo) { didShare in
-                    if didShare {
-                        showPostShareDeletePrompt = true
-                    }
+        .sheet(item: $shareItem) { item in
+            ShareActivityController(shareItem: item) { didShare in
+                shareItem = nil
+                if didShare {
+                    showPostShareDeletePrompt = true
                 }
             }
+            .presentationDetents([.medium, .large])
+            .accessibilityIdentifier("share.activitySheet")
+        }
+        .alert("Error al compartir", isPresented: $showShareError) {
+            Button("OK") {
+                showShareError = false
+            }
+        } message: {
+            Text(shareService.errorMessage ?? "No se pudo preparar la foto para compartir")
         }
         .alert("¿Eliminar después de compartir?", isPresented: $showPostShareDeletePrompt) {
             Button("Eliminar", role: .destructive) {
@@ -1001,125 +1025,26 @@ struct ReviewSummarySheet: View {
     }
 }
 
-// MARK: - Photo Share Sheet
+// MARK: - Share Item (Identifiable for .sheet(item:))
 
-struct PhotoShareSheet: View {
-    let photo: PersistedPhoto
-    let onComplete: (Bool) -> Void
-    
-    @Environment(\.dismiss) private var dismiss
-    @State private var shareItems: [Any] = []
-    @State private var isLoading = true
-    
-    var body: some View {
-        NavigationStack {
-            VStack {
-                if isLoading {
-                    ProgressView("Preparando...")
-                } else if !shareItems.isEmpty {
-                    ShareActivityView(activityItems: shareItems) { completed in
-                        dismiss()
-                        onComplete(completed)
-                    }
-                } else {
-                    ContentUnavailableView(
-                        "No se pudo cargar",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("No se pudo cargar la foto para compartir")
-                    )
-                }
-            }
-            .navigationTitle("Compartir")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                        onComplete(false)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .task {
-            await loadShareItems()
-        }
-    }
-    
-    private func loadShareItems() async {
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [photo.localIdentifier], options: nil)
-        guard let asset = fetchResult.firstObject else {
-            isLoading = false
-            return
-        }
-        
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true
-        options.isSynchronous = false
-        
-        if asset.mediaType == .video {
-            // For videos, get the video URL
-            let videoOptions = PHVideoRequestOptions()
-            videoOptions.isNetworkAccessAllowed = true
-            videoOptions.deliveryMode = .highQualityFormat
-            
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: videoOptions) { avAsset, _, _ in
-                DispatchQueue.main.async {
-                    if let urlAsset = avAsset as? AVURLAsset {
-                        self.shareItems = [urlAsset.url]
-                    }
-                    self.isLoading = false
-                }
-            }
-        } else if asset.mediaSubtypes.contains(.photoLive) {
-            // For Live Photos, get the Live Photo object
-            let livePhotoOptions = PHLivePhotoRequestOptions()
-            livePhotoOptions.isNetworkAccessAllowed = true
-            livePhotoOptions.deliveryMode = .highQualityFormat
-            
-            PHImageManager.default().requestLivePhoto(
-                for: asset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
-                options: livePhotoOptions
-            ) { livePhoto, _ in
-                DispatchQueue.main.async {
-                    if let livePhoto = livePhoto {
-                        self.shareItems = [livePhoto]
-                    }
-                    self.isLoading = false
-                }
-            }
-        } else {
-            // For regular images, get full-size image
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: PHImageManagerMaximumSize,
-                contentMode: .aspectFit,
-                options: options
-            ) { image, _ in
-                DispatchQueue.main.async {
-                    if let image = image {
-                        self.shareItems = [image]
-                    }
-                    self.isLoading = false
-                }
-            }
-        }
-    }
+struct ShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+    let photoId: String
 }
 
-// MARK: - Share Activity View (UIKit wrapper)
+// MARK: - Share Activity Controller (UIKit wrapper - presented directly)
 
-struct ShareActivityView: UIViewControllerRepresentable {
-    let activityItems: [Any]
+struct ShareActivityController: UIViewControllerRepresentable {
+    let shareItem: ShareItem
     let onComplete: (Bool) -> Void
+    @Environment(\.dismiss) private var dismiss
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        let controller = UIActivityViewController(
+            activityItems: [shareItem.url],
+            applicationActivities: nil
+        )
         controller.completionWithItemsHandler = { _, completed, _, _ in
             onComplete(completed)
         }
@@ -1127,6 +1052,170 @@ struct ShareActivityView: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Share Loading Service
+
+@MainActor
+class ShareLoadingService: ObservableObject {
+    @Published var isLoading = false
+    @Published var loadingPhotoId: String?
+    @Published var errorMessage: String?
+    
+    func loadShareItem(for photo: PersistedPhoto) async -> ShareItem? {
+        isLoading = true
+        loadingPhotoId = photo.id
+        errorMessage = nil
+        
+        defer {
+            isLoading = false
+            loadingPhotoId = nil
+        }
+        
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [photo.localIdentifier], options: nil)
+        guard let asset = fetchResult.firstObject else {
+            errorMessage = "No se pudo encontrar la foto"
+            return nil
+        }
+        
+        do {
+            let tempURL = try await exportAssetToTempFile(asset: asset)
+            return ShareItem(url: tempURL, photoId: photo.id)
+        } catch {
+            errorMessage = "Error al preparar: \(error.localizedDescription)"
+            return nil
+        }
+    }
+    
+    private func exportAssetToTempFile(asset: PHAsset) async throws -> URL {
+        if asset.mediaType == .video {
+            return try await exportVideo(asset: asset)
+        } else if asset.mediaSubtypes.contains(.photoLive) {
+            return try await exportLivePhoto(asset: asset)
+        } else {
+            return try await exportImage(asset: asset)
+        }
+    }
+    
+    private func exportImage(asset: PHAsset) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+            options.version = .current
+            
+            PHImageManager.default().requestImageDataAndOrientation(
+                for: asset,
+                options: options
+            ) { data, uti, _, info in
+                guard let imageData = data else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    continuation.resume(throwing: error ?? NSError(domain: "ShareError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No se pudo cargar la imagen"]))
+                    return
+                }
+                
+                let fileExtension: String
+                if let uniformType = uti {
+                    switch uniformType {
+                    case "public.jpeg", "public.jpg": fileExtension = "jpg"
+                    case "public.png": fileExtension = "png"
+                    case "public.heic", "public.heif": fileExtension = "heic"
+                    case "com.compuserve.gif": fileExtension = "gif"
+                    default: fileExtension = "jpg"
+                    }
+                } else {
+                    fileExtension = "jpg"
+                }
+                
+                let resources = PHAssetResource.assetResources(for: asset)
+                let originalFilename = resources.first?.originalFilename ?? "photo"
+                let baseName = (originalFilename as NSString).deletingPathExtension
+                
+                let tempDir = FileManager.default.temporaryDirectory
+                let fileName = "\(baseName)_\(UUID().uuidString.prefix(8)).\(fileExtension)"
+                let tempURL = tempDir.appendingPathComponent(fileName)
+                
+                do {
+                    try imageData.write(to: tempURL)
+                    continuation.resume(returning: tempURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private func exportVideo(asset: PHAsset) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.version = .current
+            
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
+                guard let urlAsset = avAsset as? AVURLAsset else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    continuation.resume(throwing: error ?? NSError(domain: "ShareError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No se pudo cargar el video"]))
+                    return
+                }
+                
+                let resources = PHAssetResource.assetResources(for: asset)
+                let originalFilename = resources.first?.originalFilename ?? "video.mov"
+                let baseName = (originalFilename as NSString).deletingPathExtension
+                let ext = (originalFilename as NSString).pathExtension.isEmpty ? "mov" : (originalFilename as NSString).pathExtension
+                
+                let tempDir = FileManager.default.temporaryDirectory
+                let fileName = "\(baseName)_\(UUID().uuidString.prefix(8)).\(ext)"
+                let tempURL = tempDir.appendingPathComponent(fileName)
+                
+                do {
+                    if FileManager.default.fileExists(atPath: tempURL.path) {
+                        try FileManager.default.removeItem(at: tempURL)
+                    }
+                    try FileManager.default.copyItem(at: urlAsset.url, to: tempURL)
+                    continuation.resume(returning: tempURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private func exportLivePhoto(asset: PHAsset) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+            
+            PHImageManager.default().requestImageDataAndOrientation(
+                for: asset,
+                options: options
+            ) { data, uti, _, info in
+                guard let imageData = data else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    continuation.resume(throwing: error ?? NSError(domain: "ShareError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No se pudo cargar Live Photo"]))
+                    return
+                }
+                
+                let resources = PHAssetResource.assetResources(for: asset)
+                let originalFilename = resources.first?.originalFilename ?? "livephoto"
+                let baseName = (originalFilename as NSString).deletingPathExtension
+                
+                let tempDir = FileManager.default.temporaryDirectory
+                let fileName = "\(baseName)_\(UUID().uuidString.prefix(8)).heic"
+                let tempURL = tempDir.appendingPathComponent(fileName)
+                
+                do {
+                    try imageData.write(to: tempURL)
+                    continuation.resume(returning: tempURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Category Row
