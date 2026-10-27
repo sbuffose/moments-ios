@@ -6,6 +6,7 @@ import SwiftData
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var newPhotoCheck = NewPhotoCheckService.shared
     
     private var isTestingMode: Bool {
         ProcessInfo.processInfo.arguments.contains("-skipOnboarding") ||
@@ -47,6 +48,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $appState.showFirstRunExplanation) {
             FirstRunExplanationSheet()
+        }
+        .sheet(item: $newPhotoCheck.pending) { candidate in
+            NewPhotoCheckSheet(candidate: candidate)
         }
         .sheet(isPresented: $appState.showDailyReview) {
             NavigationStack {

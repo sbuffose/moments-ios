@@ -130,6 +130,7 @@ struct MomentsApp: App {
             }
         case .active:
             BackgroundTaskManager.shared.endBackgroundTask()
+            NewPhotoCheckService.shared.checkDuePhotos(isForeground: true)
         case .inactive:
             break
         @unknown default:
@@ -250,6 +251,7 @@ class AppState: ObservableObject {
         }
         
         DailyReviewService.shared.initialize(modelContext: modelContext)
+        NewPhotoCheckService.shared.initialize(modelContext: modelContext)
         installDailyReviewDeepLink()
         
         Task {

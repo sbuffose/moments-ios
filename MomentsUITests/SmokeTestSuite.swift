@@ -687,6 +687,14 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testNewPhotoCheckToggleExistsInSettings() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 3).tap()
+        XCTAssertTrue(app.switches["settings.newPhotoCheck"].waitForExistence(timeout: 8) || app.buttons["settings.newPhotoCheck"].waitForExistence(timeout: 3))
+    }
+    
     func testMonthlyRecapCardOpensStory() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch

@@ -88,6 +88,14 @@ struct SettingsView: View {
                 
                 // Notifications Section
                 Section {
+                    Toggle(isOn: Binding(
+                        get: { NewPhotoCheckService.isEnabled },
+                        set: { NewPhotoCheckService.isEnabled = $0 }
+                    )) {
+                        Label("Revisar fotos nuevas", systemImage: "camera.badge.ellipsis")
+                    }
+                    .accessibilityIdentifier("settings.newPhotoCheck")
+                    
                     NavigationLink {
                         DailyReviewSettingsView()
                     } label: {
