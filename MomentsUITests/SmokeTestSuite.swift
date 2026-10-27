@@ -687,6 +687,28 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testHomeSearchOpensAssistant() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        XCTAssertFalse(app.staticTexts["home.analysisPill"].exists, "Scan status is a clock, not an Analizando X/Y pill")
+        
+        let search = app.buttons["home.searchBar"]
+        if search.waitForExistence(timeout: 8) {
+            search.tap()
+            let assistant = app.otherElements["assistant.root"]
+            XCTAssertTrue(assistant.waitForExistence(timeout: 8) || app.tabBars.buttons.element(boundBy: 1).isSelected)
+        }
+        
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_home_search_assistant"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+    
     func testDailyBatchProgressIsNDe20() throws {
         app.launch()
         
