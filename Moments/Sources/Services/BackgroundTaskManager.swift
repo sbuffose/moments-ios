@@ -491,7 +491,7 @@ extension BackgroundTaskManager {
                     } else {
                         task.updateTitle(
                             NSLocalizedString("bg_task_title_finishing", comment: "Finalizando"),
-                            subtitle: nil
+                            subtitle: NSLocalizedString("bg_task_subtitle_almost_done", comment: "Casi listo")
                         )
                     }
                 }

@@ -578,3 +578,4 @@
 "bg_task_title" = "Analyzing photos";
 "bg_task_subtitle_remaining" = "Remaining";
 "bg_task_title_finishing" = "Finishing";
+"bg_task_subtitle_almost_done" = "Almost done";
