@@ -10,7 +10,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # One full pipeline for all pull requests, plus a separate group for main.
+  # Stacked branches share this group so only the stack-bottom PR (the one we
+  # keep open) plus main consume macOS minutes. New runs cancel superseded ones.
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || 'pull-requests' }}
   cancel-in-progress: true
 
 env:

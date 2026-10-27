@@ -33,6 +33,10 @@ final class BackgroundTaskManager: ObservableObject {
     
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var scanTask: BGTask?
+    private var analysisTask: BGTask?
+    private var scanExpired = false
+    private var analysisExpired = false
+    private var completedTaskIds = Set<ObjectIdentifier>()
     private weak var photoLibraryService: PhotoLibraryService?
     private weak var analysisService: PhotoAnalysisService?
     
@@ -116,24 +120,21 @@ final class BackgroundTaskManager: ObservableObject {
     private func handleScanTask(_ task: BGTask) {
         isBackgroundScanActive = true
         scanTask = task
+        scanExpired = false
         
         task.expirationHandler = { [weak self] in
             Task { @MainActor in
-                self?.handleTaskExpiration()
+                self?.handleTaskExpiration(task: task, kind: .scan)
             }
         }
         
         Task {
             let success = await performBackgroundScan()
-            
             await MainActor.run {
-                task.setTaskCompleted(success: success)
-                self.isBackgroundScanActive = false
-                self.scanTask = nil
-                
+                self.finishSystemTask(task, success: success && !self.scanExpired, kind: .scan)
                 if self.hasPendingWork {
                     self.scheduleScanTaskIfNeeded()
-                } else {
+                } else if !self.scanExpired {
                     self.sendScanCompleteNotification()
                 }
             }
@@ -142,36 +143,64 @@ final class BackgroundTaskManager: ObservableObject {
     
     private func handleAnalysisTask(_ task: BGTask) {
         isBackgroundScanActive = true
+        analysisTask = task
+        analysisExpired = false
         
         task.expirationHandler = { [weak self] in
             Task { @MainActor in
-                self?.handleTaskExpiration()
+                self?.handleTaskExpiration(task: task, kind: .analysis)
             }
         }
         
         Task {
             let success = await performBackgroundAnalysis()
-            
             await MainActor.run {
-                task.setTaskCompleted(success: success)
-                self.isBackgroundScanActive = false
-                
+                self.finishSystemTask(task, success: success && !self.analysisExpired, kind: .analysis)
                 if self.hasAnalysisPending {
                     self.scheduleAnalysisTaskIfNeeded()
-                } else if !self.hasPendingWork {
+                } else if !self.hasPendingWork && !self.analysisExpired {
                     self.sendScanCompleteNotification()
                 }
             }
         }
     }
     
-    private func handleTaskExpiration() {
+    enum BackgroundWorkKind {
+        case scan
+        case analysis
+    }
+    
+    /// Expiration MUST call setTaskCompleted(false) exactly once. iOS kills apps that ignore it.
+    private func handleTaskExpiration(task: BGTask, kind: BackgroundWorkKind) {
         print("[BackgroundTaskManager] Task expiring, checkpointing...")
         saveCheckpoint()
         isBackgroundScanActive = false
-        
+        switch kind {
+        case .scan:
+            scanExpired = true
+        case .analysis:
+            analysisExpired = true
+        }
+        finishSystemTask(task, success: false, kind: kind)
         scheduleScanTaskIfNeeded()
         scheduleAnalysisTaskIfNeeded()
+    }
+    
+    /// Completes a BGTask at most once. Expiration and the work Task race; only the first wins.
+    private func finishSystemTask(_ task: BGTask, success: Bool, kind: BackgroundWorkKind) {
+        let id = ObjectIdentifier(task)
+        guard BackgroundTaskCompletion.shouldComplete(previouslyCompleted: completedTaskIds.contains(id)) else {
+            return
+        }
+        completedTaskIds.insert(id)
+        task.setTaskCompleted(success: success)
+        isBackgroundScanActive = false
+        switch kind {
+        case .scan:
+            if scanTask === task { scanTask = nil }
+        case .analysis:
+            if analysisTask === task { analysisTask = nil }
+        }
     }
     
     // MARK: - App Lifecycle Background Task
@@ -326,42 +355,48 @@ final class BackgroundTaskManager: ObservableObject {
     private func performBackgroundScan() async -> Bool {
         guard let service = photoLibraryService else { return false }
         
-        do {
-            let status = await service.checkAuthorizationStatus()
-            guard status == .authorized || status == .limited else { return false }
-            
-            let fetchOptions = PHFetchOptions()
-            fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-            let assets = PHAsset.fetchAssets(with: fetchOptions)
-            
-            var processedCount = 0
-            let totalCount = assets.count
-            
-            assets.enumerateObjects { [weak self] asset, index, stop in
-                guard let self = self else {
-                    stop.pointee = true
-                    return
-                }
-                
-                if self.isAlreadyIndexed(asset.localIdentifier) {
-                    return
-                }
-                
-                Task {
-                    await service.indexSingleAsset(asset)
-                    await MainActor.run {
-                        self.markIndexed(assetId: asset.localIdentifier)
-                        processedCount += 1
-                        self.backgroundProgress = Double(processedCount) / Double(totalCount)
-                    }
-                }
+        let status = await service.checkAuthorizationStatus()
+        guard status == .authorized || status == .limited else { return false }
+        
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let assets = PHAsset.fetchAssets(with: fetchOptions)
+        
+        var pending: [PHAsset] = []
+        pending.reserveCapacity(min(assets.count, 512))
+        assets.enumerateObjects { [weak self] asset, _, stop in
+            guard let self else {
+                stop.pointee = true
+                return
             }
-            
-            return true
-        } catch {
-            print("[BackgroundTaskManager] Background scan failed: \(error)")
-            return false
+            if self.scanExpired {
+                stop.pointee = true
+                return
+            }
+            if !self.isAlreadyIndexed(asset.localIdentifier) {
+                pending.append(asset)
+            }
         }
+        
+        let totalCount = max(1, assets.count)
+        var processedCount = assets.count - pending.count
+        
+        // Await each asset. Fire-and-forget Tasks used to return true before work finished.
+        for asset in pending {
+            if scanExpired || Task.isCancelled {
+                saveCheckpoint()
+                return false
+            }
+            await service.indexSingleAsset(asset)
+            autoreleasepool {
+                self.markIndexed(assetId: asset.localIdentifier)
+                processedCount += 1
+                self.backgroundProgress = Double(processedCount) / Double(totalCount)
+            }
+        }
+        
+        persistBatchedCheckpoints()
+        return !scanExpired
     }
     
     private func performBackgroundAnalysis() async -> Bool {
@@ -411,6 +446,7 @@ extension BackgroundTaskManager {
     // Track the active continued processing task
     private static var activeContinuedTask: BGContinuedProcessingTask?
     private static var continuedTaskWorkItem: Task<Void, Never>?
+    private static var continuedTaskDidComplete = false
     
     // Track whether registration succeeded - Swift do/catch cannot catch NSException,
     // so we must guard submissions against this flag
@@ -490,6 +526,7 @@ extension BackgroundTaskManager {
     /// Handle a continued processing task with proper progress reporting
     private func handleContinuedProcessingTask(_ task: BGContinuedProcessingTask) {
         Self.activeContinuedTask = task
+        Self.continuedTaskDidComplete = false
         isBackgroundScanActive = true
         
         // Get current progress state
@@ -504,22 +541,8 @@ extension BackgroundTaskManager {
         task.expirationHandler = { [weak self] in
             Task { @MainActor in
                 print("[BackgroundTaskManager] Continued task expiring, checkpointing...")
-                
-                // Cancel ongoing work first
                 Self.continuedTaskWorkItem?.cancel()
-                Self.continuedTaskWorkItem = nil
-                
-                // Save checkpoint before completing
-                self?.saveCheckpoint()
-                
-                // Clear state
-                Self.activeContinuedTask = nil
-                self?.isBackgroundScanActive = false
-                
-                // Complete with success:false - task was interrupted
-                task.setTaskCompleted(success: false)
-                
-                // Schedule BGProcessingTask to continue later
+                self?.completeContinuedTaskOnce(task, success: false)
                 self?.scheduleScanTaskIfNeeded()
                 self?.scheduleAnalysisTaskIfNeeded()
             }
@@ -535,20 +558,28 @@ extension BackgroundTaskManager {
             let success = await self.performContinuedProcessing(task: task)
             
             await MainActor.run {
-                Self.activeContinuedTask = nil
-                Self.continuedTaskWorkItem = nil
-                self.isBackgroundScanActive = false
-                task.setTaskCompleted(success: success)
-                
+                self.completeContinuedTaskOnce(task, success: success)
                 if success && !self.hasPendingWork && !self.hasAnalysisPending {
                     self.sendScanCompleteNotification()
                 } else if self.hasPendingWork || self.hasAnalysisPending {
-                    // More work remains - schedule background task
                     self.scheduleScanTaskIfNeeded()
                     self.scheduleAnalysisTaskIfNeeded()
                 }
             }
         }
+    }
+    
+    /// Completes the continued task exactly once (expiration and work race).
+    private func completeContinuedTaskOnce(_ task: BGContinuedProcessingTask, success: Bool) {
+        guard BackgroundTaskCompletion.shouldComplete(previouslyCompleted: Self.continuedTaskDidComplete) else {
+            return
+        }
+        Self.continuedTaskDidComplete = true
+        Self.continuedTaskWorkItem = nil
+        saveCheckpoint()
+        Self.activeContinuedTask = nil
+        isBackgroundScanActive = false
+        task.setTaskCompleted(success: success)
     }
     
     /// Perform the continued processing work with progress updates
@@ -606,12 +637,22 @@ extension BackgroundTaskManager {
     /// Cancel any active continued processing task
     func cancelContinuedProcessingTask() {
         Self.continuedTaskWorkItem?.cancel()
-        Self.continuedTaskWorkItem = nil
         if let task = Self.activeContinuedTask {
-            saveCheckpoint()
-            task.setTaskCompleted(success: true)
-            Self.activeContinuedTask = nil
+            completeContinuedTaskOnce(task, success: false)
+        } else {
+            Self.continuedTaskWorkItem = nil
+            isBackgroundScanActive = false
         }
-        isBackgroundScanActive = false
+    }
+}
+
+/// Testable completion gate: a BGTask / BGContinuedProcessingTask must complete exactly once.
+enum BackgroundTaskCompletion {
+    static func shouldComplete(previouslyCompleted: Bool) -> Bool {
+        !previouslyCompleted
+    }
+    
+    static func expirationSuccess() -> Bool {
+        false
     }
 }

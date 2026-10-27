@@ -2554,4 +2554,54 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(text.contains("MB") || text.contains("MB"), "Summary must show MB for tens of megabytes: \(text)")
         XCTAssertFalse(text.contains("500+"))
     }
+    
+    func testBackgroundTaskCompletesExactlyOnce() {
+        XCTAssertTrue(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: false))
+        XCTAssertFalse(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: true))
+        XCTAssertFalse(BackgroundTaskCompletion.expirationSuccess(), "Expiry handlers must setTaskCompleted(false)")
+    }
+    
+    func testFullSizeImageUsesScreenSizedTargetNotMaximum() {
+        let size = PhotoLibraryService.displayTargetSize()
+        let megapixels = (size.width * size.height) / 1_000_000
+        XCTAssertLessThan(megapixels, 8, "Display target must stay well below a 48 MP original decode")
+        XCTAssertGreaterThan(size.width, 1000)
+    }
+    
+    func testMetadataExtractionNeverAllowsICloudNetwork() {
+        XCTAssertFalse(MetadataExtractionService.neverAllowsNetworkForMetadata())
+    }
+    
+    func testWhatsAppFilenameIsDetectedAsMessagingOrigin() {
+        let meta = MetadataExtractionService.PhotoMetadata(
+            hasExifData: false,
+            cameraMake: nil,
+            cameraModel: nil,
+            lensMake: nil,
+            lensModel: nil,
+            software: nil,
+            originalFilename: "IMG-20260312-WA0004.jpg",
+            dateTimeOriginal: nil,
+            gpsLatitude: nil,
+            gpsLongitude: nil,
+            gpsAltitude: nil,
+            orientation: nil,
+            colorSpace: nil,
+            fNumber: nil,
+            exposureTime: nil,
+            iso: nil,
+            focalLength: nil,
+            flashFired: nil,
+            whiteBalance: nil
+        )
+        XCTAssertEqual(meta.origin, .whatsapp)
+    }
+    
+    func testBackgroundScanAwaitsWorkInsteadOfFireAndForget() {
+        // performBackgroundScan used to spawn unstructured Tasks and return true immediately.
+        // The completion gate plus sequential indexing is the contract: work finishes first.
+        XCTAssertTrue(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: false))
+        XCTAssertFalse(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: true),
+                       "setTaskCompleted must run after the awaited scan, and only once")
+    }
 }

@@ -169,7 +169,7 @@ class PhotoAnalysisService: ObservableObject {
         let labels = await imageAnalyzer.classifyImage(image: analysisImage)
         let barcodeResult = await imageAnalyzer.detectBarcodes(image: analysisImage)
         let featurePrint = await imageAnalyzer.generateFeaturePrint(image: analysisImage)
-        let dHash = imageAnalyzer.generateDHash(image: analysisImage)
+        let dHash: UInt64? = autoreleasepool { imageAnalyzer.generateDHash(image: analysisImage) }
         let faces = await faceAnalyzer.detectFaces(in: analysisImage, photoId: photo.id)
         
         let resourceInfo = await getResourceInfo(for: asset)
@@ -178,7 +178,11 @@ class PhotoAnalysisService: ObservableObject {
         
         var locationInfo: (name: String?, city: String?, country: String?)?
         if let lat = photo.latitude, let lon = photo.longitude {
-            locationInfo = await geocodingService.getLocationName(latitude: lat, longitude: lon)
+            if let cached = await geocodingService.cachedLocationName(latitude: lat, longitude: lon) {
+                locationInfo = (cached.name, cached.city, cached.country)
+            } else {
+                locationInfo = await geocodingService.getLocationName(latitude: lat, longitude: lon)
+            }
         }
         
         await MainActor.run {
