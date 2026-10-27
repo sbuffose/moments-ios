@@ -456,7 +456,7 @@ class MemoryTitleGenerator {
             parts.append(MomentsPluralization.photos(photoCount))
         }
         if videoCount > 0 {
-            parts.append(String(localized: "^[\(videoCount) video](inflect: true)"))
+            parts.append(MomentsPluralization.videos(videoCount))
         }
         if peopleCount > 0 {
             parts.append(MomentsPluralization.people(peopleCount))

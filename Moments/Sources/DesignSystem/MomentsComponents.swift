@@ -51,6 +51,8 @@ struct PhotoGridCard: View {
             }
         }
         .momentsCard()
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipped()
         .onTapGesture {
             MomentsHaptics.light()
             action?()
@@ -503,27 +505,31 @@ struct MomentsLoadingIndicator: View {
 
 enum MomentsPluralization {
     static func photos(_ count: Int) -> String {
-        String(localized: "^[\(count) foto](inflect: true)", comment: "Photo count with automatic grammar agreement")
+        count == 1 ? "\(count) foto" : "\(count) fotos"
     }
     
     static func people(_ count: Int) -> String {
-        String(localized: "^[\(count) persona](inflect: true)", comment: "Person count with automatic grammar agreement")
+        count == 1 ? "\(count) persona" : "\(count) personas"
     }
     
     static func elements(_ count: Int) -> String {
-        String(localized: "^[\(count) elemento](inflect: true)", comment: "Element count with automatic grammar agreement")
+        count == 1 ? "\(count) elemento" : "\(count) elementos"
     }
     
     static func days(_ count: Int) -> String {
-        String(localized: "^[\(count) día](inflect: true)", comment: "Day count with automatic grammar agreement")
+        count == 1 ? "\(count) día" : "\(count) días"
     }
     
     static func items(_ count: Int) -> String {
-        String(localized: "^[\(count) elemento](inflect: true)", comment: "Item count with automatic grammar agreement")
+        count == 1 ? "\(count) elemento" : "\(count) elementos"
+    }
+    
+    static func videos(_ count: Int) -> String {
+        count == 1 ? "\(count) video" : "\(count) videos"
     }
     
     static func deletePhotos(_ count: Int) -> String {
-        String(localized: "Eliminar ^[\(count) foto](inflect: true)", comment: "Delete photos action with automatic grammar agreement")
+        count == 1 ? "Eliminar \(count) foto" : "Eliminar \(count) fotos"
     }
     
     static func deleteOthers(_ count: Int) -> String {

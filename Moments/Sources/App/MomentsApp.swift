@@ -47,7 +47,10 @@ struct MomentsApp: App {
             container = try! ModelContainer(for: schema)
         }
         
+        // Register all background tasks synchronously during launch
+        // This MUST happen before the app finishes launching
         BackgroundTaskManager.shared.registerBackgroundTasks()
+        DailyReviewService.shared.registerBackgroundTask()
     }
     
     private static func createContainer(schema: Schema, inMemory: Bool) -> ModelContainer? {

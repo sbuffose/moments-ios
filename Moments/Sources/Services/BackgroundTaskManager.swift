@@ -340,18 +340,26 @@ final class BackgroundTaskManager: ObservableObject {
 extension BackgroundTaskManager {
     
     // Continued processing tasks use a wildcard identifier pattern
-    // Must be registered in Info.plist as: com.sbuffose.moments.continued.*
+    // Must register with the EXACT identifier from Info.plist including the asterisk
+    private static let continuedTaskIdentifierWildcard = "com.sbuffose.moments.continued.*"
     private static let continuedTaskIdentifierPrefix = "com.sbuffose.moments.continued."
     
     // Track the active continued processing task
     private static var activeContinuedTask: BGContinuedProcessingTask?
     private static var continuedTaskWorkItem: Task<Void, Never>?
     
+    // Track whether registration succeeded - Swift do/catch cannot catch NSException,
+    // so we must guard submissions against this flag
+    private static var isContinuedProcessingRegistered = false
+    
     /// Register the continued processing task handler. Call once at app launch.
-    func registerContinuedProcessingTaskHandler() {
-        // Register with wildcard pattern to handle any continued.* identifier
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: Self.continuedTaskIdentifierPrefix,
+    /// Returns true if registration succeeded, false otherwise.
+    @discardableResult
+    func registerContinuedProcessingTaskHandler() -> Bool {
+        // Register with the EXACT wildcard identifier from BGTaskSchedulerPermittedIdentifiers
+        // Must match "com.sbuffose.moments.continued.*" exactly
+        let registered = BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.continuedTaskIdentifierWildcard,
             using: nil
         ) { [weak self] task in
             guard let continuedTask = task as? BGContinuedProcessingTask else {
@@ -362,11 +370,24 @@ extension BackgroundTaskManager {
                 self?.handleContinuedProcessingTask(continuedTask)
             }
         }
+        Self.isContinuedProcessingRegistered = registered
+        if !registered {
+            print("[BackgroundTaskManager] WARNING: Failed to register continued processing task handler")
+        }
+        return registered
     }
     
     /// Submit a continued processing task. Only call while a user-initiated scan is actively running.
     /// - Parameter remainingPhotos: Number of photos remaining to process (must be > 0)
     func submitContinuedProcessingTask(remainingPhotos: Int) {
+        // Guard against registration not having succeeded - NSException from submit
+        // cannot be caught by Swift do/catch, so we must check this flag
+        guard Self.isContinuedProcessingRegistered else {
+            print("[BackgroundTaskManager] Skipping continued task - handler not registered")
+            scheduleScanTaskIfNeeded()
+            return
+        }
+        
         // Don't submit if no work remains
         guard remainingPhotos > 0 else {
             print("[BackgroundTaskManager] Skipping continued task - no photos remaining")
@@ -379,7 +400,8 @@ extension BackgroundTaskManager {
             return
         }
         
-        // Generate unique identifier for this task
+        // Generate unique identifier for this task: prefix + UUID
+        // The wildcard registration "com.sbuffose.moments.continued.*" matches this
         let taskId = Self.continuedTaskIdentifierPrefix + UUID().uuidString
         
         let request = BGContinuedProcessingTaskRequest(

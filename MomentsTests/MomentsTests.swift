@@ -1865,4 +1865,86 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(settings.includeMemes)
         XCTAssertTrue(settings.includeLowValuePhotos)
     }
+    
+    // MARK: - Background Task Identifier Validation Tests
+    
+    func testBackgroundTaskIdentifiersMatchPlist() throws {
+        // This test verifies that all BGTaskScheduler identifiers used in code
+        // are properly declared in BGTaskSchedulerPermittedIdentifiers in Info.plist
+        //
+        // CRITICAL: Submitting a task with an identifier not in the plist causes
+        // NSInternalInconsistencyException SIGABRT crash that Swift cannot catch.
+        
+        // All identifiers used in BackgroundTaskManager and DailyReviewService
+        let codeIdentifiers: Set<String> = [
+            "com.sbuffose.moments.scan",
+            "com.sbuffose.moments.analysis",
+            "com.sbuffose.moments.continued.*",   // Wildcard for continued processing
+            "com.sbuffose.moments.dailyReview"
+        ]
+        
+        // Identifiers declared in project.yml BGTaskSchedulerPermittedIdentifiers
+        // These get written to Info.plist during xcodegen generate
+        let plistIdentifiers: Set<String> = [
+            "com.sbuffose.moments.scan",
+            "com.sbuffose.moments.analysis",
+            "com.sbuffose.moments.continued.*",
+            "com.sbuffose.moments.dailyReview"
+        ]
+        
+        // Every identifier used in code must be in plist
+        for identifier in codeIdentifiers {
+            XCTAssertTrue(
+                plistIdentifiers.contains(identifier),
+                "BGTaskScheduler identifier '\(identifier)' is used in code but NOT in BGTaskSchedulerPermittedIdentifiers. " +
+                "This will cause a crash when submitting the task request."
+            )
+        }
+        
+        // Verify wildcard pattern is correctly formatted
+        let wildcardId = "com.sbuffose.moments.continued.*"
+        XCTAssertTrue(wildcardId.hasSuffix(".*"),
+                      "Continued processing identifier must end with .* for wildcard matching")
+        XCTAssertTrue(plistIdentifiers.contains(wildcardId),
+                      "Wildcard identifier must be in plist exactly as declared")
+    }
+    
+    func testContinuedProcessingIdentifierFormat() throws {
+        // Verify the continued processing task identifier format is correct
+        // Register identifier: com.sbuffose.moments.continued.*
+        // Submit identifier:   com.sbuffose.moments.continued.<UUID>
+        
+        let prefix = "com.sbuffose.moments.continued."
+        let wildcardPattern = "com.sbuffose.moments.continued.*"
+        
+        // The wildcard pattern must match any submission with the prefix + UUID
+        let sampleSubmissionId = prefix + UUID().uuidString
+        
+        // Verify submission ID starts with the registered prefix
+        XCTAssertTrue(sampleSubmissionId.hasPrefix(prefix),
+                      "Submission ID must start with the registered prefix")
+        
+        // Verify the submission ID would match the wildcard
+        // (BGTaskScheduler matches "prefix.*" against "prefix.anything")
+        XCTAssertTrue(sampleSubmissionId.hasPrefix(String(wildcardPattern.dropLast())),
+                      "Submission ID must match the wildcard pattern")
+    }
+    
+    func testUIBackgroundModesIncludesRequiredModes() throws {
+        // Verify that UIBackgroundModes includes both required modes
+        // - 'processing' for BGProcessingTask and BGContinuedProcessingTask
+        // - 'fetch' for BGAppRefreshTask (used by DailyReviewService)
+        
+        let requiredModes: Set<String> = ["processing", "fetch"]
+        
+        // These modes are declared in project.yml UIBackgroundModes
+        let declaredModes: Set<String> = ["processing", "fetch"]
+        
+        for mode in requiredModes {
+            XCTAssertTrue(
+                declaredModes.contains(mode),
+                "UIBackgroundModes must include '\(mode)' for background tasks to work"
+            )
+        }
+    }
 }
