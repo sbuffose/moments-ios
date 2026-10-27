@@ -687,6 +687,25 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testKeepChipsAppearAfterKeep() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let reviewButton = app.buttons["home.reviewButton"]
+        if reviewButton.waitForExistence(timeout: 8) {
+            reviewButton.tap()
+        }
+        
+        let keep = app.buttons["review.keepButton"]
+        if keep.waitForExistence(timeout: 6) {
+            keep.tap()
+            let chips = app.otherElements["review.keepChips"]
+            XCTAssertTrue(chips.waitForExistence(timeout: 4) || app.buttons["Siempre"].exists)
+        }
+    }
+    
     func testHomeSearchOpensAssistant() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch

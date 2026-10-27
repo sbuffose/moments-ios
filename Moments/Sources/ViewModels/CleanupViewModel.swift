@@ -388,16 +388,7 @@ class CleanupViewModel: ObservableObject {
         reviewedGroups.insert(groupId)
         
         for photoId in keepPhotoIds {
-            reviewedPhotos.insert(photoId)
-            keptPhotos.insert(photoId)
-            selectedPhotos.remove(photoId)
-            
-            // Log keep decision for preference learning
-            if let photo = allPhotos.first(where: { $0.id == photoId }) {
-                Task {
-                    await preferenceLearningService.logDecision(for: photo, decision: .keepForever)
-                }
-            }
+            keepPhoto(photoId, duration: .forever)
         }
         
         for photoId in deletePhotoIds {
@@ -459,7 +450,11 @@ class CleanupViewModel: ObservableObject {
     }
     
     func keepPhoto(_ photoId: String, duration: KeepDuration) {
-        guard let photo = allPhotos.first(where: { $0.id == photoId }) else { return }
+        var photo = allPhotos.first(where: { $0.id == photoId })
+        if photo == nil, let context = modelContext {
+            photo = (try? context.fetch(FetchDescriptor<PersistedPhoto>()))?.first { $0.id == photoId }
+        }
+        guard let photo else { return }
         
         photo.keepDecision = duration.decision
         photo.keepUntil = duration.keepUntilDate

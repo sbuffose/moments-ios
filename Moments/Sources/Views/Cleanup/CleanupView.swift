@@ -769,13 +769,6 @@ struct CleanupReviewView: View {
     private func showChipRowAfterKeep(photoId: String) {
         lastKeptPhotoId = photoId
         showKeepDurationChip = true
-        
-        // Auto-hide chip after 2.5 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation {
-                showKeepDurationChip = false
-            }
-        }
     }
     
     @ViewBuilder
@@ -2056,6 +2049,7 @@ struct KeepDurationChipRow: View {
         .padding(.horizontal, 12)
         .background(.ultraThinMaterial)
         .cornerRadius(16)
+        .accessibilityIdentifier("review.keepChips")
     }
 }
 
