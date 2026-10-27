@@ -156,6 +156,32 @@ class AppState: ObservableObject {
     @Published var notificationsAuthorized = false
     @Published var estimatedSpaceSavings: Int64 = 0
     
+    // Analysis timing for ETA
+    private var analysisStartTime: Date?
+    
+    var estimatedTimeRemaining: String? {
+        guard isAnalyzing,
+              totalPhotosToAnalyze > 0,
+              totalPhotosAnalyzed > 0,
+              let startTime = analysisStartTime else { return nil }
+        
+        let elapsed = Date().timeIntervalSince(startTime)
+        let photosRemaining = totalPhotosToAnalyze - totalPhotosAnalyzed
+        let avgTimePerPhoto = elapsed / Double(totalPhotosAnalyzed)
+        let etaSeconds = avgTimePerPhoto * Double(photosRemaining)
+        
+        if etaSeconds < 60 {
+            return "< 1 min"
+        } else if etaSeconds < 3600 {
+            let minutes = Int(etaSeconds / 60)
+            return "\(minutes) min"
+        } else {
+            let hours = Int(etaSeconds / 3600)
+            let minutes = Int((etaSeconds.truncatingRemainder(dividingBy: 3600)) / 60)
+            return "\(hours)h \(minutes)min"
+        }
+    }
+    
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
     private var analysisTask: Task<Void, Never>?
@@ -379,6 +405,7 @@ class AppState: ObservableObject {
         
         analysisTask = Task { @MainActor in
             self.isAnalyzing = true
+            self.analysisStartTime = Date()
             
             let success = await analysisService.analyzeUnprocessedPhotosInBackground { progress in
                 Task { @MainActor in

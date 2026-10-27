@@ -316,45 +316,53 @@ class CleanupViewModel: ObservableObject {
         var queue: [ReviewItem] = []
         var photosInGroups: Set<String> = []
         
-        // Get cleanable photos (not protected, not kept by user)
+        // Get cleanable photos for singles (not protected, not kept by user, has cleanup category)
         let cleanablePhotos = allPhotos.filter { 
             !$0.isProtected && 
             !$0.isKeptByUser && 
             $0.cleanupCategory != .none 
         }
         let cleanablePhotoIds = Set(cleanablePhotos.map { $0.id })
-        let photosById = Dictionary(uniqueKeysWithValues: cleanablePhotos.map { ($0.id, $0) })
+        
+        // For groups, include ALL photos (including best photo which may have cleanupCategory = .none)
+        // This fixes Issue #6: best photo was filtered out because it had no cleanupCategory
+        let allPhotosById = Dictionary(uniqueKeysWithValues: allPhotos.map { ($0.id, $0) })
         
         // First, add groups where at least one photo is cleanable
         for group in similarGroups {
             let groupPhotoIds = group.photoIds
-            let cleanableInGroup = groupPhotoIds.filter { cleanablePhotoIds.contains($0) }
             
-            guard cleanableInGroup.count > 1 else { continue }
+            // Check if any photo in the group is cleanable (not protected, not kept)
+            let hasCleanable = groupPhotoIds.contains { cleanablePhotoIds.contains($0) }
+            guard hasCleanable else { continue }
             
-            let photos = cleanableInGroup.compactMap { photosById[$0] }
-            guard photos.count > 1 else { continue }
+            // Include ALL photos in the group (including best photo with cleanupCategory = .none)
+            // Filter only: protected and user-kept photos
+            let photosInGroupFiltered = groupPhotoIds.compactMap { allPhotosById[$0] }
+                .filter { !$0.isProtected && !$0.isKeptByUser }
+            
+            guard photosInGroupFiltered.count > 1 else { continue }
             
             // Mark all photos in group as belonging to a group
-            for photoId in cleanableInGroup {
-                photosInGroups.insert(photoId)
+            for photo in photosInGroupFiltered {
+                photosInGroups.insert(photo.id)
             }
             
             if group.isExactDuplicate {
-                queue.append(.exactDuplicateGroup(group, photos))
+                queue.append(.exactDuplicateGroup(group, photosInGroupFiltered))
             } else {
-                queue.append(.similarGroup(group, photos))
+                queue.append(.similarGroup(group, photosInGroupFiltered))
             }
         }
         
-        // Then add singles that are not in any group
+        // Then add singles that are not in any group (must have cleanup category)
         for photo in cleanablePhotos {
             if !photosInGroups.contains(photo.id) {
                 queue.append(.single(photo))
             }
         }
         
-        // Sort by max deletion score (highest first)
+        // Sort by max deletion score (highest first), applying preference learning
         queue.sort { $0.maxDeletionScore > $1.maxDeletionScore }
         
         reviewQueue = queue

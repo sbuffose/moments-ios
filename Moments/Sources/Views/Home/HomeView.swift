@@ -11,6 +11,8 @@ struct HomeView: View {
     @EnvironmentObject var appState: AppState
     
     @StateObject private var viewModel = HomeViewModel()
+    @AppStorage("hasSeenScanNotice") private var hasSeenScanNotice = false
+    @State private var showScanNotice = false
     
     var body: some View {
         NavigationStack {
@@ -25,8 +27,9 @@ struct HomeView: View {
                     VStack(spacing: MomentsSpacing.lg) {
                         headerSection
                         
-                        if appState.isAnalyzing {
-                            analysisProgressPill
+                        // One-time scan notice (replaces persistent pill)
+                        if showScanNotice {
+                            scanNoticeCard
                         }
                         
                         if viewModel.canFreeSpace > 0 || !viewModel.metadataCategories.isEmpty {
@@ -49,9 +52,20 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("Moments")
-                        .font(MomentsTypography.headlineLarge)
-                        .foregroundStyle(MomentsColors.textPrimary)
+                    HStack(spacing: MomentsSpacing.xs) {
+                        Text("Moments")
+                            .font(MomentsTypography.headlineLarge)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                        
+                        // Clock icon when analyzing (replaces persistent pill)
+                        if appState.isAnalyzing || appState.isIndexing {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 14))
+                                .foregroundStyle(MomentsColors.accent)
+                                .symbolEffect(.pulse.byLayer, options: .repeating)
+                                .accessibilityLabel("Análisis en progreso")
+                        }
+                    }
                 }
                 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -66,12 +80,83 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
+            // Show one-time scan notice if analyzing and user hasn't seen it
+            if (appState.isAnalyzing || appState.isIndexing) && !hasSeenScanNotice {
+                showScanNotice = true
+            }
+        }
+        .onChange(of: appState.isAnalyzing) { _, isAnalyzing in
+            // Hide notice when analysis completes
+            if !isAnalyzing && !appState.isIndexing {
+                withAnimation {
+                    showScanNotice = false
+                }
+            }
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if appState.isAnalyzing {
                 viewModel.refreshCategories()
             }
         }
+    }
+    
+    // MARK: - One-time Scan Notice Card
+    
+    private var scanNoticeCard: some View {
+        VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
+            HStack {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(MomentsColors.accent)
+                
+                Text("Analizando tu biblioteca")
+                    .font(MomentsTypography.headlineSmall)
+                    .foregroundStyle(MomentsColors.textPrimary)
+                
+                Spacer()
+                
+                Button {
+                    withAnimation {
+                        showScanNotice = false
+                        hasSeenScanNotice = true
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(MomentsColors.textTertiary)
+                }
+            }
+            
+            Text("El análisis continúa en segundo plano. Podés seguir usando la app normalmente.")
+                .font(MomentsTypography.bodySmall)
+                .foregroundStyle(MomentsColors.textSecondary)
+            
+            // Progress info
+            HStack(spacing: MomentsSpacing.md) {
+                if appState.isIndexing {
+                    Text("\(MomentsPluralization.photos(appState.totalPhotosIndexed)) encontradas")
+                        .font(MomentsTypography.labelSmall)
+                        .foregroundStyle(MomentsColors.textTertiary)
+                } else {
+                    Text("\(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)")
+                        .font(MomentsTypography.labelSmall)
+                        .foregroundStyle(MomentsColors.textTertiary)
+                    
+                    // Estimated time remaining
+                    if let eta = appState.estimatedTimeRemaining {
+                        Text("~\(eta) restante")
+                            .font(MomentsTypography.labelSmall)
+                            .foregroundStyle(MomentsColors.accent)
+                    }
+                }
+            }
+            
+            ProgressView(value: appState.isIndexing ? appState.indexingProgress : appState.analysisProgress)
+                .progressViewStyle(.linear)
+                .tint(MomentsColors.accent)
+        }
+        .padding(MomentsSpacing.md)
+        .background(MomentsColors.bgSecondary)
+        .cornerRadius(MomentsCorners.large)
+        .accessibilityIdentifier("home.scanNotice")
     }
     
     // MARK: - Header Section
@@ -104,25 +189,7 @@ struct HomeView: View {
         }
     }
     
-    // MARK: - Analysis Progress Pill
-    
-    private var analysisProgressPill: some View {
-        HStack(spacing: MomentsSpacing.sm) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .scaleEffect(0.7)
-                .tint(MomentsColors.accent)
-            
-            Text("Analizando \(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)")
-                .font(MomentsTypography.labelSmall)
-                .foregroundStyle(MomentsColors.textSecondary)
-        }
-        .padding(.horizontal, MomentsSpacing.md)
-        .padding(.vertical, MomentsSpacing.xs)
-        .background(MomentsColors.bgSecondary)
-        .cornerRadius(20)
-        .accessibilityIdentifier("home.analysisPill")
-    }
+    // Note: analysisProgressPill replaced by scanNoticeCard + toolbar clock icon
     
     // MARK: - Space Card
     
@@ -674,7 +741,7 @@ struct HomeFeedCard: Identifiable {
 
 #Preview {
     HomeView()
-        .preferredColorScheme(.dark)
+        // Follow system light/dark mode
         .modelContainer(for: PersistedPhoto.self)
         .environmentObject(AppState())
 }

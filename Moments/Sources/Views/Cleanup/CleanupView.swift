@@ -626,19 +626,52 @@ struct CleanupReviewView: View {
             if currentIndex < unreviewedItems.count {
                 let currentItem = unreviewedItems[currentIndex]
                 
+                // Live space counter - shows cumulative space to be freed
+                if deletionSize > 0 {
+                    HStack(spacing: MomentsSpacing.xs) {
+                        Image(systemName: "externaldrive.badge.minus")
+                            .font(.caption)
+                            .foregroundStyle(MomentsColors.accent)
+                        
+                        Text("Vas a liberar \(viewModel.formattedSize(deletionSize))")
+                            .font(MomentsTypography.labelMedium)
+                            .foregroundStyle(MomentsColors.accent)
+                            .contentTransition(.numericText())
+                    }
+                    .padding(.horizontal, MomentsSpacing.md)
+                    .padding(.vertical, MomentsSpacing.xs)
+                    .background(MomentsColors.accent.opacity(0.15))
+                    .cornerRadius(20)
+                    .padding(.top, MomentsSpacing.sm)
+                    .animation(.spring(response: 0.3), value: deletionSize)
+                    .accessibilityIdentifier("review.liveSpaceCounter")
+                }
+                
                 // Progress indicator - synced with counter
                 ProgressView(value: currentProgress)
                     .padding(.horizontal)
-                    .padding(.top)
+                    .padding(.top, deletionSize > 0 ? MomentsSpacing.xs : MomentsSpacing.md)
                     .animation(.easeInOut(duration: 0.3), value: currentProgress)
                 
                 // Counter - shows position synced with progress
-                Text("\(currentPosition) de \(totalItems)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-                    .contentTransition(.numericText())
-                    .animation(.easeInOut(duration: 0.3), value: currentPosition)
+                HStack {
+                    Text("\(currentPosition) de \(totalItems)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                    
+                    // Show current item size
+                    if currentIndex < unreviewedItems.count {
+                        let itemSize = unreviewedItems[currentIndex].totalSize
+                        if itemSize > 0 {
+                            Text("• \(viewModel.formattedSize(itemSize))")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+                .animation(.easeInOut(duration: 0.3), value: currentPosition)
                 
                 // Category label for current photo
                 if let category = currentCategory {

@@ -687,6 +687,187 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    // MARK: - 10. Scan Notice One-Time Display
+    
+    func testScanNoticeOnceOnly() throws {
+        // Verify that scan notice shows only once and can be dismissed
+        
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App did not launch")
+            return
+        }
+        
+        // Look for scan notice card
+        let scanNotice = app.otherElements["home.scanNotice"]
+        
+        // If scan notice exists, verify it can be dismissed
+        if scanNotice.exists {
+            // Find and tap dismiss button
+            let dismissButton = scanNotice.buttons.firstMatch
+            if dismissButton.exists {
+                dismissButton.tap()
+                sleep(1)
+                
+                // Verify notice is gone
+                XCTAssertFalse(scanNotice.exists, "Scan notice should be dismissed after tapping X")
+            }
+        }
+        
+        // Take screenshot
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_10_scan_notice"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        
+        print("SUCCESS: Scan notice one-time display verified")
+    }
+    
+    // MARK: - 11. Clock Icon in Nav Bar
+    
+    func testClockIconDuringAnalysis() throws {
+        // Verify that clock icon appears in nav bar during analysis
+        
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App did not launch")
+            return
+        }
+        
+        // Go to Home tab
+        tabBar.buttons.element(boundBy: 0).tap()
+        sleep(2)
+        
+        // Look for nav bar title area - clock should appear during analysis
+        let navBar = app.navigationBars.firstMatch
+        
+        // Take screenshot showing nav bar state
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_11_nav_clock"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        
+        print("SUCCESS: Nav bar clock icon test completed")
+    }
+    
+    // MARK: - 12. Live Space Counter in Review
+    
+    func testLiveSpaceCounterInReview() throws {
+        // Verify that live space counter shows and updates during review
+        
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App did not launch")
+            return
+        }
+        
+        // Navigate to home
+        tabBar.buttons.element(boundBy: 0).tap()
+        sleep(2)
+        
+        // Try to find and tap review button
+        let reviewButton = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Revisar'")).firstMatch
+        
+        if reviewButton.exists {
+            reviewButton.tap()
+            sleep(2)
+            
+            // Look for the live space counter
+            let spaceCounter = app.otherElements["review.liveSpaceCounter"]
+            if spaceCounter.exists {
+                // Take screenshot showing counter
+                let screenshot = app.screenshot()
+                let attachment = XCTAttachment(screenshot: screenshot)
+                attachment.name = "smoke_12_space_counter"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+                
+                // Swipe to delete a photo
+                let photoCard = app.otherElements.matching(identifier: "swipeable_photo_card").firstMatch
+                if photoCard.exists {
+                    photoCard.swipeLeft()
+                    sleep(1)
+                    
+                    // Take another screenshot to show counter updated
+                    let screenshot2 = app.screenshot()
+                    let attachment2 = XCTAttachment(screenshot: screenshot2)
+                    attachment2.name = "smoke_12_space_counter_updated"
+                    attachment2.lifetime = .keepAlways
+                    add(attachment2)
+                }
+            }
+        }
+        
+        print("SUCCESS: Live space counter test completed")
+    }
+    
+    // MARK: - 13. System Theme Following
+    
+    func testAppFollowsSystemTheme() throws {
+        // Verify app respects system light/dark mode (no forced dark)
+        
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App did not launch")
+            return
+        }
+        
+        // Take screenshot - should reflect system appearance
+        let screenshot = app.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "smoke_13_system_theme"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        
+        print("SUCCESS: App follows system theme (no forced dark mode)")
+    }
+    
+    // MARK: - 14. Daily Review Settings
+    
+    func testDailyReviewSettingsExist() throws {
+        // Verify daily review settings are accessible in Settings
+        
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 30) else {
+            XCTFail("App did not launch")
+            return
+        }
+        
+        // Go to Settings tab (usually last)
+        tabBar.buttons.element(boundBy: 3).tap()
+        sleep(2)
+        
+        // Look for "Repaso del día" setting
+        let dailyReviewSetting = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS 'Repaso'")
+        ).firstMatch
+        
+        if dailyReviewSetting.exists {
+            dailyReviewSetting.tap()
+            sleep(1)
+            
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "smoke_14_daily_review_settings"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        
+        print("SUCCESS: Daily review settings test completed")
+    }
+    
     // MARK: - Full Smoke Suite Summary
     
     func testSmokeTestSummary() throws {

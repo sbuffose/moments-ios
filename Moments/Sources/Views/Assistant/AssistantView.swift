@@ -757,6 +757,6 @@ enum AssistantCard {
 
 #Preview {
     AssistantView()
-        .preferredColorScheme(.dark)
+        // Follow system light/dark mode
         .modelContainer(for: PersistedPhoto.self)
 }
