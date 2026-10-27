@@ -217,23 +217,23 @@ final class DailyReviewService: ObservableObject {
         let startOfDay = calendar.startOfDay(for: Date())
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
         
-        // Fetch photos taken today that are cleanup candidates
+        // Fetch analyzed photos that are cleanup candidates
+        let noneValue = "none"
         let descriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate<PersistedPhoto> { photo in
                 photo.analysisCompleted &&
-                photo.creationDate != nil &&
-                photo.cleanupCategoryRaw != nil &&
-                photo.cleanupCategoryRaw != "none" &&
-                (photo.keepDecisionRaw == nil || photo.keepDecisionRaw == "none")
+                photo.cleanupCategoryRaw != noneValue
             }
         )
         
         guard let photos = try? context.fetch(descriptor) else { return }
         
-        // Filter to today's photos
+        // Filter to today's photos that are not kept
         let todayPhotos = photos.filter { photo in
-            guard let date = photo.creationDate else { return false }
-            return date >= startOfDay && date < endOfDay
+            guard let date = photo.creationDate,
+                  date >= startOfDay && date < endOfDay else { return false }
+            let keepDecision = photo.keepDecisionRaw
+            return keepDecision == nil || keepDecision == "none"
         }
         
         await MainActor.run {
@@ -249,22 +249,23 @@ final class DailyReviewService: ObservableObject {
         let startOfDay = calendar.startOfDay(for: Date())
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
         
+        let noneValue = "none"
         let descriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate<PersistedPhoto> { photo in
                 photo.analysisCompleted &&
-                photo.creationDate != nil &&
-                photo.cleanupCategoryRaw != nil &&
-                photo.cleanupCategoryRaw != "none" &&
-                (photo.keepDecisionRaw == nil || photo.keepDecisionRaw == "none")
+                photo.cleanupCategoryRaw != noneValue
             },
             sortBy: [SortDescriptor(\.deletionLikelihoodScore, order: .reverse)]
         )
         
         guard let photos = try? context.fetch(descriptor) else { return [] }
         
+        // Filter to today's photos that are not kept
         return photos.filter { photo in
-            guard let date = photo.creationDate else { return false }
-            return date >= startOfDay && date < endOfDay
+            guard let date = photo.creationDate,
+                  date >= startOfDay && date < endOfDay else { return false }
+            let keepDecision = photo.keepDecisionRaw
+            return keepDecision == nil || keepDecision == "none"
         }
     }
     
