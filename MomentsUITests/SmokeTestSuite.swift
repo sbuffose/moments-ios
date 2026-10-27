@@ -687,6 +687,22 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testSaveToAlbumButtonInReview() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let reviewButton = app.buttons["home.reviewButton"]
+        if reviewButton.waitForExistence(timeout: 8) {
+            reviewButton.tap()
+        }
+        let save = app.buttons["review.saveToAlbum"]
+        if save.waitForExistence(timeout: 8) {
+            save.tap()
+            XCTAssertTrue(app.otherElements["review.albumSheet"].waitForExistence(timeout: 6) || app.staticTexts["Guardar en álbum"].exists)
+        }
+    }
+    
     func testNewPhotoCheckToggleExistsInSettings() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
