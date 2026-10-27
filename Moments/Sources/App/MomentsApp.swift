@@ -113,7 +113,10 @@ struct MomentsApp: App {
                 BackgroundTaskManager.shared.beginBackgroundTaskForAppExit()
                 
                 if #available(iOS 26.0, *) {
-                    BackgroundTaskManager.shared.submitContinuedProcessingTask()
+                    // Calculate remaining photos based on checkpoint
+                    let progress = BackgroundTaskManager.shared.getCheckpointProgress()
+                    let remainingPhotos = max(0, progress.total - progress.analyzed)
+                    BackgroundTaskManager.shared.submitContinuedProcessingTask(remainingPhotos: remainingPhotos)
                 } else {
                     BackgroundTaskManager.shared.scheduleScanTaskIfNeeded()
                     BackgroundTaskManager.shared.scheduleAnalysisTaskIfNeeded()
