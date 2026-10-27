@@ -6,6 +6,7 @@ import Photos
 import SwiftData
 import UserNotifications
 import BackgroundTasks
+import UIKit
 
 @MainActor
 class NewPhotoWatcherService: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
@@ -144,7 +145,7 @@ class NewPhotoWatcherService: NSObject, ObservableObject, PHPhotoLibraryChangeOb
     
     private func isLikelyBadPhoto(_ asset: PHAsset) -> Bool {
         // Check for screenshots
-        if asset.mediaSubtypes.contains(.screenshot) {
+        if asset.mediaSubtypes.contains(.photoScreenshot) {
             return false // Screenshots aren't "bad", just clutter
         }
         
