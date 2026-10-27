@@ -45,6 +45,25 @@ enum ReviewItem: Identifiable {
         }
     }
     
+    func adjustedDeletionScore(preferences: LearnedPreferences?) -> Double {
+        switch self {
+        case .single(let photo):
+            return PreferenceLearningService.adjustedScore(
+                for: photo,
+                baseScore: photo.deletionLikelihoodScore,
+                preferences: preferences
+            )
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos.map {
+                PreferenceLearningService.adjustedScore(
+                    for: $0,
+                    baseScore: $0.deletionLikelihoodScore,
+                    preferences: preferences
+                )
+            }.max() ?? 0
+        }
+    }
+    
     var totalSize: Int64 {
         switch self {
         case .single(let photo):
@@ -75,8 +94,8 @@ enum DailyReviewBatch {
     static let size = 20
     
     /// A group counts as 1 item. Returns the top `size` items by deletion likelihood.
-    static func cap(_ items: [ReviewItem]) -> (batch: [ReviewItem], remaining: Int) {
-        let sorted = items.sorted { $0.maxDeletionScore > $1.maxDeletionScore }
+    static func cap(_ items: [ReviewItem], preferences: LearnedPreferences? = nil) -> (batch: [ReviewItem], remaining: Int) {
+        let sorted = items.sorted { $0.adjustedDeletionScore(preferences: preferences) > $1.adjustedDeletionScore(preferences: preferences) }
         return (Array(sorted.prefix(size)), max(0, sorted.count - size))
     }
     
@@ -330,18 +349,21 @@ class CleanupViewModel: ObservableObject {
     // MARK: - Review Queue Building
     
     private func buildReviewQueue() {
-        let queue = Self.makeQueue(photos: allPhotos, groups: similarGroups)
+        let preferences = try? modelContext?.fetch(FetchDescriptor<LearnedPreferences>()).first
+        let queue = Self.makeQueue(photos: allPhotos, groups: similarGroups, preferences: preferences)
         
-        let capped = DailyReviewBatch.cap(queue)
+        let capped = DailyReviewBatch.cap(queue, preferences: preferences)
         remainingAfterBatch = capped.remaining
         reviewQueue = capped.batch
     }
     
-    static func makeQueue(photos: [PersistedPhoto], groups: [SimilarGroup]) -> [ReviewItem] {
+    static func makeQueue(photos: [PersistedPhoto], groups: [SimilarGroup], preferences: LearnedPreferences? = nil) -> [ReviewItem] {
         var queue: [ReviewItem] = []
         var photosInGroups: Set<String> = []
         
-        let eligible = photos.filter { !$0.isProtected && !$0.isKeptByUser }
+        let eligible = photos.filter {
+            !$0.isProtected && !$0.isKeptByUser && PreferenceLearningService.shouldShow($0.cleanupCategory, preferences: preferences)
+        }
         let photosById = Dictionary(uniqueKeysWithValues: eligible.map { ($0.id, $0) })
         
         for group in groups {
