@@ -596,21 +596,58 @@ struct CleanupReviewView: View {
         viewModel.reviewQueue.count
     }
     
+    private var currentProgress: Double {
+        guard totalItems > 0 else { return 0 }
+        let totalReviewed = viewModel.reviewedItemCount()
+        return Double(totalReviewed + currentIndex) / Double(totalItems)
+    }
+    
+    private var currentPosition: Int {
+        viewModel.reviewedItemCount() + currentIndex + 1
+    }
+    
+    private var currentCategory: CleanupCategoryType? {
+        guard currentIndex < unreviewedItems.count else { return nil }
+        let item = unreviewedItems[currentIndex]
+        switch item {
+        case .single(let photo):
+            return photo.cleanupCategory != .none ? photo.cleanupCategory : nil
+        case .exactDuplicateGroup(_, _):
+            return .duplicates
+        case .similarGroup(_, _):
+            return .similar
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             if currentIndex < unreviewedItems.count {
                 let currentItem = unreviewedItems[currentIndex]
-                let totalReviewed = viewModel.reviewedItemCount()
                 
-                // Progress indicator
-                ProgressView(value: Double(totalReviewed + currentIndex), total: Double(totalItems))
+                // Progress indicator - synced with counter
+                ProgressView(value: currentProgress)
                     .padding(.horizontal)
                     .padding(.top)
+                    .animation(.easeInOut(duration: 0.3), value: currentProgress)
                 
-                Text("\(totalReviewed + currentIndex + 1) de \(totalItems)")
+                // Counter - shows position synced with progress
+                Text("\(currentPosition) de \(totalItems)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.3), value: currentPosition)
+                
+                // Category label for current photo
+                if let category = currentCategory {
+                    Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                        .padding(.top, 2)
+                        .id(category)
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.2), value: category)
+                }
                 
                 Spacer()
                 
@@ -740,36 +777,37 @@ struct CleanupReviewView: View {
     @ViewBuilder
     private func singlePhotoCard(photo: PersistedPhoto) -> some View {
         VStack(spacing: 0) {
-            // Current photo category
-            if let category = categoryFor(photo: photo) {
-                Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
-                    .font(.caption)
-                    .foregroundStyle(.tint)
-                    .padding(.top, 4)
+            Spacer()
+            
+            // Photo card with consistent sizing
+            GeometryReader { geometry in
+                let cardWidth = geometry.size.width - 32
+                let cardHeight = min(geometry.size.height, cardWidth * 1.3)
+                
+                SwipeablePhotoCard(
+                    photo: photo,
+                    onKeep: {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(photo.id, delete: false)
+                            currentIndex += 1
+                        }
+                    },
+                    onDelete: {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.markAsReviewed(photo.id, delete: true)
+                            currentIndex += 1
+                        }
+                    }
+                )
+                .frame(width: cardWidth, height: cardHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .padding(.horizontal, 16)
             
             Spacer()
             
-            // Swipeable card
-            SwipeablePhotoCard(
-                photo: photo,
-                onKeep: {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photo.id, delete: false)
-                        currentIndex += 1
-                    }
-                },
-                onDelete: {
-                    withAnimation(.spring(response: 0.3)) {
-                        viewModel.markAsReviewed(photo.id, delete: true)
-                        currentIndex += 1
-                    }
-                }
-            )
-            .padding()
-            
-            // Action buttons
-            HStack(spacing: 40) {
+            // Action buttons - fixed width, equal spacing, centered labels
+            HStack(spacing: 0) {
                 // Keep button with menu for options
                 Menu {
                     Button {
@@ -799,22 +837,21 @@ struct CleanupReviewView: View {
                         Label("Conservar, preguntar en 1 mes", systemImage: "calendar")
                     }
                 } label: {
-                    VStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 56))
-                            .foregroundStyle(.green)
-                        Text("Conservar")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    ReviewActionButton(
+                        iconName: "checkmark.circle.fill",
+                        label: "Conservar",
+                        color: .green,
+                        isLoading: false
+                    )
                 } primaryAction: {
-                    // Default tap = forever
                     withAnimation(.spring(response: 0.3)) {
                         viewModel.keepPhoto(photo.id, duration: .forever)
                         currentIndex += 1
                     }
                 }
                 .disabled(shareService.isLoading)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("review.keepButton")
                 
                 // Share button
                 Button {
@@ -827,21 +864,15 @@ struct CleanupReviewView: View {
                         }
                     }
                 } label: {
-                    VStack {
-                        if shareService.isLoading && shareService.loadingPhotoId == photo.id {
-                            ProgressView()
-                                .frame(width: 56, height: 56)
-                        } else {
-                            Image(systemName: "square.and.arrow.up.circle.fill")
-                                .font(.system(size: 56))
-                                .foregroundStyle(.blue)
-                        }
-                        Text("Compartir")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    ReviewActionButton(
+                        iconName: "square.and.arrow.up.circle.fill",
+                        label: "Compartir",
+                        color: .blue,
+                        isLoading: shareService.isLoading && shareService.loadingPhotoId == photo.id
+                    )
                 }
                 .disabled(shareService.isLoading)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("review.shareButton")
                 
                 // Delete button
@@ -851,17 +882,18 @@ struct CleanupReviewView: View {
                         currentIndex += 1
                     }
                 } label: {
-                    VStack {
-                        Image(systemName: "trash.circle.fill")
-                            .font(.system(size: 56))
-                            .foregroundStyle(.red)
-                        Text("Eliminar")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    ReviewActionButton(
+                        iconName: "trash.circle.fill",
+                        label: "Eliminar",
+                        color: .red,
+                        isLoading: false
+                    )
                 }
                 .disabled(shareService.isLoading)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("review.deleteButton")
             }
+            .padding(.horizontal, 16)
             .padding(.bottom, 40)
         }
     }
@@ -1916,10 +1948,20 @@ struct SwipeablePhotoCard: View {
     @State private var rotation: Double = 0
     
     var body: some View {
-        AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 500, height: 500))
-            .aspectRatio(contentMode: .fit)
+        GeometryReader { geometry in
+            let cardSize = min(geometry.size.width, geometry.size.height)
+            
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemGray6))
+                
+                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 600, height: 600))
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
             .cornerRadius(16)
-            .shadow(radius: 8)
+            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
             .offset(offset)
             .rotationEffect(.degrees(rotation))
             .gesture(
@@ -1977,6 +2019,8 @@ struct SwipeablePhotoCard: View {
                 }
                 .padding()
             }
+        }
+        .accessibilityIdentifier("review.photoCard")
     }
 }
 
@@ -2185,6 +2229,39 @@ struct SimilarPhotoCell: View {
             .onLongPressGesture {
                 onLongPress()
             }
+    }
+}
+
+// MARK: - Review Action Button
+
+struct ReviewActionButton: View {
+    let iconName: String
+    let label: String
+    let color: Color
+    let isLoading: Bool
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            if isLoading {
+                ProgressView()
+                    .frame(width: 56, height: 56)
+            } else {
+                Image(systemName: iconName)
+                    .font(.system(size: 56))
+                    .foregroundStyle(color)
+            }
+            
+            Text(label)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .frame(width: 96)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier("review.actionButton.\(label)")
     }
 }
 

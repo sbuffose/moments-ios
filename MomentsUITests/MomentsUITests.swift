@@ -568,6 +568,101 @@ final class MomentsUITests: XCTestCase {
         }
     }
     
+    // MARK: - Action Buttons Alignment Test
+    
+    func testReviewActionButtonsAlignment() throws {
+        // This test verifies that the action buttons (Conservar, Compartir, Eliminar)
+        // are horizontally centered under their icons with equal spacing.
+        
+        let tabBar = app.tabBars.firstMatch
+        guard tabBar.waitForExistence(timeout: 10) else {
+            XCTFail("Tab bar not found")
+            return
+        }
+        
+        // Navigate to Home tab
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let homeRoot = app.otherElements["home.root"]
+        guard homeRoot.waitForExistence(timeout: 5) else {
+            XCTFail("Home screen not loaded")
+            return
+        }
+        
+        // Try to find and tap cleanup entry point
+        let cleanupCTA = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Liberar' OR label CONTAINS[c] 'Revisar' OR label CONTAINS[c] 'espacio'")).firstMatch
+        
+        guard cleanupCTA.waitForExistence(timeout: 5) else {
+            print("No cleanup items available - skipping action buttons alignment test")
+            return
+        }
+        
+        cleanupCTA.tap()
+        
+        // Wait for review screen
+        let reviewRoot = app.otherElements["review.root"]
+        guard reviewRoot.waitForExistence(timeout: 10) else {
+            print("Review screen not loaded - may have no photos to review")
+            return
+        }
+        
+        // Wait for content to load
+        sleep(2)
+        
+        // Check for single photo review (not group card) to test action buttons
+        let keepButton = app.otherElements["review.keepButton"]
+        let shareButton = app.otherElements["review.shareButton"]
+        let deleteButton = app.otherElements["review.deleteButton"]
+        
+        // If single photo review is visible, verify action buttons
+        if keepButton.waitForExistence(timeout: 3) {
+            // Verify all three buttons exist
+            XCTAssertTrue(keepButton.exists, "Keep button should exist")
+            XCTAssertTrue(shareButton.exists, "Share button should exist")
+            XCTAssertTrue(deleteButton.exists, "Delete button should exist")
+            
+            // Get button frames
+            let keepFrame = keepButton.frame
+            let shareFrame = shareButton.frame
+            let deleteFrame = deleteButton.frame
+            
+            // Verify buttons are horizontally aligned (same Y position)
+            let yTolerance: CGFloat = 10.0
+            XCTAssertEqual(keepFrame.midY, shareFrame.midY, accuracy: yTolerance,
+                           "Keep and Share buttons should be vertically aligned")
+            XCTAssertEqual(shareFrame.midY, deleteFrame.midY, accuracy: yTolerance,
+                           "Share and Delete buttons should be vertically aligned")
+            
+            // Verify buttons are evenly spaced
+            let spacing1 = shareFrame.midX - keepFrame.midX
+            let spacing2 = deleteFrame.midX - shareFrame.midX
+            let spacingTolerance: CGFloat = 30.0
+            XCTAssertEqual(spacing1, spacing2, accuracy: spacingTolerance,
+                           "Buttons should be evenly spaced (got \(spacing1) vs \(spacing2))")
+            
+            // Take screenshot to visually verify alignment
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "action_buttons_alignment"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            
+            print("SUCCESS: Action buttons are properly aligned")
+            print("Keep button center: \(keepFrame.midX), \(keepFrame.midY)")
+            print("Share button center: \(shareFrame.midX), \(shareFrame.midY)")
+            print("Delete button center: \(deleteFrame.midX), \(deleteFrame.midY)")
+        } else {
+            // May be showing group cards instead of single photos
+            print("Single photo review not visible - may be showing group cards")
+            
+            let screenshot = app.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "review_screen_buttons"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+    
     // MARK: - Share Functionality Test
     
     func testShareButtonShowsActivitySheet() throws {

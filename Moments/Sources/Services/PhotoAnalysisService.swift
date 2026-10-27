@@ -307,26 +307,39 @@ class PhotoAnalysisService: ObservableObject {
             }
             
             // STRICT blur detection - requires BOTH Laplacian variance AND Vision aesthetics to agree
-            // This eliminates false positives like sharp storefronts being flagged as blurry
+            // Never flag photos with faces as blurry unless they're REALLY blurry
+            // This eliminates false positives like sharp storefronts or vacation photos
             if photo.mediaTypeRaw == "image" {
                 let laplacianSharpness = photo.sharpnessScore ?? 1.0
                 let visionAesthetics = qualityMetrics.visionAestheticsScore
                 let isUtility = qualityMetrics.visionIsUtility
+                let hasFaces = (photo.facesDetected ?? 0) > 0
                 
                 // Only flag as blurry if:
-                // 1. Laplacian variance is very low (< 0.10)
+                // 1. Laplacian variance is very low
                 // 2. AND either Vision aesthetics confirms low quality OR Vision not available
+                // 3. AND if photo has faces, require EXTREMELY low sharpness
                 var shouldFlagAsBlurry = false
                 
-                if laplacianSharpness < 0.10 {
-                    // Very low Laplacian - likely blurry
+                // Different thresholds for photos with and without faces
+                let laplacianThreshold: Double = hasFaces ? 0.05 : 0.10
+                let stricterThreshold: Double = hasFaces ? 0.03 : 0.08
+                
+                if laplacianSharpness < laplacianThreshold {
+                    // Low Laplacian - potentially blurry
                     if let aesthetics = visionAesthetics, let utility = isUtility {
                         // Vision is available - require agreement
-                        // Flag as blurry only if Vision also thinks it's low quality or utility
-                        shouldFlagAsBlurry = aesthetics < 0.3 || utility == true
+                        // For photos with faces, require BOTH low aesthetics AND utility flag
+                        if hasFaces {
+                            // Extra strict for face photos: must have very low aesthetics AND be utility
+                            shouldFlagAsBlurry = aesthetics < 0.2 && utility == true
+                        } else {
+                            // Normal photos: flag if Vision thinks it's low quality or utility
+                            shouldFlagAsBlurry = aesthetics < 0.3 || utility == true
+                        }
                     } else {
                         // Vision not available (pre-iOS 18) - use stricter Laplacian threshold
-                        shouldFlagAsBlurry = laplacianSharpness < 0.08
+                        shouldFlagAsBlurry = laplacianSharpness < stricterThreshold
                     }
                 }
                 
