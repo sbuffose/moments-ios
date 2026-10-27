@@ -136,7 +136,7 @@ struct TimelineView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 8)
-            .background(Color(uiColor: .systemBackground))
+            .background(MomentsColors.bgPrimary)
         }
     }
 }

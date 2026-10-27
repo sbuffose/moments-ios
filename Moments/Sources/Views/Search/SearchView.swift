@@ -98,7 +98,7 @@ struct SearchView: View {
             }
         }
         .padding(.vertical, 12)
-        .background(Color(.systemBackground))
+        .background(MomentsColors.bgPrimary)
     }
     
     // MARK: - Filter Chips

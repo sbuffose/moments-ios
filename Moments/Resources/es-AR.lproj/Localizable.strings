@@ -579,3 +579,9 @@
 "bg_task_subtitle_remaining" = "Faltan";
 "bg_task_title_finishing" = "Finalizando";
 "bg_task_subtitle_almost_done" = "Casi listo";
+
+/* Cataloging Progress */
+"cataloging_progress_people %lld %lld" = "Catalogaste %lld de %lld personas frecuentes";
+"cataloging_progress_places %lld %lld" = "Catalogaste %lld de %lld lugares frecuentes";
+"cataloging_pick_from_contacts" = "Elegir de Contactos";
+"cataloging_contacts_hint" = "Podés escribir el nombre o elegir de tus contactos.";

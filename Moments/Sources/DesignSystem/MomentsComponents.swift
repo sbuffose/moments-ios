@@ -58,6 +58,135 @@ struct PhotoGridCard: View {
     }
 }
 
+// MARK: - Search Results Card with Refinement Chips
+
+struct SearchResultsCard: View {
+    let title: String
+    let subtitle: String?
+    let photos: [PersistedPhoto]
+    let refinementChips: [RefinementChip]
+    var columns: Int = 3
+    var maxPhotos: Int = 9
+    var onChipTapped: ((RefinementChip) -> Void)?
+    var onViewAll: (() -> Void)?
+    
+    struct RefinementChip: Identifiable {
+        let id = UUID()
+        let type: ChipType
+        let value: String
+        let count: Int
+        
+        enum ChipType {
+            case person
+            case place
+            case date
+            case type
+            
+            var icon: String {
+                switch self {
+                case .person: return "person.fill"
+                case .place: return "mappin"
+                case .date: return "calendar"
+                case .type: return "photo"
+                }
+            }
+            
+            var color: Color {
+                switch self {
+                case .person: return .purple
+                case .place: return .orange
+                case .date: return .blue
+                case .type: return .green
+                }
+            }
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(MomentsTypography.headlineMedium)
+                        .foregroundStyle(MomentsColors.textPrimary)
+                    
+                    if let subtitle = subtitle {
+                        Text(subtitle)
+                            .font(MomentsTypography.bodySmall)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    }
+                }
+                
+                Spacer()
+                
+                if onViewAll != nil && photos.count > maxPhotos {
+                    Button {
+                        MomentsHaptics.light()
+                        onViewAll?()
+                    } label: {
+                        Text("Ver todo")
+                            .font(MomentsTypography.labelMedium)
+                            .foregroundStyle(MomentsColors.accent)
+                    }
+                }
+            }
+            
+            if !refinementChips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: MomentsSpacing.xs) {
+                        ForEach(refinementChips) { chip in
+                            Button {
+                                MomentsHaptics.selection()
+                                onChipTapped?(chip)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: chip.type.icon)
+                                        .font(.system(size: 10))
+                                    Text(chip.value)
+                                        .font(MomentsTypography.labelSmall)
+                                    Text("(\(chip.count))")
+                                        .font(MomentsTypography.labelSmall)
+                                        .foregroundStyle(MomentsColors.textTertiary)
+                                }
+                                .foregroundStyle(chip.type.color)
+                                .padding(.horizontal, MomentsSpacing.sm)
+                                .padding(.vertical, MomentsSpacing.xs)
+                                .background(chip.type.color.opacity(0.15))
+                                .cornerRadius(16)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 4), count: columns)
+            
+            LazyVGrid(columns: gridColumns, spacing: 4) {
+                ForEach(photos.prefix(maxPhotos), id: \.id) { photo in
+                    AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
+                        .aspectRatio(1, contentMode: .fill)
+                        .clipped()
+                        .cornerRadius(8)
+                }
+            }
+            
+            if photos.count > maxPhotos {
+                Button {
+                    MomentsHaptics.light()
+                    onViewAll?()
+                } label: {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle.angled")
+                        Text("Ver \(photos.count) fotos")
+                    }
+                }
+                .momentsSecondaryButton()
+            }
+        }
+        .momentsCard()
+    }
+}
+
 // MARK: - Cleanup Batch Card
 
 struct CleanupBatchCard: View {

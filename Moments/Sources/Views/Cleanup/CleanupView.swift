@@ -175,9 +175,9 @@ struct CleanupView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemBackground))
+        .background(MomentsColors.bgCard)
         .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
+        .shadow(color: MomentsColors.cardShadow, radius: 16, x: 0, y: 6)
     }
     
     // MARK: - Moments Card
@@ -258,9 +258,9 @@ struct CleanupView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground))
+        .background(MomentsColors.bgCard)
         .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
+        .shadow(color: MomentsColors.cardShadow, radius: 16, x: 0, y: 6)
     }
     
     // MARK: - Categories Section (collapsible)
@@ -300,9 +300,9 @@ struct CleanupView: View {
             }
         }
         .padding(20)
-        .background(Color(.systemBackground))
+        .background(MomentsColors.bgCard)
         .cornerRadius(20)
-        .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
+        .shadow(color: MomentsColors.cardShadow, radius: 16, x: 0, y: 6)
     }
     
     // MARK: - Helpers
@@ -420,7 +420,7 @@ struct MomentRowView: View {
                         AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
                             .frame(width: 32, height: 32)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+                            .overlay(Circle().stroke(MomentsColors.bgCard, lineWidth: 2))
                     }
                 }
             }
@@ -1961,7 +1961,7 @@ struct SwipeablePhotoCard: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .cornerRadius(16)
-            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+            .shadow(color: MomentsColors.cardShadow, radius: 12, x: 0, y: 4)
             .offset(offset)
             .rotationEffect(.degrees(rotation))
             .gesture(

@@ -6,9 +6,34 @@ import SwiftData
 
 @MainActor
 class CatalogingService: ObservableObject {
+    static let shared = CatalogingService()
+    
     private var modelContext: ModelContext?
     
     @Published var pendingCards: [CatalogingCard] = []
+    @Published var cardsShownThisSession: Int = 0
+    @Published var progress: CatalogingProgress = CatalogingProgress()
+    
+    private let maxCardsPerSession = 3
+    private let skipCooldownDays = 14
+    private let skipCooldownKey = "catalogingSkippedCards"
+    
+    struct CatalogingProgress {
+        var catalogedPeople: Int = 0
+        var totalFrequentPeople: Int = 0
+        var catalogedPlaces: Int = 0
+        var totalFrequentPlaces: Int = 0
+        
+        var peopleProgressText: String {
+            guard totalFrequentPeople > 0 else { return "" }
+            return String(localized: "cataloging_progress_people \(catalogedPeople) \(totalFrequentPeople)")
+        }
+        
+        var placesProgressText: String {
+            guard totalFrequentPlaces > 0 else { return "" }
+            return String(localized: "cataloging_progress_places \(catalogedPlaces) \(totalFrequentPlaces)")
+        }
+    }
     
     // MARK: - Card Model (UI representation)
     
@@ -48,6 +73,64 @@ class CatalogingService: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        loadProgress()
+    }
+    
+    // MARK: - Rate Limiting
+    
+    private func getSkippedCards() -> [String: Date] {
+        guard let data = UserDefaults.standard.data(forKey: skipCooldownKey),
+              let skipped = try? JSONDecoder().decode([String: Date].self, from: data) else {
+            return [:]
+        }
+        return skipped
+    }
+    
+    private func setSkippedCard(_ cardId: String) {
+        var skipped = getSkippedCards()
+        skipped[cardId] = Date()
+        if let data = try? JSONEncoder().encode(skipped) {
+            UserDefaults.standard.set(data, forKey: skipCooldownKey)
+        }
+    }
+    
+    private func isCardSkipped(_ cardId: String) -> Bool {
+        let skipped = getSkippedCards()
+        guard let skipDate = skipped[cardId] else { return false }
+        let daysSinceSkip = Calendar.current.dateComponents([.day], from: skipDate, to: Date()).day ?? 0
+        return daysSinceSkip < skipCooldownDays
+    }
+    
+    func canShowMoreCards() -> Bool {
+        return cardsShownThisSession < maxCardsPerSession
+    }
+    
+    func resetSessionCount() {
+        cardsShownThisSession = 0
+    }
+    
+    // MARK: - Progress Tracking
+    
+    private func loadProgress() {
+        guard let context = modelContext else { return }
+        
+        let personDescriptor = FetchDescriptor<PersistedPerson>(
+            sortBy: [SortDescriptor(\.faceCount, order: .reverse)]
+        )
+        let persons = (try? context.fetch(personDescriptor)) ?? []
+        
+        let frequentPersons = persons.filter { $0.faceCount >= 10 }
+        progress.totalFrequentPeople = frequentPersons.count
+        progress.catalogedPeople = frequentPersons.filter { $0.name != nil }.count
+        
+        let placeDescriptor = FetchDescriptor<PersistedPlaceCluster>(
+            sortBy: [SortDescriptor(\.photoCount, order: .reverse)]
+        )
+        let places = (try? context.fetch(placeDescriptor)) ?? []
+        
+        let frequentPlaces = places.filter { $0.photoCount >= 10 }
+        progress.totalFrequentPlaces = frequentPlaces.count
+        progress.catalogedPlaces = frequentPlaces.filter { $0.isUserLabeled }.count
     }
     
     // MARK: - Generate Cards
@@ -77,13 +160,33 @@ class CatalogingService: ObservableObject {
         let downloadCards = await generateDownloadedContentCards()
         cards.append(contentsOf: downloadCards)
         
+        // Filter out skipped cards within cooldown
+        cards = cards.filter { !isCardSkipped($0.id) }
+        
         // Sort by impact (photo count)
         cards.sort { $0.impactScore > $1.impactScore }
         
         pendingCards = cards
         
+        // Update progress
+        loadProgress()
+        
         // Persist cards for tracking
         await persistCards(cards)
+    }
+    
+    func generateProactiveCards(maxCards: Int = 3) async -> [CatalogingCard] {
+        await generateCatalogingCards()
+        
+        let remainingSlots = maxCardsPerSession - cardsShownThisSession
+        let cardsToShow = min(maxCards, remainingSlots)
+        
+        guard cardsToShow > 0 else { return [] }
+        
+        let selectedCards = Array(pendingCards.prefix(cardsToShow))
+        cardsShownThisSession += selectedCards.count
+        
+        return selectedCards
     }
     
     // MARK: - Person Cards
@@ -377,6 +480,8 @@ class CatalogingService: ObservableObject {
             try? context.save()
         }
         
+        setSkippedCard(cardId)
+        
         pendingCards.removeAll { $0.id == cardId }
     }
     
@@ -393,6 +498,8 @@ class CatalogingService: ObservableObject {
         }
         
         pendingCards.removeAll { $0.id == cardId }
+        
+        loadProgress()
     }
     
     // MARK: - Apply Labels

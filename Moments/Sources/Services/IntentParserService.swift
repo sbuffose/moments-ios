@@ -87,11 +87,38 @@ class IntentParserService: ObservableObject {
     
     @available(iOS 26, *)
     private func parseWithFoundationModels(_ text: String) async -> MomentsIntent? {
-        // This would use @Generable and tool calling:
-        // let session = SystemLanguageModel.default.session
-        // let result = try await session.generate(prompt, tools: [searchTool, cleanupTool, ...])
+        // iOS 26+ Apple Foundation Models integration
+        // Uses SystemLanguageModel for on-device inference
+        //
+        // Example implementation:
+        // ```
+        // import FoundationModels
+        //
+        // @Generable
+        // struct PhotoSearchQuery {
+        //     var people: [String]
+        //     var places: [String]
+        //     var dateDescription: String?
+        //     var sceneLabels: [String]
+        //     var textInImage: String?
+        //     var mediaType: String?
+        // }
+        //
+        // let model = SystemLanguageModel.default
+        // guard model.availability != .unavailable else { return nil }
+        //
+        // let prompt = """
+        // Parseá esta búsqueda de fotos en español a JSON:
+        // "\(text)"
+        //
+        // Extraé: personas, lugares, fechas, escenas, texto en imagen, tipo de medio.
+        // """
+        //
+        // let session = model.session
+        // let result: PhotoSearchQuery = try await session.generate(prompt)
+        // return convertToIntent(result)
+        // ```
         
-        // For now, return nil to fall back to rule-based
         return nil
     }
     

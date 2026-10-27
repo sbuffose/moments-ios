@@ -186,6 +186,18 @@ struct MessageView: View {
                 action: { viewModel.expandPhotoGrid(photos) }
             )
             
+        case .searchResults(let title, let subtitle, let photos, let chips):
+            SearchResultsCard(
+                title: title,
+                subtitle: subtitle,
+                photos: photos,
+                refinementChips: chips,
+                onChipTapped: { chip in
+                    viewModel.refineSearch(with: chip)
+                },
+                onViewAll: { viewModel.expandPhotoGrid(photos) }
+            )
+            
         case .cleanup(let title, let count, let size, let photos, let category):
             CleanupBatchCard(
                 title: title,
@@ -294,23 +306,29 @@ class AssistantViewModel: ObservableObject {
     
     private var modelContext: ModelContext?
     private let intentParser = IntentParserService.shared
+    private let photoSearchService = PhotoSearchService.shared
+    private let catalogingService = CatalogingService.shared
     private let cleanupViewModel = CleanupViewModel()
     private let importantDatesService = ImportantDatesService.shared
     
     private let defaultSuggestions = [
+        "Fotos con Juli en la playa",
+        "Capturas de recibos de septiembre",
         "¿Cuánto espacio puedo liberar?",
         "Borrá las capturas de más de 3 meses",
-        "Mostrame las fotos del último viaje",
-        "¿Cuándo es el cumple de Sofía?",
-        "Armame un recuerdo de las vacaciones"
+        "¿Cuándo es el cumple de mamá?"
     ]
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
         intentParser.initialize(modelContext: modelContext)
+        photoSearchService.initialize(modelContext: modelContext)
+        catalogingService.initialize(modelContext: modelContext)
         cleanupViewModel.initialize(modelContext: modelContext)
         importantDatesService.initialize(modelContext: modelContext)
         suggestions = defaultSuggestions
+        
+        catalogingService.resetSessionCount()
         
         Task {
             await loadProactiveCards()
@@ -425,68 +443,100 @@ class AssistantViewModel: ObservableObject {
     }
     
     private func handleSearch(query: String, filters: MomentsIntent.SearchFilters) async -> AssistantMessage {
-        guard let context = modelContext else {
-            return AssistantMessage(text: "Error al buscar.", isUser: false)
-        }
+        var searchFilters = PhotoSearchService.SearchFilters()
+        searchFilters.places = filters.location.map { [$0] } ?? []
+        searchFilters.dateRange = filters.dateRange
+        searchFilters.people = filters.people ?? []
         
-        let descriptor = FetchDescriptor<PersistedPhoto>(
-            predicate: #Predicate { $0.analysisCompleted }
-        )
+        let result = await photoSearchService.search(query: query, filters: searchFilters)
         
-        guard let allPhotos = try? context.fetch(descriptor) else {
-            return AssistantMessage(text: "Error al buscar fotos.", isUser: false)
-        }
-        
-        var results = allPhotos
-        
-        // Filter by location
-        if let location = filters.location {
-            let loc = location.lowercased()
-            results = results.filter { photo in
-                (photo.placeCity?.lowercased().contains(loc) ?? false) ||
-                (photo.placeName?.lowercased().contains(loc) ?? false) ||
-                (photo.placeCountry?.lowercased().contains(loc) ?? false)
-            }
-        }
-        
-        // Filter by date range
-        if let dateRange = filters.dateRange {
-            results = results.filter { photo in
-                guard let date = photo.creationDate else { return false }
-                return dateRange.contains(date)
-            }
-        }
-        
-        // Filter by query in labels
-        let queryTerms = query.lowercased().split(separator: " ").map(String.init)
-        if !queryTerms.isEmpty {
-            results = results.filter { photo in
-                let searchable = photo.searchableText
-                return queryTerms.contains { searchable.contains($0) }
-            }
-        }
-        
-        results.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
-        
-        guard !results.isEmpty else {
+        guard !result.photos.isEmpty else {
             return AssistantMessage(
-                text: "No encontré fotos que coincidan con \"\(query)\". Probá con otros términos.",
+                text: "No encontré fotos que coincidan con \"\(query)\". Probá con otros términos o usá los chips para refinar.",
                 isUser: false
             )
         }
         
-        let title = await MemoryTitleGenerator.shared.generateTitle(for: Array(results.prefix(20)))
-        let subtitle = await MemoryTitleGenerator.shared.generateSummary(for: results)
+        let title = await MemoryTitleGenerator.shared.generateTitle(for: Array(result.photos.prefix(20)))
+        let subtitle = await MemoryTitleGenerator.shared.generateSummary(for: result.photos)
+        
+        let chips = result.refinementChips.map { chip in
+            SearchResultsCard.RefinementChip(
+                type: convertChipType(chip.type),
+                value: chip.value,
+                count: chip.count
+            )
+        }
         
         return AssistantMessage(
-            text: "Encontré \(results.count) fotos:",
+            text: "Encontré \(result.photos.count) fotos:",
             isUser: false,
-            card: .photoGrid(
+            card: .searchResults(
                 title: title,
                 subtitle: subtitle,
-                photos: Array(results.prefix(9))
+                photos: result.photos,
+                chips: chips
             )
         )
+    }
+    
+    private func convertChipType(_ type: PhotoSearchService.SearchResult.RefinementChip.ChipType) -> SearchResultsCard.RefinementChip.ChipType {
+        switch type {
+        case .person: return .person
+        case .place: return .place
+        case .date: return .date
+        case .type: return .type
+        }
+    }
+    
+    func refineSearch(with chip: SearchResultsCard.RefinementChip) {
+        var filters = photoSearchService.activeFilters
+        
+        switch chip.type {
+        case .person:
+            if !filters.people.contains(chip.value) {
+                filters.people.append(chip.value)
+            }
+        case .place:
+            if !filters.places.contains(chip.value) {
+                filters.places.append(chip.value)
+            }
+        case .date:
+            break
+        case .type:
+            if chip.value.lowercased().contains("video") {
+                filters.mediaType = .videos
+            } else if chip.value.lowercased().contains("captura") {
+                filters.mediaType = .screenshots
+            }
+        }
+        
+        Task {
+            let result = await photoSearchService.search(query: photoSearchService.lastQuery, filters: filters)
+            
+            let chips = result.refinementChips.map { chip in
+                SearchResultsCard.RefinementChip(
+                    type: convertChipType(chip.type),
+                    value: chip.value,
+                    count: chip.count
+                )
+            }
+            
+            let title = await MemoryTitleGenerator.shared.generateTitle(for: Array(result.photos.prefix(20)))
+            let subtitle = await MemoryTitleGenerator.shared.generateSummary(for: result.photos)
+            
+            let response = AssistantMessage(
+                text: "Filtrado a \(result.photos.count) fotos:",
+                isUser: false,
+                card: .searchResults(
+                    title: title,
+                    subtitle: subtitle,
+                    photos: result.photos,
+                    chips: chips
+                )
+            )
+            messages.append(response)
+        }
     }
     
     private func handleShowDate(personName: String?) async -> AssistantMessage {
@@ -626,35 +676,52 @@ class AssistantViewModel: ObservableObject {
     // MARK: - Proactive Cards
     
     private func loadProactiveCards() async {
-        // Add welcome message
         let welcomeMessage = AssistantMessage(
-            text: "¡Hola! Soy tu asistente de Moments. Preguntame sobre tus fotos, fechas importantes, o decime qué querés limpiar.",
+            text: "¡Hola! Soy tu asistente de Moments. Buscá fotos con lenguaje natural, o ayudame a catalogar tu biblioteca.",
             isUser: false
         )
         messages.append(welcomeMessage)
         
-        // Check for cleanup suggestions
-        if cleanupViewModel.totalCleanupItems > 10 {
-            let topCategory = cleanupViewModel.categories.first
-            if let cat = topCategory, cat.count >= 10 {
-                let size = cleanupViewModel.formattedSize(cat.estimatedSize)
-                
-                let cleanupMessage = AssistantMessage(
-                    text: "Encontré algunas fotos que podrías limpiar:",
-                    isUser: false,
-                    card: .cleanup(
-                        title: NSLocalizedString(cat.localizedKey, comment: ""),
-                        count: cat.count,
-                        size: size,
-                        photos: Array(cat.photos.prefix(8)),
-                        category: cat.category
-                    )
+        let catalogingCards = await catalogingService.generateProactiveCards(maxCards: 3)
+        for card in catalogingCards {
+            let options = generateCatalogOptions(for: card)
+            let previewPhotos = await getPhotosForIds(card.previewPhotoIds)
+            
+            let catalogMessage = AssistantMessage(
+                text: nil,
+                isUser: false,
+                card: .catalogQuestion(
+                    question: card.title,
+                    subtitle: card.subtitle,
+                    photos: previewPhotos,
+                    options: options
                 )
-                messages.append(cleanupMessage)
+            )
+            messages.append(catalogMessage)
+        }
+        
+        if catalogingCards.isEmpty {
+            if cleanupViewModel.totalCleanupItems > 10 {
+                let topCategory = cleanupViewModel.categories.first
+                if let cat = topCategory, cat.count >= 10 {
+                    let size = cleanupViewModel.formattedSize(cat.estimatedSize)
+                    
+                    let cleanupMessage = AssistantMessage(
+                        text: "Encontré algunas fotos que podrías limpiar:",
+                        isUser: false,
+                        card: .cleanup(
+                            title: NSLocalizedString(cat.localizedKey, comment: ""),
+                            count: cat.count,
+                            size: size,
+                            photos: Array(cat.photos.prefix(8)),
+                            category: cat.category
+                        )
+                    )
+                    messages.append(cleanupMessage)
+                }
             }
         }
         
-        // Check for upcoming dates
         let upcoming = await importantDatesService.getUpcomingDates(withinDays: 7)
         if let next = upcoming.first {
             let photos = await getPhotosForDate(next)
@@ -666,6 +733,52 @@ class AssistantViewModel: ObservableObject {
             )
             messages.append(dateMessage)
         }
+        
+        if !catalogingService.progress.peopleProgressText.isEmpty {
+            let progressMessage = AssistantMessage(
+                text: catalogingService.progress.peopleProgressText,
+                isUser: false
+            )
+            messages.append(progressMessage)
+        }
+    }
+    
+    private func generateCatalogOptions(for card: CatalogingService.CatalogingCard) -> [AssistantCard.CatalogOption] {
+        switch card.type {
+        case .unknownPerson:
+            return [
+                AssistantCard.CatalogOption(id: "name_\(card.id)", title: "Nombrar"),
+                AssistantCard.CatalogOption(id: "skip_\(card.id)", title: "No sé / Omitir")
+            ]
+        case .unknownPlace:
+            return [
+                AssistantCard.CatalogOption(id: "home_\(card.id)", title: "Casa"),
+                AssistantCard.CatalogOption(id: "work_\(card.id)", title: "Trabajo"),
+                AssistantCard.CatalogOption(id: "club_\(card.id)", title: "Club"),
+                AssistantCard.CatalogOption(id: "other_\(card.id)", title: "Otro..."),
+                AssistantCard.CatalogOption(id: "skip_\(card.id)", title: "Omitir")
+            ]
+        case .confirmBirthday, .confirmWedding, .confirmAnniversary, .confirmChildRelation:
+            return [
+                AssistantCard.CatalogOption(id: "confirm_\(card.id)", title: "Sí, confirmar"),
+                AssistantCard.CatalogOption(id: "edit_\(card.id)", title: "Editar"),
+                AssistantCard.CatalogOption(id: "skip_\(card.id)", title: "No")
+            ]
+        default:
+            return [
+                AssistantCard.CatalogOption(id: "review_\(card.id)", title: "Revisar"),
+                AssistantCard.CatalogOption(id: "skip_\(card.id)", title: "Omitir")
+            ]
+        }
+    }
+    
+    private func getPhotosForIds(_ ids: [String]) async -> [PersistedPhoto] {
+        guard let context = modelContext, !ids.isEmpty else { return [] }
+        
+        let descriptor = FetchDescriptor<PersistedPhoto>()
+        guard let allPhotos = try? context.fetch(descriptor) else { return [] }
+        
+        return allPhotos.filter { ids.contains($0.id) }
     }
     
     // MARK: - Card Actions
@@ -743,6 +856,7 @@ struct AssistantMessage: Identifiable {
 
 enum AssistantCard {
     case photoGrid(title: String, subtitle: String?, photos: [PersistedPhoto])
+    case searchResults(title: String, subtitle: String?, photos: [PersistedPhoto], chips: [SearchResultsCard.RefinementChip])
     case cleanup(title: String, count: Int, size: String, photos: [PersistedPhoto], category: CleanupCategoryType?)
     case dateReminder(date: PersistedImportantDate, photos: [PersistedPhoto])
     case spaceInfo(canFree: String, saved: String, items: Int)

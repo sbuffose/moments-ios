@@ -394,7 +394,7 @@ struct PhotoGalleryView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .background(.black)
+            .background(MomentsColors.bgPrimary)
         }
     }
 }

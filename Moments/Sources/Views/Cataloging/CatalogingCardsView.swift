@@ -71,7 +71,7 @@ struct CatalogingCardsView: View {
     private var cardsView: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Header
+                // Header with progress
                 VStack(alignment: .leading, spacing: 8) {
                     Text("cataloging_header_title")
                         .font(.headline)
@@ -79,6 +79,27 @@ struct CatalogingCardsView: View {
                     Text("cataloging_header_subtitle")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    
+                    // Progress indicators
+                    if !catalogingService.progress.peopleProgressText.isEmpty {
+                        HStack {
+                            Image(systemName: "person.fill")
+                                .foregroundStyle(.purple)
+                            Text(catalogingService.progress.peopleProgressText)
+                                .font(.caption)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                        }
+                    }
+                    
+                    if !catalogingService.progress.placesProgressText.isEmpty {
+                        HStack {
+                            Image(systemName: "mappin")
+                                .foregroundStyle(.orange)
+                            Text(catalogingService.progress.placesProgressText)
+                                .font(.caption)
+                                .foregroundStyle(MomentsColors.textSecondary)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
@@ -190,9 +211,9 @@ struct CatalogingCardView: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(MomentsColors.bgCard)
         .cornerRadius(16)
-        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
+        .shadow(color: MomentsColors.cardShadow, radius: 16, x: 0, y: 6)
     }
     
     private func iconForCardType(_ type: CatalogingCardType) -> String {
@@ -333,12 +354,21 @@ struct LabelingSheetView: View {
             Section {
                 TextField("cataloging_person_name_placeholder", text: $personName)
                     .textInputAutocapitalization(.words)
+                
+                ContactPickerButton { selectedName in
+                    personName = selectedName
+                }
             } header: {
                 Text("cataloging_person_name_header")
+            } footer: {
+                Text("cataloging_contacts_hint")
             }
             
             Section {
-                Toggle("cataloging_has_birthday", isOn: .constant(birthdayMonth != nil))
+                Toggle("cataloging_has_birthday", isOn: Binding(
+                    get: { birthdayMonth != nil },
+                    set: { if $0 { birthdayMonth = 1; birthdayDay = 1 } else { birthdayMonth = nil; birthdayDay = nil } }
+                ))
                 
                 if birthdayMonth != nil {
                     Picker("cataloging_month", selection: Binding(

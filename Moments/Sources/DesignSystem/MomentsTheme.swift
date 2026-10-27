@@ -1,76 +1,55 @@
 // MomentsTheme.swift
-// Design system: Colors, Typography, Spacing - Dark-first premium design
+// Design system: Colors, Typography, Spacing - Light/Dark adaptive design
 
 import SwiftUI
 
 // MARK: - Theme Colors
+// All colors centralized in Assets.xcassets/Colors with light/dark variants
 
 struct MomentsColors {
-    // Backgrounds (dark-first)
-    static let backgroundPrimary = Color("BackgroundPrimary")
-    static let backgroundSecondary = Color("BackgroundSecondary")
-    static let backgroundTertiary = Color("BackgroundTertiary")
-    static let backgroundCard = Color("BackgroundCard")
+    // Primary backgrounds from asset catalog
+    // Light: very light warm-gray (#FAFAFA)
+    // Dark: lifted surface (#1C1C1E) - not pure black
+    static let bgPrimary = Color("Colors/BackgroundPrimary")
     
-    // Adaptive colors with fallbacks
-    static var bgPrimary: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0) // Pure black
-                : UIColor.systemBackground
-        })
-    }
+    // Secondary backgrounds
+    // Light: light warm-gray (#F5F5F5)
+    // Dark: lifted secondary (#2C2C2E)
+    static let bgSecondary = Color("Colors/BackgroundSecondary")
     
-    static var bgSecondary: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1.0) // Graphite
-                : UIColor.secondarySystemBackground
-        })
-    }
+    // Tertiary backgrounds
+    // Light: slightly darker warm-gray (#EDEDED)
+    // Dark: lifted tertiary (#3A3A3A)
+    static let bgTertiary = Color("Colors/BackgroundTertiary")
     
-    static var bgTertiary: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0) // Lighter graphite
-                : UIColor.tertiarySystemBackground
-        })
-    }
+    // Card backgrounds
+    // Light: white for elevated cards with soft shadows
+    // Dark: slightly lighter than primary (#232325)
+    static let bgCard = Color("Colors/BackgroundCard")
     
-    static var bgCard: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(red: 0.1, green: 0.1, blue: 0.11, alpha: 1.0)
-                : UIColor.systemBackground
-        })
-    }
+    // Text colors with WCAG AA compliance
+    // Primary: black in light, white in dark
+    static let textPrimary = Color("Colors/TextPrimary")
     
-    // Text colors
-    static var textPrimary: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark ? .white : .label
-        })
-    }
+    // Secondary: gray (0.44) in light, high-contrast (0.75) in dark for WCAG AA
+    static let textSecondary = Color("Colors/TextSecondary")
     
-    static var textSecondary: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(white: 0.6, alpha: 1.0)
-                : UIColor.secondaryLabel
-        })
-    }
+    // Tertiary: lighter gray in both modes
+    static let textTertiary = Color("Colors/TextTertiary")
     
-    static var textTertiary: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(white: 0.4, alpha: 1.0)
-                : UIColor.tertiaryLabel
-        })
-    }
+    // Card styling
+    static let cardBorder = Color("Colors/CardBorder")
+    static let cardShadow = Color("Colors/CardShadow")
     
-    // Accent - Vivid blue with gradient capability
-    static let accent = Color(red: 0.2, green: 0.5, blue: 1.0) // Vivid blue
-    static let accentSecondary = Color(red: 0.4, green: 0.3, blue: 0.95) // Purple tint
+    // Legacy aliases for backward compatibility
+    static var backgroundPrimary: Color { bgPrimary }
+    static var backgroundSecondary: Color { bgSecondary }
+    static var backgroundTertiary: Color { bgTertiary }
+    static var backgroundCard: Color { bgCard }
+    
+    // Accent - Vivid blue-to-purple gradient for primary actions
+    static let accent = Color(red: 0.2, green: 0.5, blue: 1.0)
+    static let accentSecondary = Color(red: 0.4, green: 0.3, blue: 0.95)
     
     static var accentGradient: LinearGradient {
         LinearGradient(
@@ -93,15 +72,6 @@ struct MomentsColors {
     static let warning = Color.orange
     static let error = Color.red
     static let info = Color.blue
-    
-    // Card border/shadow
-    static var cardBorder: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark 
-                ? UIColor(white: 0.15, alpha: 1.0)
-                : UIColor.separator
-        })
-    }
 }
 
 // MARK: - Typography
@@ -237,12 +207,20 @@ struct MomentsShadow {
         EmptyView()
             .shadow(
                 color: colorScheme == .dark 
-                    ? Color.black.opacity(0.5) 
-                    : Color.black.opacity(0.08),
-                radius: colorScheme == .dark ? 20 : 12,
+                    ? Color.black.opacity(0.3) 
+                    : Color.black.opacity(0.06),
+                radius: colorScheme == .dark ? 12 : 16,
                 x: 0,
-                y: colorScheme == .dark ? 8 : 4
+                y: colorScheme == .dark ? 4 : 6
             )
+    }
+    
+    static func cardLight() -> (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
+        (Color.black.opacity(0.06), 16, 0, 6)
+    }
+    
+    static func cardDark() -> (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
+        (Color.black.opacity(0.3), 12, 0, 4)
     }
 }
 
@@ -259,15 +237,15 @@ struct MomentsCardStyle: ViewModifier {
             .cornerRadius(MomentsSpacing.cardRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: MomentsSpacing.cardRadius)
-                    .stroke(MomentsColors.cardBorder, lineWidth: colorScheme == .dark ? 1 : 0)
+                    .stroke(MomentsColors.cardBorder, lineWidth: colorScheme == .dark ? 1 : 0.5)
             )
             .shadow(
                 color: colorScheme == .dark 
-                    ? Color.black.opacity(0.4) 
-                    : Color.black.opacity(0.06),
-                radius: colorScheme == .dark ? 16 : 12,
+                    ? Color.black.opacity(0.3) 
+                    : Color.black.opacity(0.08),
+                radius: colorScheme == .dark ? 12 : 20,
                 x: 0,
-                y: colorScheme == .dark ? 6 : 4
+                y: colorScheme == .dark ? 4 : 8
             )
     }
 }
