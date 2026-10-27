@@ -82,6 +82,7 @@ struct AssistantView: View {
                         .foregroundStyle(MomentsColors.textPrimary)
                         .focused($isInputFocused)
                         .submitLabel(.send)
+                        .accessibilityIdentifier("assistant.input")
                         .onSubmit {
                             sendMessage()
                         }
