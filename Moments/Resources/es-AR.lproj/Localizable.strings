@@ -611,3 +611,30 @@
 "learning_screenshot_delete" = "Solés borrar capturas de pantalla";
 "learning_blurry_keep" = "Conservás muchas fotos que parecen borrosas";
 "learning_duplicate_delete" = "Solés eliminar duplicados";
+
+/* Monthly Recap */
+"monthly_recap_title" = "Tu mes en fotos";
+"monthly_recap_notification_title" = "Tu %@ en fotos está listo";
+"monthly_recap_notification_body" = "Mirá cómo fue tu mes 📷";
+"monthly_recap_loading" = "Preparando tu recap...";
+"monthly_recap_empty" = "No hay fotos este mes";
+"monthly_recap_empty_subtitle" = "Tomá algunas fotos y volvé a ver tu recap";
+"monthly_recap_intro_subtitle" = "en fotos";
+"monthly_recap_moments_captured %lld" = "%lld momentos capturados";
+"monthly_recap_best_photos" = "Tus mejores fotos";
+"monthly_recap_your_places" = "Tus lugares";
+"monthly_recap_photos %lld" = "%lld fotos";
+"monthly_recap_most_seen_people" = "Las personas que más viste";
+"monthly_recap_photos_together %lld" = "%lld fotos juntos";
+"monthly_recap_your_trips" = "Tus viajes";
+"monthly_recap_trip_duration %lld" = "%lld días";
+"monthly_recap_busiest_day" = "Tu día más activo";
+"monthly_recap_photos_taken %lld" = "%lld fotos";
+"monthly_recap_summary_title" = "Cómo fue tu";
+"monthly_recap_space_freed" = "Liberaste %@ con Moments";
+"monthly_recap_share" = "Compartir";
+"monthly_recap_next" = "Siguiente";
+"monthly_recap_close" = "Cerrar";
+"monthly_recap_view" = "Ver recap";
+"monthly_recap_how_was" = "¿Cómo fue mi %@?";
+"monthly_recap_on_demand" = "Ver mi mes en fotos";

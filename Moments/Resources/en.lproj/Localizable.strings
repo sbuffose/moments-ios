@@ -611,3 +611,30 @@
 "learning_screenshot_delete" = "You tend to delete screenshots";
 "learning_blurry_keep" = "You keep many photos that appear blurry";
 "learning_duplicate_delete" = "You tend to delete duplicates";
+
+/* Monthly Recap */
+"monthly_recap_title" = "Your month in photos";
+"monthly_recap_notification_title" = "Your %@ in photos is ready";
+"monthly_recap_notification_body" = "See how your month went 📷";
+"monthly_recap_loading" = "Preparing your recap...";
+"monthly_recap_empty" = "No photos this month";
+"monthly_recap_empty_subtitle" = "Take some photos and come back to see your recap";
+"monthly_recap_intro_subtitle" = "in photos";
+"monthly_recap_moments_captured %lld" = "%lld moments captured";
+"monthly_recap_best_photos" = "Your best photos";
+"monthly_recap_your_places" = "Your places";
+"monthly_recap_photos %lld" = "%lld photos";
+"monthly_recap_most_seen_people" = "People you saw most";
+"monthly_recap_photos_together %lld" = "%lld photos together";
+"monthly_recap_your_trips" = "Your trips";
+"monthly_recap_trip_duration %lld" = "%lld days";
+"monthly_recap_busiest_day" = "Your busiest day";
+"monthly_recap_photos_taken %lld" = "%lld photos";
+"monthly_recap_summary_title" = "How was your";
+"monthly_recap_space_freed" = "Freed %@ with Moments";
+"monthly_recap_share" = "Share";
+"monthly_recap_next" = "Next";
+"monthly_recap_close" = "Close";
+"monthly_recap_view" = "View recap";
+"monthly_recap_how_was" = "How was my %@?";
+"monthly_recap_on_demand" = "View my month in photos";

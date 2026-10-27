@@ -11,6 +11,8 @@ struct HomeView: View {
     @EnvironmentObject var appState: AppState
     
     @StateObject private var viewModel = HomeViewModel()
+    @StateObject private var recapService = MonthlyRecapService.shared
+    @State private var showMonthlyRecap = false
     
     var body: some View {
         NavigationStack {
@@ -27,6 +29,10 @@ struct HomeView: View {
                         
                         if appState.isAnalyzing {
                             analysisProgressPill
+                        }
+                        
+                        if shouldShowMonthlyRecapCard {
+                            monthlyRecapCard
                         }
                         
                         if viewModel.canFreeSpace > 0 || !viewModel.metadataCategories.isEmpty {
@@ -66,12 +72,98 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
+            recapService.initialize(modelContext: modelContext)
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if appState.isAnalyzing {
                 viewModel.refreshCategories()
             }
         }
+        .fullScreenCover(isPresented: $showMonthlyRecap) {
+            MonthlyRecapView()
+        }
+    }
+    
+    private var shouldShowMonthlyRecapCard: Bool {
+        let calendar = Calendar.current
+        let dayOfMonth = calendar.component(.day, from: Date())
+        return dayOfMonth <= 7
+    }
+    
+    private var monthlyRecapCard: some View {
+        Button {
+            showMonthlyRecap = true
+        } label: {
+            HStack(spacing: MomentsSpacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.purple.opacity(0.8), .blue.opacity(0.8)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 50, height: 50)
+                    
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.white)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(monthlyRecapTitle)
+                        .font(MomentsTypography.headlineSmall)
+                        .foregroundStyle(MomentsColors.textPrimary)
+                    
+                    Text(String(localized: "monthly_recap_view"))
+                        .font(MomentsTypography.bodySmall)
+                        .foregroundStyle(MomentsColors.textSecondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(MomentsColors.textTertiary)
+            }
+            .padding(MomentsSpacing.md)
+            .background(
+                LinearGradient(
+                    colors: [.purple.opacity(0.1), .blue.opacity(0.1)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(MomentsCorners.large)
+            .overlay(
+                RoundedRectangle(cornerRadius: MomentsCorners.large)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.purple.opacity(0.3), .blue.opacity(0.3)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("home.monthlyRecapCard")
+    }
+    
+    private var monthlyRecapTitle: String {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let previousMonth = calendar.date(byAdding: .month, value: -1, to: now) else {
+            return String(localized: "monthly_recap_title")
+        }
+        let month = calendar.component(.month, from: previousMonth)
+        let monthNames = [
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+        ]
+        let monthName = monthNames[month - 1]
+        return "Tu \(monthName) en fotos"
     }
     
     // MARK: - Header Section

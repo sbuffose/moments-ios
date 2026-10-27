@@ -16,6 +16,7 @@ enum MomentsIntent: Sendable {
     case createMemory(query: String)
     case showPhotos(location: String?, date: DateInterval?, people: [String]?)
     case showPerson(name: String)
+    case monthlyRecap(month: Int?, year: Int?)
     case unknown(text: String)
     
     struct SearchFilters: Sendable {
@@ -98,6 +99,11 @@ class IntentParserService: ObservableObject {
     // MARK: - Rule-Based Parsing (iOS 17+)
     
     private func parseWithRules(_ text: String, originalText: String) -> MomentsIntent {
+        // Monthly recap patterns (check first - high priority)
+        if matchesMonthlyRecapIntent(text) {
+            return parseMonthlyRecapIntent(text)
+        }
+        
         // Cleanup patterns
         if matchesCleanupIntent(text) {
             return parseCleanupIntent(text)
@@ -182,6 +188,19 @@ class IntentParserService: ObservableObject {
         return patterns.contains { text.contains($0) }
     }
     
+    private func matchesMonthlyRecapIntent(_ text: String) -> Bool {
+        let patterns = [
+            "como fue mi", "como estuvo mi", "recap", "resumen del mes",
+            "mes en fotos", "mi mes", "tu mes en fotos",
+            "enero en fotos", "febrero en fotos", "marzo en fotos",
+            "abril en fotos", "mayo en fotos", "junio en fotos",
+            "julio en fotos", "agosto en fotos", "septiembre en fotos",
+            "octubre en fotos", "noviembre en fotos", "diciembre en fotos",
+            "este mes", "mes pasado", "ultimo mes"
+        ]
+        return patterns.contains { text.contains($0) }
+    }
+    
     // MARK: - Intent Parsers
     
     private func parseCleanupIntent(_ text: String) -> MomentsIntent {
@@ -259,6 +278,41 @@ class IntentParserService: ObservableObject {
             return .showPerson(name: name)
         }
         return .unknown(text: originalText)
+    }
+    
+    private func parseMonthlyRecapIntent(_ text: String) -> MomentsIntent {
+        let calendar = Calendar.current
+        let now = Date()
+        let currentYear = calendar.component(.year, from: now)
+        let currentMonth = calendar.component(.month, from: now)
+        
+        let monthMappings: [String: Int] = [
+            "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+            "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+            "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+        ]
+        
+        for (name, month) in monthMappings {
+            if text.contains(name) {
+                let year = month > currentMonth ? currentYear - 1 : currentYear
+                return .monthlyRecap(month: month, year: year)
+            }
+        }
+        
+        if text.contains("este mes") || text.contains("mes actual") {
+            return .monthlyRecap(month: currentMonth, year: currentYear)
+        }
+        
+        if text.contains("mes pasado") || text.contains("ultimo mes") {
+            if let previousMonth = calendar.date(byAdding: .month, value: -1, to: now) {
+                return .monthlyRecap(
+                    month: calendar.component(.month, from: previousMonth),
+                    year: calendar.component(.year, from: previousMonth)
+                )
+            }
+        }
+        
+        return .monthlyRecap(month: nil, year: nil)
     }
     
     // MARK: - Extraction Helpers

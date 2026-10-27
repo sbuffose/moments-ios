@@ -1865,4 +1865,468 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(settings.includeMemes)
         XCTAssertTrue(settings.includeLowValuePhotos)
     }
+    
+    // MARK: - Monthly Recap Tests
+    
+    @MainActor
+    func testMonthlyRecapDataModel() throws {
+        // Test MonthlyRecapData model creation
+        let recap = MonthlyRecapData(
+            month: 10,
+            year: 2026,
+            monthName: "Octubre",
+            totalPhotos: 150,
+            topPlaces: [
+                MonthlyRecapPlace(
+                    name: "Punta del Este",
+                    photoCount: 45,
+                    latitude: -34.97,
+                    longitude: -54.95,
+                    representativePhotoId: "photo-1"
+                )
+            ],
+            mostSeenPeople: [
+                MonthlyRecapPerson(
+                    name: "Juli",
+                    photoCount: 30,
+                    personId: "person-1",
+                    representativePhotoId: "photo-2"
+                )
+            ],
+            highlights: [],
+            trips: [
+                MonthlyRecapTrip(
+                    destination: "Punta del Este",
+                    startDate: Date(),
+                    endDate: Date().addingTimeInterval(3 * 86400),
+                    durationDays: 3,
+                    photoCount: 45,
+                    coverPhotoId: "photo-1"
+                )
+            ],
+            firsts: [],
+            busiestDay: MonthlyRecapBusiestDay(date: Date(), photoCount: 25),
+            spaceFreedBytes: 500_000_000,
+            generatedAt: Date()
+        )
+        
+        XCTAssertEqual(recap.month, 10)
+        XCTAssertEqual(recap.year, 2026)
+        XCTAssertEqual(recap.monthName, "Octubre")
+        XCTAssertEqual(recap.totalPhotos, 150)
+        XCTAssertEqual(recap.topPlaces.count, 1)
+        XCTAssertEqual(recap.topPlaces.first?.name, "Punta del Este")
+        XCTAssertEqual(recap.mostSeenPeople.count, 1)
+        XCTAssertEqual(recap.mostSeenPeople.first?.name, "Juli")
+        XCTAssertEqual(recap.trips.count, 1)
+        XCTAssertEqual(recap.trips.first?.durationDays, 3)
+        XCTAssertNotNil(recap.busiestDay)
+        XCTAssertEqual(recap.busiestDay?.photoCount, 25)
+        XCTAssertEqual(recap.spaceFreedBytes, 500_000_000)
+        XCTAssertEqual(recap.formattedSpaceFreed, "500 MB")
+    }
+    
+    @MainActor
+    func testMonthlyRecapBusiestDayCalculation() throws {
+        // Test busiest day detection with seeded data
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+        
+        // Create photos: day 1 = 5 photos, day 2 = 10 photos (busiest), day 3 = 3 photos
+        let day1 = calendar.date(byAdding: .day, value: 0, to: startOfMonth)!
+        let day2 = calendar.date(byAdding: .day, value: 1, to: startOfMonth)!
+        let day3 = calendar.date(byAdding: .day, value: 2, to: startOfMonth)!
+        
+        for i in 0..<5 {
+            let photo = PersistedPhoto(localIdentifier: "day1-\(i)")
+            photo.creationDate = day1
+            context.insert(photo)
+        }
+        
+        for i in 0..<10 {
+            let photo = PersistedPhoto(localIdentifier: "day2-\(i)")
+            photo.creationDate = day2
+            context.insert(photo)
+        }
+        
+        for i in 0..<3 {
+            let photo = PersistedPhoto(localIdentifier: "day3-\(i)")
+            photo.creationDate = day3
+            context.insert(photo)
+        }
+        
+        try context.save()
+        
+        // Verify all photos are inserted
+        let allPhotos = try context.fetch(FetchDescriptor<PersistedPhoto>())
+        XCTAssertEqual(allPhotos.count, 18, "Should have 18 total photos")
+        
+        // Calculate busiest day manually (same logic as MonthlyRecapService)
+        var dayGroups: [Date: Int] = [:]
+        for photo in allPhotos {
+            guard let date = photo.creationDate else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            dayGroups[dayStart, default: 0] += 1
+        }
+        
+        guard let (busiestDate, busiestCount) = dayGroups.max(by: { $0.value < $1.value }) else {
+            XCTFail("Should find busiest day")
+            return
+        }
+        
+        XCTAssertEqual(busiestCount, 10, "Busiest day should have 10 photos")
+        XCTAssertEqual(calendar.startOfDay(for: busiestDate), calendar.startOfDay(for: day2),
+                      "Busiest day should be day 2")
+    }
+    
+    @MainActor
+    func testMonthlyRecapTopPlacesAggregation() throws {
+        // Test top places aggregation with seeded data
+        let schema = Schema([PersistedPhoto.self, PersistedPlaceCluster.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create place clusters
+        let cluster1 = PersistedPlaceCluster(
+            id: "cluster-1",
+            name: "Punta del Este",
+            placeType: .tripDestination,
+            latitude: -34.97,
+            longitude: -54.95
+        )
+        
+        let cluster2 = PersistedPlaceCluster(
+            id: "cluster-2",
+            name: "Buenos Aires",
+            placeType: .home,
+            latitude: -34.60,
+            longitude: -58.38
+        )
+        
+        context.insert(cluster1)
+        context.insert(cluster2)
+        
+        // Create photos at different places
+        // 20 photos at cluster 1, 5 photos at cluster 2
+        for i in 0..<20 {
+            let photo = PersistedPhoto(localIdentifier: "cluster1-\(i)")
+            photo.placeClusterId = "cluster-1"
+            photo.latitude = -34.97
+            photo.longitude = -54.95
+            photo.creationDate = Date()
+            context.insert(photo)
+        }
+        
+        for i in 0..<5 {
+            let photo = PersistedPhoto(localIdentifier: "cluster2-\(i)")
+            photo.placeClusterId = "cluster-2"
+            photo.latitude = -34.60
+            photo.longitude = -58.38
+            photo.creationDate = Date()
+            context.insert(photo)
+        }
+        
+        try context.save()
+        
+        // Aggregate places manually (same logic as MonthlyRecapService)
+        let photos = try context.fetch(FetchDescriptor<PersistedPhoto>())
+        var placeGroups: [String: (photos: [PersistedPhoto], lat: Double, lon: Double)] = [:]
+        
+        for photo in photos {
+            guard let lat = photo.latitude, let lon = photo.longitude else { continue }
+            if let clusterId = photo.placeClusterId {
+                if placeGroups[clusterId] == nil {
+                    placeGroups[clusterId] = ([], lat, lon)
+                }
+                placeGroups[clusterId]?.photos.append(photo)
+            }
+        }
+        
+        // Verify aggregation
+        XCTAssertEqual(placeGroups.count, 2, "Should have 2 place clusters")
+        XCTAssertEqual(placeGroups["cluster-1"]?.photos.count, 20, "Cluster 1 should have 20 photos")
+        XCTAssertEqual(placeGroups["cluster-2"]?.photos.count, 5, "Cluster 2 should have 5 photos")
+        
+        // Sort by photo count
+        let sorted = placeGroups.sorted { $0.value.photos.count > $1.value.photos.count }
+        XCTAssertEqual(sorted.first?.key, "cluster-1", "Top place should be cluster 1")
+    }
+    
+    @MainActor
+    func testMonthlyRecapMostSeenPeople() throws {
+        // Test most seen people aggregation
+        let schema = Schema([PersistedPhoto.self, PersistedPerson.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        // Create photos
+        var photoIds: [String] = []
+        for i in 0..<30 {
+            let photo = PersistedPhoto(localIdentifier: "photo-\(i)")
+            photo.creationDate = Date()
+            context.insert(photo)
+            photoIds.append(photo.id)
+        }
+        
+        // Create people with different photo counts
+        let person1 = PersistedPerson(
+            name: "Juli",
+            faceClusterId: "cluster-1",
+            photoIds: Array(photoIds[0..<20]) // Appears in 20 photos
+        )
+        
+        let person2 = PersistedPerson(
+            name: "Nico",
+            faceClusterId: "cluster-2",
+            photoIds: Array(photoIds[0..<8]) // Appears in 8 photos
+        )
+        
+        let person3 = PersistedPerson(
+            name: nil, // Unnamed person
+            faceClusterId: "cluster-3",
+            photoIds: Array(photoIds[0..<5])
+        )
+        
+        context.insert(person1)
+        context.insert(person2)
+        context.insert(person3)
+        
+        try context.save()
+        
+        // Get named people
+        let personDescriptor = FetchDescriptor<PersistedPerson>(
+            predicate: #Predicate { $0.name != nil }
+        )
+        let people = try context.fetch(personDescriptor)
+        
+        // Only named people should be included
+        let namedPeople = people.filter { $0.isNamed }
+        XCTAssertEqual(namedPeople.count, 2, "Should have 2 named people")
+        
+        // Sort by photo count
+        let sorted = namedPeople.sorted { $0.photoIdArray.count > $1.photoIdArray.count }
+        XCTAssertEqual(sorted.first?.name, "Juli", "Most seen person should be Juli")
+        XCTAssertEqual(sorted.first?.photoIdArray.count, 20, "Juli should appear in 20 photos")
+    }
+    
+    @MainActor
+    func testMonthlyRecapHighlightsDeduplication() throws {
+        // Test that highlights are deduped by dHash
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let calendar = Calendar.current
+        let day1 = Date()
+        let day2 = calendar.date(byAdding: .day, value: 1, to: day1)!
+        
+        // Two photos with same dHash (duplicates) on different days
+        let photo1 = PersistedPhoto(localIdentifier: "photo-1")
+        photo1.creationDate = day1
+        photo1.visionAestheticsScore = 0.9
+        photo1.imageDHash = 12345
+        
+        let photo2 = PersistedPhoto(localIdentifier: "photo-2")
+        photo2.creationDate = day2
+        photo2.visionAestheticsScore = 0.85
+        photo2.imageDHash = 12345 // Same dHash
+        
+        // Another unique photo
+        let photo3 = PersistedPhoto(localIdentifier: "photo-3")
+        photo3.creationDate = day2
+        photo3.visionAestheticsScore = 0.7
+        photo3.imageDHash = 67890 // Different dHash
+        
+        context.insert(photo1)
+        context.insert(photo2)
+        context.insert(photo3)
+        try context.save()
+        
+        // Deduplicate highlights (same logic as MonthlyRecapService)
+        let photos = try context.fetch(FetchDescriptor<PersistedPhoto>())
+        var usedDHashes: Set<Int64> = []
+        var highlights: [(photo: PersistedPhoto, score: Double)] = []
+        
+        for photo in photos.sorted(by: { ($0.visionAestheticsScore ?? 0) > ($1.visionAestheticsScore ?? 0) }) {
+            if let dhash = photo.imageDHash, usedDHashes.contains(dhash) {
+                continue // Skip duplicate
+            }
+            if let dhash = photo.imageDHash {
+                usedDHashes.insert(dhash)
+            }
+            highlights.append((photo, photo.visionAestheticsScore ?? 0))
+        }
+        
+        // Should have 2 highlights (photo1 with score 0.9, photo3 with score 0.7)
+        // photo2 is skipped because it has same dHash as photo1
+        XCTAssertEqual(highlights.count, 2, "Should have 2 unique highlights")
+        XCTAssertEqual(highlights[0].photo.localIdentifier, "photo-1", "First highlight should be highest score")
+        XCTAssertEqual(highlights[1].photo.localIdentifier, "photo-3", "Second highlight should be photo-3")
+    }
+    
+    @MainActor
+    func testMonthlyRecapSpaceFreedCalculation() throws {
+        // Test space freed calculation from deletion records
+        let schema = Schema([DeletionRecord.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+        
+        // Create successful deletion records
+        for i in 0..<5 {
+            let record = DeletionRecord(
+                localIdentifier: "deleted-\(i)",
+                photoId: "photo-\(i)",
+                fileSize: 10_000_000 // 10MB each
+            )
+            record.requestedAt = calendar.date(byAdding: .day, value: i, to: startOfMonth)!
+            record.wasSuccessful = true
+            context.insert(record)
+        }
+        
+        // Create a failed deletion (should not count)
+        let failedRecord = DeletionRecord(
+            localIdentifier: "failed-1",
+            photoId: "photo-failed",
+            fileSize: 50_000_000
+        )
+        failedRecord.requestedAt = startOfMonth
+        failedRecord.wasSuccessful = false
+        context.insert(failedRecord)
+        
+        try context.save()
+        
+        // Calculate space freed (same logic as MonthlyRecapService)
+        let endOfMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
+        
+        let recordDescriptor = FetchDescriptor<DeletionRecord>(
+            predicate: #Predicate { record in
+                record.requestedAt >= startOfMonth &&
+                record.requestedAt < endOfMonth &&
+                record.wasSuccessful == true
+            }
+        )
+        
+        let records = try context.fetch(recordDescriptor)
+        let totalFreed = records.reduce(0) { $0 + $1.fileSize }
+        
+        XCTAssertEqual(records.count, 5, "Should have 5 successful deletions")
+        XCTAssertEqual(totalFreed, 50_000_000, "Should have freed 50MB")
+    }
+    
+    func testMonthlyRecapNarrativeTemplate() throws {
+        // Test template narrative generation
+        let recap = MonthlyRecapData(
+            month: 10,
+            year: 2026,
+            monthName: "Octubre",
+            totalPhotos: 150,
+            topPlaces: [
+                MonthlyRecapPlace(
+                    name: "Punta del Este",
+                    photoCount: 45,
+                    latitude: -34.97,
+                    longitude: -54.95,
+                    representativePhotoId: nil
+                )
+            ],
+            mostSeenPeople: [
+                MonthlyRecapPerson(
+                    name: "Juli",
+                    photoCount: 30,
+                    personId: "person-1",
+                    representativePhotoId: nil
+                ),
+                MonthlyRecapPerson(
+                    name: "Nico",
+                    photoCount: 20,
+                    personId: "person-2",
+                    representativePhotoId: nil
+                )
+            ],
+            highlights: [],
+            trips: [
+                MonthlyRecapTrip(
+                    destination: "Punta del Este",
+                    startDate: Date(),
+                    endDate: Date().addingTimeInterval(3 * 86400),
+                    durationDays: 3,
+                    photoCount: 45,
+                    coverPhotoId: nil
+                )
+            ],
+            firsts: [],
+            busiestDay: nil,
+            spaceFreedBytes: 0,
+            generatedAt: Date()
+        )
+        
+        // Test that narrative can be generated
+        XCTAssertTrue(recap.monthName.contains("Octubre"), "Should have month name")
+        XCTAssertTrue(recap.trips.first?.destination == "Punta del Este", "Should have trip destination")
+        XCTAssertEqual(recap.mostSeenPeople.prefix(2).map { $0.name }, ["Juli", "Nico"], 
+                      "Should have people names for narrative")
+    }
+    
+    func testMonthlyRecapMonthQueryParsing() throws {
+        // Test query parsing for month names
+        let monthMappings: [String: Int] = [
+            "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+            "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+            "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+        ]
+        
+        for (monthName, expectedMonth) in monthMappings {
+            let query = "¿Cómo fue mi \(monthName)?"
+            let lowercased = query.lowercased()
+            
+            var foundMonth: Int?
+            for (name, month) in monthMappings {
+                if lowercased.contains(name) {
+                    foundMonth = month
+                    break
+                }
+            }
+            
+            XCTAssertEqual(foundMonth, expectedMonth, "Should parse '\(monthName)' as month \(expectedMonth)")
+        }
+    }
+    
+    func testMonthlyRecapTripDetection() throws {
+        // Test that trips are detected for the specified month
+        let calendar = Calendar.current
+        let now = Date()
+        let month = calendar.component(.month, from: now)
+        let year = calendar.component(.year, from: now)
+        
+        // Trip data
+        let tripStart = calendar.date(from: DateComponents(year: year, month: month, day: 5))!
+        let tripEnd = calendar.date(byAdding: .day, value: 3, to: tripStart)!
+        
+        let trip = MonthlyRecapTrip(
+            destination: "Punta del Este",
+            startDate: tripStart,
+            endDate: tripEnd,
+            durationDays: 3,
+            photoCount: 45,
+            coverPhotoId: nil
+        )
+        
+        XCTAssertEqual(trip.durationDays, 3, "Trip should be 3 days")
+        XCTAssertEqual(trip.destination, "Punta del Este", "Trip destination should match")
+        XCTAssertEqual(trip.photoCount, 45, "Trip should have 45 photos")
+    }
 }

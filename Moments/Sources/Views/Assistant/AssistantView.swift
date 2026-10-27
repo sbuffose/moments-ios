@@ -62,6 +62,9 @@ struct AssistantView: View {
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
+        .fullScreenCover(isPresented: $viewModel.showMonthlyRecapFullScreen) {
+            MonthlyRecapView(month: viewModel.pendingRecapMonth, year: viewModel.pendingRecapYear)
+        }
     }
     
     // MARK: - Input Bar
@@ -302,6 +305,7 @@ class AssistantViewModel: ObservableObject {
         "Borrá las capturas de más de 3 meses",
         "Mostrame las fotos del último viaje",
         "¿Cuándo es el cumple de Sofía?",
+        "¿Cómo fue mi mes?",
         "Armame un recuerdo de las vacaciones"
     ]
     
@@ -360,6 +364,9 @@ class AssistantViewModel: ObservableObject {
             
         case .showPerson(let name):
             return await handleShowPerson(name: name)
+            
+        case .monthlyRecap(let month, let year):
+            return await handleMonthlyRecap(month: month, year: year)
             
         case .unknown(let text):
             return AssistantMessage(
@@ -609,6 +616,49 @@ class AssistantViewModel: ObservableObject {
             isUser: false
         )
     }
+    
+    private func handleMonthlyRecap(month: Int?, year: Int?) async -> AssistantMessage {
+        let recapService = MonthlyRecapService.shared
+        recapService.initialize(modelContext: modelContext!)
+        
+        let recap: MonthlyRecapData?
+        if let m = month, let y = year {
+            recap = await recapService.generateRecap(for: m, year: y)
+        } else {
+            recap = await recapService.generatePreviousMonthRecap()
+        }
+        
+        guard let recap = recap else {
+            return AssistantMessage(
+                text: "No tenés fotos de ese mes. Tomá algunas fotos y volvé a preguntarme.",
+                isUser: false
+            )
+        }
+        
+        var summaryParts: [String] = []
+        summaryParts.append("\(recap.totalPhotos) fotos")
+        
+        if !recap.topPlaces.isEmpty {
+            summaryParts.append("lugares destacados: \(recap.topPlaces.prefix(2).map { $0.name }.joined(separator: ", "))")
+        }
+        
+        if !recap.mostSeenPeople.isEmpty {
+            summaryParts.append("con \(recap.mostSeenPeople.prefix(2).map { $0.name }.joined(separator: " y "))")
+        }
+        
+        showMonthlyRecapFullScreen = true
+        pendingRecapMonth = month
+        pendingRecapYear = year
+        
+        return AssistantMessage(
+            text: "Tu \(recap.monthName.lowercased()) en fotos: \(summaryParts.joined(separator: " • ")). Tocá para ver el recap completo.",
+            isUser: false
+        )
+    }
+    
+    @Published var showMonthlyRecapFullScreen = false
+    @Published var pendingRecapMonth: Int?
+    @Published var pendingRecapYear: Int?
     
     // MARK: - Helpers
     
