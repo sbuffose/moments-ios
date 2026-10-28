@@ -2562,6 +2562,23 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(label.contains("MB") || label.contains("KB"), label)
     }
     
+    func testThemeUsesWarmLightAndDarkGrey() {
+        let light = UIColor(red: 0.98, green: 0.96, blue: 0.93, alpha: 1)
+        let dark = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+        XCTAssertGreaterThan(MomentsColors.relativeLuminance(light), 0.85)
+        XCTAssertGreaterThan(MomentsColors.relativeLuminance(dark), 0.01)
+        XCTAssertLessThan(MomentsColors.relativeLuminance(dark), 0.05)
+        let black = UIColor.black
+        XCTAssertGreaterThan(MomentsColors.relativeLuminance(dark), MomentsColors.relativeLuminance(black))
+    }
+    
+    func testThemeMeetsAAContrast() {
+        let lightBg = UIColor(red: 0.98, green: 0.96, blue: 0.93, alpha: 1)
+        let darkBg = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+        XCTAssertGreaterThanOrEqual(MomentsColors.contrastRatio(foreground: .black, background: lightBg), 4.5)
+        XCTAssertGreaterThanOrEqual(MomentsColors.contrastRatio(foreground: .white, background: darkBg), 4.5)
+    }
+    
     func testRecentlyDeletedHintCopy() {
         let copy = SpaceFormatting.recentlyDeletedSummary(bytes: 1_200_000_000)
         XCTAssertTrue(copy.contains("Liberaste"), copy)
