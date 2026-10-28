@@ -604,6 +604,14 @@ enum MomentsPluralization {
         }
     }
     
+    /// Full sentence for exact-duplicate review. Never prefix with another verb —
+    /// `deleteOthers` already starts with "Borrar".
+    static func keepBestAndDeleteOthers(_ count: Int) -> String {
+        count == 1
+            ? "Conservamos la mejor y borramos la otra"
+            : "Conservamos la mejor y borramos las otras"
+    }
+    
     static func photosConserved(_ count: Int) -> String {
         count == 1 ? "\(count) foto conservada" : "\(count) fotos conservadas"
     }
