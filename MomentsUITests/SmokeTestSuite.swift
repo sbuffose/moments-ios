@@ -719,18 +719,32 @@ final class SmokeTestSuite: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
         tabBar.buttons.element(boundBy: 0).tap()
         let reviewButton = app.buttons["home.reviewButton"]
-        if reviewButton.waitForExistence(timeout: 8) {
-            reviewButton.tap()
-        }
+        XCTAssertTrue(
+            reviewButton.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4),
+            "Need Review to reach the post-delete summary"
+        )
+        if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
+        XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
+        
         let terminar = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Terminar'")).firstMatch
-        if terminar.waitForExistence(timeout: 6) {
-            terminar.tap()
-            let hint = app.otherElements["space.recentlyDeletedHint"]
-            XCTAssertTrue(
-                hint.waitForExistence(timeout: 6) ||
-                app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")).firstMatch.waitForExistence(timeout: 6)
-            )
-        }
+        XCTAssertTrue(terminar.waitForExistence(timeout: 8), "Terminar opens the session summary")
+        terminar.tap()
+        
+        let hint = app.otherElements["space.recentlyDeletedHint"]
+        let recovery = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")
+        ).firstMatch
+        XCTAssertTrue(
+            hint.waitForExistence(timeout: 8) || recovery.waitForExistence(timeout: 4),
+            "Summary must state that space returns after emptying Recently Deleted"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+            ).firstMatch.waitForExistence(timeout: 4)
+            || app.buttons["space.openPhotos"].waitForExistence(timeout: 2),
+            "Summary must include the how-to or the Open Photos button"
+        )
     }
     
     func testLiveSpaceCounterAppearsInReview() throws {
@@ -979,12 +993,28 @@ final class SmokeTestSuite: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
         tabBar.buttons.element(boundBy: 0).tap()
+        
+        let onCard = app.staticTexts["home.recentlyDeletedCopy"]
+        XCTAssertTrue(
+            onCard.waitForExistence(timeout: 10)
+            || app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")
+            ).firstMatch.waitForExistence(timeout: 4),
+            "Home cumulative card must state that space returns after emptying Recently Deleted"
+        )
+        
         let info = app.buttons["home.recentlyDeletedInfo"]
-        XCTAssertTrue(info.waitForExistence(timeout: 10), "Home info button must open the recently-deleted hint")
+        XCTAssertTrue(info.waitForExistence(timeout: 6), "Home info button opens the how-to, never as a nag")
         info.tap()
         XCTAssertTrue(
             app.otherElements["space.recentlyDeletedHint"].waitForExistence(timeout: 6)
-            || app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")).firstMatch.waitForExistence(timeout: 6)
+            || app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+            ).firstMatch.waitForExistence(timeout: 4)
+        )
+        XCTAssertTrue(
+            app.buttons["space.openPhotos"].waitForExistence(timeout: 4),
+            "Hint must offer a button that opens Fotos"
         )
     }
     

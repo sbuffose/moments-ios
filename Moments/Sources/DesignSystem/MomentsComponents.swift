@@ -520,8 +520,15 @@ enum SpaceFormatting {
         "Vas a liberar \(string(from: bytes))"
     }
     
+    static let recentlyDeletedRecovery =
+        "Se recupera el espacio al vaciar Eliminados recientemente (o solo en 30 días)"
+    
     static func recentlyDeletedSummary(bytes: Int64) -> String {
-        "Liberaste \(string(from: bytes)). Se recupera el espacio al vaciar Eliminados recientemente (o solo en 30 días)"
+        "Liberaste \(string(from: bytes)). \(recentlyDeletedRecovery)"
+    }
+    
+    static func homeCumulativeSpaceHeadline(bytes: Int64) -> String {
+        "Ya liberaste \(string(from: bytes)) con Moments"
     }
     
     static let recentlyDeletedHowTo = "Fotos > Álbumes > Eliminados recientemente > Eliminar todo"
@@ -540,7 +547,7 @@ struct RecentlyDeletedHintView: View {
                     .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Se recupera el espacio al vaciar Eliminados recientemente (o solo en 30 días)")
+                Text(SpaceFormatting.recentlyDeletedRecovery)
                     .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
             }

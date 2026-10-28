@@ -276,9 +276,9 @@ struct DeletionResultView: View {
                     .font(MomentsTypography.displaySmall)
                     .foregroundStyle(MomentsColors.textPrimary)
                 
-                Text("Liberaste \(result.freedSpaceFormatted)")
-                    .font(MomentsTypography.headlineMedium)
-                    .foregroundStyle(MomentsColors.accent)
+                RecentlyDeletedHintView(bytes: result.freedSpace)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
             } else {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 80))

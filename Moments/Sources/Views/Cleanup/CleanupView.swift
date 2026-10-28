@@ -950,10 +950,8 @@ struct CleanupReviewView: View {
             }
             
             VStack(spacing: 8) {
-                Text("Liberaste \(viewModel.formattedSize(deletionSize))")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .accessibilityIdentifier("review.sessionSummary")
+                RecentlyDeletedHintView(bytes: deletionSize)
+                    .multilineTextAlignment(.center)
                 
                 if photosToDelete.isEmpty {
                     Text("No marcaste nada para borrar en este lote")
@@ -963,6 +961,7 @@ struct CleanupReviewView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityIdentifier("review.sessionSummary")
             
             Spacer()
             

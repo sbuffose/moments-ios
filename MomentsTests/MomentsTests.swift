@@ -2643,6 +2643,15 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(copy.contains("Liberaste"), copy)
         XCTAssertTrue(copy.contains("Eliminados recientemente"), copy)
         XCTAssertTrue(copy.contains("30 días"), copy)
+        XCTAssertTrue(copy.contains("GB") || copy.contains("Gb"), copy)
+        XCTAssertEqual(
+            SpaceFormatting.recentlyDeletedRecovery,
+            "Se recupera el espacio al vaciar Eliminados recientemente (o solo en 30 días)"
+        )
+        XCTAssertTrue(
+            SpaceFormatting.homeCumulativeSpaceHeadline(bytes: 1_200_000_000).contains("Ya liberaste"),
+            SpaceFormatting.homeCumulativeSpaceHeadline(bytes: 1_200_000_000)
+        )
         XCTAssertEqual(SpaceFormatting.recentlyDeletedHowTo, "Fotos > Álbumes > Eliminados recientemente > Eliminar todo")
         XCTAssertEqual(SpaceFormatting.photosAppURL?.scheme, "photos-redirect")
     }
