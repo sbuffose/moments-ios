@@ -6,6 +6,7 @@ import SwiftData
 
 @MainActor
 class CatalogingService: ObservableObject {
+    static let shared = CatalogingService()
     private var modelContext: ModelContext?
     
     @Published var pendingCards: [CatalogingCard] = []
