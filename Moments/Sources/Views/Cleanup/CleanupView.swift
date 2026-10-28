@@ -645,7 +645,7 @@ struct CleanupReviewView: View {
                 
                 // Category label for current photo
                 if let category = currentCategory {
-                    Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
+                    Label(category.displayName, systemImage: category.iconName)
                         .font(.caption)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -1758,7 +1758,7 @@ struct CleanupCategoryRow: View {
             }
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(LocalizedStringKey(category.localizedKey))
+                Text(category.displayName)
                     .font(.body)
                     .foregroundStyle(.primary)
                 
@@ -1810,7 +1810,7 @@ struct CleanupCategoryDetailView: View {
                 swipeReviewView
             }
         }
-        .navigationTitle(Text(LocalizedStringKey(category.localizedKey)))
+        .navigationTitle(category.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .bottomBar) {

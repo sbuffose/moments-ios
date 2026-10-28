@@ -2523,9 +2523,9 @@ final class MomentsTests: XCTestCase {
     }
     
     func testHomeHeroHeadlineUsesNextBatch() throws {
-        let headline = HomeView.heroHeadline(bytes: 1_900_000_000)
-        XCTAssertTrue(headline.contains("Hoy podés liberar"), headline)
-        XCTAssertTrue(headline.contains("~2 min"), headline)
+        let headline = HomeView.heroHeadline(todayBytes: 33_800_000, totalBytes: 24_300_000_000)
+        XCTAssertTrue(headline.contains("En el lote de hoy"), headline)
+        XCTAssertTrue(headline.contains("en total podés liberar"), headline)
         XCTAssertFalse(headline.contains("Analizando"))
     }
     

@@ -381,7 +381,6 @@ struct MainTabView: View {
                 }
                 .tag(AppState.AppTab.home)
                 .accessibilityIdentifier("tab.home")
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
             
             AssistantView()
                 .tabItem {
@@ -406,6 +405,9 @@ struct MainTabView: View {
         }
         .tint(MomentsColors.accent)
         .accessibilityIdentifier("main_tab_view")
+        .onAppear {
+            TabBarChrome.apply()
+        }
         .overlay(alignment: .topLeading) {
             if appState.isIndexing || appState.isAnalyzing {
                 let progress = appState.isIndexing ? appState.indexingProgress : appState.analysisProgress
@@ -418,7 +420,6 @@ struct MainTabView: View {
                     .allowsHitTesting(false)
             }
         }
-        .animation(MomentsAnimation.spring, value: appState.selectedTab)
     }
 }
 

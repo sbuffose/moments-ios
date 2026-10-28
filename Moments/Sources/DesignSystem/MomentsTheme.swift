@@ -343,6 +343,8 @@ struct MomentsAccentButtonStyle: ButtonStyle {
         configuration.label
             .font(MomentsTypography.headlineMedium)
             .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .frame(maxWidth: isFullWidth ? .infinity : nil)
             .padding(.vertical, MomentsSpacing.md)
             .padding(.horizontal, MomentsSpacing.lg)
@@ -364,6 +366,8 @@ struct MomentsSecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(MomentsTypography.headlineMedium)
             .foregroundStyle(MomentsColors.textPrimary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .frame(maxWidth: isFullWidth ? .infinity : nil)
             .padding(.vertical, MomentsSpacing.md)
             .padding(.horizontal, MomentsSpacing.lg)
@@ -383,12 +387,51 @@ struct MomentsAccentLinkLabel: View {
         Text(title)
             .font(MomentsTypography.headlineMedium)
             .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
             .frame(maxWidth: .infinity)
             .padding(.vertical, MomentsSpacing.md)
             .padding(.horizontal, MomentsSpacing.lg)
             .background(MomentsColors.accentGradient)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(Rectangle())
+    }
+}
+
+/// Button label that never hyphenates mid-word (`Revi-sar`, `Elimi-nar`).
+struct UnbrokenActionLabel: View {
+    let title: String
+    var systemImage: String? = nil
+    
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            labeledStack(axis: .horizontal)
+            labeledStack(axis: .vertical)
+        }
+    }
+    
+    @ViewBuilder
+    private func labeledStack(axis: Axis) -> some View {
+        let text = Text(title)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .truncationMode(.tail)
+            .fixedSize(horizontal: axis == .vertical, vertical: true)
+        if axis == .horizontal {
+            HStack(spacing: 6) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                text
+            }
+        } else {
+            VStack(spacing: 4) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                text
+            }
+        }
     }
 }
 

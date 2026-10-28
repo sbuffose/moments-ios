@@ -163,6 +163,7 @@ class CleanupViewModel: ObservableObject {
         
         var icon: String { category.iconName }
         var localizedKey: String { category.localizedKey }
+        var displayName: String { category.displayName }
     }
     
     // Published tiers

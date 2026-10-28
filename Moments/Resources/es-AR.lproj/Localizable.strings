@@ -125,6 +125,7 @@
 "cleanup_category_receipt" = "Recibos y tickets";
 "cleanup_category_qrCode" = "Códigos QR";
 "cleanup_category_largeVideo" = "Videos grandes";
+"cleanup_category_livePhoto" = "Fotos Live";
 
 /* Cleanup Actions */
 "cleanup_select_all" = "Seleccionar todo";

@@ -7,12 +7,14 @@ import SwiftData
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.modelContext) private var modelContext
     @AppStorage("showHiddenPhotos") private var showHiddenPhotos = false
     @AppStorage("analysisQuality") private var analysisQuality = "balanced"
     
     @State private var showRescanConfirmation = false
     @State private var showClearCacheConfirmation = false
     @State private var cacheSize: String = "Calculando..."
+    @State private var inventory: LibraryInventory = .empty
     
     var body: some View {
         NavigationStack {
@@ -167,6 +169,7 @@ struct SettingsView: View {
         }
         .onAppear {
             calculateCacheSize()
+            refreshInventory()
         }
         .confirmationDialog(
             "settings_rescan_confirmation_title",
@@ -218,18 +221,35 @@ struct SettingsView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("settings.libraryStatus")
+        .accessibilityValue(libraryStatusText)
+        .accessibilityHint("\(inventory.indexedCount)")
+        .overlay {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityIdentifier("settings.indexedCount")
+                .accessibilityLabel("\(inventory.indexedCount) elementos indexados")
+                .accessibilityValue("\(inventory.indexedCount)")
+                .allowsHitTesting(false)
+        }
+    }
+    
+    private func refreshInventory() {
+        inventory = LibraryInventoryService.snapshot(from: modelContext)
+        appState.totalPhotosIndexed = inventory.indexedCount
+        if inventory.analyzedCount > 0 {
+            appState.totalPhotosAnalyzed = inventory.analyzedCount
+        }
     }
     
     private var libraryStatusText: String {
-        if appState.isIndexing {
-            return "Indexando... \(Int(appState.indexingProgress * 100))%"
-        } else if appState.isAnalyzing {
-            return "Analizando \(appState.totalPhotosAnalyzed) / \(appState.totalPhotosToAnalyze)"
-        } else if appState.hasCompletedInitialScan {
-            return "\(appState.totalPhotosIndexed) elementos indexados"
-        } else {
-            return "No escaneado"
-        }
+        SettingsLibraryCopy.statusText(
+            from: inventory,
+            isIndexing: appState.isIndexing,
+            isAnalyzing: appState.isAnalyzing,
+            analyzed: appState.totalPhotosAnalyzed,
+            toAnalyze: max(appState.totalPhotosToAnalyze, inventory.indexedCount),
+            progress: appState.indexingProgress
+        )
     }
     
     private var libraryStatusIcon: String {
@@ -485,7 +505,7 @@ struct LearningSettingsView: View {
                         HStack {
                             Image(systemName: category.iconName)
                                 .foregroundStyle(.secondary)
-                            Text(LocalizedStringKey(category.localizedKey))
+                            Text(category.displayName)
                             Spacer()
                             Button("Activar") {
                                 Task {
@@ -570,7 +590,7 @@ struct CategoryKeepRateRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
             
-            Text(LocalizedStringKey(category.localizedKey))
+            Text(category.displayName)
             
             Spacer()
             
@@ -780,7 +800,7 @@ struct TodayReviewView: View {
                 
                 let category = photo.cleanupCategory
                 if category != .none {
-                    Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
+                    Label(category.displayName, systemImage: category.iconName)
                         .font(.caption)
                         .foregroundStyle(.tint)
                 }

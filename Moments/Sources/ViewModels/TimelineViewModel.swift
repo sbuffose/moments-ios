@@ -109,7 +109,6 @@ class TimelineViewModel: ObservableObject {
     private func loadFromPersistedMoments(_ persistedMoments: [PersistedMoment]) async {
         let calendar = Calendar(identifier: .gregorian)
         let allPhotos = ((try? modelContext?.fetch(FetchDescriptor<PersistedPhoto>())) ?? [])
-        let idToLocal = PhotoIdentifierResolver.idToLocalMap(from: allPhotos)
         
         let grouped = Dictionary(grouping: persistedMoments) { moment -> String in
             let year = calendar.component(.year, from: moment.startDate)
@@ -127,7 +126,6 @@ class TimelineViewModel: ObservableObject {
             let month = Int(parts[1]) ?? 0
             
             let momentItems = moments.map { moment -> MomentItem in
-                let rawCover = moment.coverPhotoId ?? moment.photoIdArray.first
                 return MomentItem(
                     id: moment.id,
                     title: moment.title ?? generateMomentTitle(for: moment),
@@ -135,7 +133,13 @@ class TimelineViewModel: ObservableObject {
                     startDate: moment.startDate,
                     endDate: moment.endDate,
                     photoIds: moment.photoIdArray,
-                    coverPhotoId: PhotoIdentifierResolver.photoKitIdentifier(for: rawCover, idToLocal: idToLocal),
+                    coverPhotoId: PhotoIdentifierResolver.coverLocalIdentifier(
+                        storedCover: moment.coverPhotoId ?? moment.photoIdArray.first,
+                        photoIds: moment.photoIdArray,
+                        startDate: moment.startDate,
+                        endDate: moment.endDate,
+                        photos: allPhotos
+                    ),
                     locationName: moment.locationName,
                     isTrip: moment.isTrip
                 )
@@ -170,9 +174,12 @@ class TimelineViewModel: ObservableObject {
                     startDate: moment.startDate,
                     endDate: moment.endDate,
                     photoCount: moment.photoIdArray.count,
-                    coverPhotoId: PhotoIdentifierResolver.photoKitIdentifier(
-                        for: moment.coverPhotoId ?? moment.photoIdArray.first,
-                        idToLocal: idToLocal
+                    coverPhotoId: PhotoIdentifierResolver.coverLocalIdentifier(
+                        storedCover: moment.coverPhotoId ?? moment.photoIdArray.first,
+                        photoIds: moment.photoIdArray,
+                        startDate: moment.startDate,
+                        endDate: moment.endDate,
+                        photos: allPhotos
                     ),
                     distanceFromHome: 0
                 )

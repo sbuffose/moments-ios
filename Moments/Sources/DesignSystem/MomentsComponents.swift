@@ -70,8 +70,27 @@ struct CleanupBatchCard: View {
     let photos: [PersistedPhoto]
     let onReview: () -> Void
     let onQuickDelete: () -> Void
+    var totalCount: Int? = nil
+    var totalSize: String? = nil
     
     @State private var showConfirm = false
+    
+    private var batchCount: Int {
+        min(max(itemCount, 0), DailyReviewBatch.size)
+    }
+    
+    private var infoLine: String {
+        if let totalCount, totalCount > batchCount {
+            let total = totalSize ?? estimatedSize
+            return "\(batchCount) en el lote de hoy · \(totalCount) en total · \(total)"
+        }
+        return "\(batchCount) elementos · \(estimatedSize)"
+    }
+    
+    /// Never offer a full-library wipe. Only today's batch of 20.
+    private var offersQuickDelete: Bool {
+        batchCount > 0 && batchCount <= DailyReviewBatch.size && (totalCount ?? batchCount) <= DailyReviewBatch.size
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: MomentsSpacing.md) {
@@ -81,10 +100,15 @@ struct CleanupBatchCard: View {
                     Text(title)
                         .font(MomentsTypography.headlineMedium)
                         .foregroundStyle(MomentsColors.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                        .accessibilityIdentifier("assistant.cleanupTitle")
                     
-                    Text("\(itemCount) elementos · \(estimatedSize)")
+                    Text(infoLine)
                         .font(MomentsTypography.bodySmall)
                         .foregroundStyle(MomentsColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("assistant.cleanupInfo")
                 }
                 
                 Spacer()
@@ -92,6 +116,8 @@ struct CleanupBatchCard: View {
                 Text(estimatedSize)
                     .font(MomentsTypography.numberSmall)
                     .foregroundStyle(MomentsColors.accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             
             // Photo preview
@@ -105,34 +131,35 @@ struct CleanupBatchCard: View {
                 }
             }
             
-            // Actions
+            // Actions — never hyphenate mid-word
             HStack(spacing: MomentsSpacing.sm) {
                 Button {
                     MomentsHaptics.light()
                     onReview()
                 } label: {
-                    HStack {
-                        Image(systemName: "eye")
-                        Text("Revisar")
-                    }
+                    UnbrokenActionLabel(title: "Revisar", systemImage: "eye")
                 }
                 .momentsSecondaryButton()
+                .accessibilityIdentifier("assistant.reviewButton")
+                .accessibilityLabel("Revisar")
                 
-                Button {
-                    MomentsHaptics.warning()
-                    showConfirm = true
-                } label: {
-                    HStack {
-                        Image(systemName: "trash")
-                        Text("Eliminar todo")
+                if offersQuickDelete {
+                    Button {
+                        MomentsHaptics.warning()
+                        showConfirm = true
+                    } label: {
+                        UnbrokenActionLabel(title: "Eliminar lote", systemImage: "trash")
                     }
+                    .momentsAccentButton()
+                    .accessibilityIdentifier("assistant.deleteBatchButton")
+                    .accessibilityLabel("Eliminar lote")
                 }
-                .momentsAccentButton()
             }
         }
         .momentsCard()
-        .confirmationDialog("¿Eliminar \(itemCount) elementos?", isPresented: $showConfirm, titleVisibility: .visible) {
-            Button("Eliminar \(itemCount) elementos", role: .destructive) {
+        .accessibilityIdentifier("assistant.cleanupCard")
+        .confirmationDialog("¿Eliminar \(batchCount) elementos del lote de hoy?", isPresented: $showConfirm, titleVisibility: .visible) {
+            Button("Eliminar \(batchCount) elementos", role: .destructive) {
                 MomentsHaptics.success()
                 onQuickDelete()
             }

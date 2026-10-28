@@ -3,6 +3,7 @@
 
 import SwiftUI
 import Photos
+import UIKit
 
 // MARK: - Shared Caching Image Manager
 
@@ -11,9 +12,36 @@ final class ThumbnailCache {
     static let shared = ThumbnailCache()
     
     let cachingManager = PHCachingImageManager()
+    private let imageCache = NSCache<NSString, UIImage>()
+    private var retained: [String: UIImage] = [:]
+    private var inflight: [String: PHImageRequestID] = [:]
     
     private init() {
         cachingManager.allowsCachingHighQualityImages = true
+        imageCache.countLimit = 400
+    }
+    
+    func cachedImage(for localIdentifier: String) -> UIImage? {
+        if let kept = retained[localIdentifier] { return kept }
+        return imageCache.object(forKey: localIdentifier as NSString)
+    }
+    
+    func store(_ image: UIImage, for localIdentifier: String) {
+        let copy = image.copy() as? UIImage ?? image
+        retained[localIdentifier] = copy
+        imageCache.setObject(copy, forKey: localIdentifier as NSString)
+    }
+    
+    func inflightRequest(for localIdentifier: String) -> PHImageRequestID? {
+        inflight[localIdentifier]
+    }
+    
+    func rememberRequest(_ requestID: PHImageRequestID, for localIdentifier: String) {
+        inflight[localIdentifier] = requestID
+    }
+    
+    func clearRequest(for localIdentifier: String) {
+        inflight.removeValue(forKey: localIdentifier)
     }
     
     func startCaching(assets: [PHAsset], targetSize: CGSize) {
@@ -197,6 +225,7 @@ struct AsyncPhotoThumbnail: View {
             }
         }
         .accessibilityIdentifier(thumbnailAccessibilityId)
+        .accessibilityValue(thumbnailAccessibilityValue)
         .onAppear {
             loadImage()
         }
@@ -223,6 +252,13 @@ struct AsyncPhotoThumbnail: View {
         return "photo.thumb.failed"
     }
     
+    private var thumbnailAccessibilityValue: String {
+        if localIdentifier.hasPrefix("fixture-") || image != nil {
+            return "image"
+        }
+        return "placeholder"
+    }
+    
     private var fixtureStandIn: some View {
         ZStack {
             MomentsColors.accent.opacity(0.28)
@@ -245,7 +281,14 @@ struct AsyncPhotoThumbnail: View {
             return
         }
         
-        isLoading = true
+        if let cached = ThumbnailCache.shared.cachedImage(for: localIdentifier) {
+            image = cached
+            isLoading = false
+            loadFailed = false
+            return
+        }
+        
+        isLoading = image == nil
         loadFailed = false
         
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
@@ -255,12 +298,17 @@ struct AsyncPhotoThumbnail: View {
             return
         }
         
+        requestImage(for: asset, deliveryMode: .opportunistic, allowNetwork: true)
+    }
+    
+    private func requestImage(for asset: PHAsset, deliveryMode: PHImageRequestOptionsDeliveryMode, allowNetwork: Bool) {
         let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.isNetworkAccessAllowed = true
+        options.deliveryMode = deliveryMode
+        options.isNetworkAccessAllowed = allowNetwork
         options.isSynchronous = false
         options.resizeMode = .fast
         
+        let identifier = localIdentifier
         requestID = ThumbnailCache.shared.cachingManager.requestImage(
             for: asset,
             targetSize: scaledTargetSize,
@@ -272,25 +320,42 @@ struct AsyncPhotoThumbnail: View {
             
             DispatchQueue.main.async {
                 let hasError = info?[PHImageErrorKey] != nil
-                if let loadedImage = loadedImage, !hasError {
+                if let loadedImage {
+                    ThumbnailCache.shared.store(loadedImage, for: identifier)
                     self.image = loadedImage
                     self.loadFailed = false
+                    self.isLoading = false
                 }
                 
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 if !isDegraded {
-                    self.isLoading = false
                     if self.image == nil {
-                        self.loadFailed = true
+                        if deliveryMode == .opportunistic && allowNetwork {
+                            self.requestImage(for: asset, deliveryMode: .fastFormat, allowNetwork: true)
+                        } else if self.image == nil {
+                            self.isLoading = false
+                            self.loadFailed = true
+                        }
+                    } else {
+                        self.isLoading = false
                     }
+                } else if hasError, self.image == nil {
+                    self.requestImage(for: asset, deliveryMode: .fastFormat, allowNetwork: true)
                 }
             }
+        }
+        if let requestID {
+            ThumbnailCache.shared.rememberRequest(requestID, for: identifier)
         }
     }
     
     private func cancelRequest() {
+        // Only cancel when the identifier actually changed. Keep the PHImageManager
+        // request alive across brief disappear / LazyVStack recycle so thumbs
+        // don't collapse into grey squares after the ~15s iCloud timeout.
         if let requestID = requestID {
             ThumbnailCache.shared.cachingManager.cancelImageRequest(requestID)
+            ThumbnailCache.shared.clearRequest(for: localIdentifier)
             self.requestID = nil
         }
     }

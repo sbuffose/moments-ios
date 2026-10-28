@@ -128,6 +128,41 @@ enum CleanupCategoryType: String, Codable, CaseIterable, Sendable {
         "cleanup_category_\(rawValue)"
     }
     
+    /// Human-readable name. Never return the raw `cleanup_category_*` key.
+    var displayName: String {
+        displayName(in: .main)
+    }
+    
+    func displayName(in bundle: Bundle) -> String {
+        let value = bundle.localizedString(forKey: localizedKey, value: localizedKey, table: nil)
+        if value == localizedKey || value.hasPrefix("cleanup_category_") {
+            return Self.fallbackDisplayName(for: self)
+        }
+        return value
+    }
+    
+    static func fallbackDisplayName(for category: CleanupCategoryType) -> String {
+        switch category {
+        case .none: return "Sin categoría"
+        case .screenshot: return "Capturas de pantalla"
+        case .screenRecording: return "Grabaciones de pantalla"
+        case .blurry: return "Fotos borrosas"
+        case .overexposed: return "Fotos sobreexpuestas"
+        case .underexposed: return "Fotos subexpuestas"
+        case .duplicate: return "Duplicados exactos"
+        case .nearDuplicate: return "Casi duplicados"
+        case .burst: return "Ráfagas"
+        case .accidental: return "Tomas accidentales"
+        case .document: return "Documentos"
+        case .receipt: return "Recibos y tickets"
+        case .qrCode: return "Códigos QR"
+        case .largeVideo: return "Videos grandes"
+        case .downloadedMeme: return "Memes descargados"
+        case .forwardedImage: return "Imágenes reenviadas"
+        case .livePhoto: return "Fotos Live"
+        }
+    }
+    
     var iconName: String {
         switch self {
         case .none: return "photo"

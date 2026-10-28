@@ -53,6 +53,7 @@ struct MomentsApp: App {
         BackgroundTaskManager.shared.registerBackgroundTasks()
         DailyReviewService.shared.registerBackgroundTask()
         UNUserNotificationCenter.current().delegate = MomentsNotificationDelegate.shared
+        TabBarChrome.apply()
     }
     
     private static func createContainer(schema: Schema, inMemory: Bool) -> ModelContainer? {
@@ -351,6 +352,7 @@ class AppState: ObservableObject {
         }
         
         migrateInitialAnalysisFlagIfNeeded()
+        refreshIndexedCountFromStore()
         
         DailyReviewService.shared.initialize(modelContext: modelContext)
         NewPhotoCheckService.shared.initialize(modelContext: modelContext)
@@ -570,6 +572,16 @@ class AppState: ObservableObject {
             // Calculate estimated savings and send notification
             await self.calculateEstimatedSavings()
             await self.sendAnalysisCompleteNotification()
+        }
+    }
+    
+    func refreshIndexedCountFromStore() {
+        guard let context = modelContext else { return }
+        let inventory = LibraryInventoryService.snapshot(from: context)
+        if inventory.indexedCount > 0 {
+            totalPhotosIndexed = inventory.indexedCount
+            totalPhotosAnalyzed = max(totalPhotosAnalyzed, inventory.analyzedCount)
+            totalPhotosToAnalyze = max(totalPhotosToAnalyze, inventory.indexedCount)
         }
     }
     
