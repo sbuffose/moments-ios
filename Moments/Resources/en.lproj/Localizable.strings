@@ -320,7 +320,7 @@
 "cataloging_custom_name_header" = "Name";
 
 /* Cataloging Messaging */
-"cataloging_from_app %@ %lld" = "You have %lld photos from %@";
+"cataloging_from_app %@ %lld" = "You have %2$lld photos from %1$@";
 "cataloging_review_these" = "Want to review them?";
 "cataloging_review" = "Review";
 "cataloging_review_explanation" = "You can review these photos and decide which to keep.";

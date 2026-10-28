@@ -20,6 +20,7 @@ enum FixturePhotoSeeder {
         var videos: Int
         var screenshots: Int
         var blurry: Int
+        var messaging: Int
     }
     
     @discardableResult
@@ -30,6 +31,14 @@ enum FixturePhotoSeeder {
                 $0.localIdentifier.hasPrefix("fixture-")
             }
             if !existing.isEmpty {
+                if existing.filter({ $0.origin.isMessagingApp }).count < 50 {
+                    seedMessagingPhotos(into: context, existing: existing)
+                    try context.save()
+                    let refreshed = try context.fetch(FetchDescriptor<PersistedPhoto>()).filter {
+                        $0.localIdentifier.hasPrefix("fixture-")
+                    }
+                    return summarize(refreshed, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
+                }
                 return summarize(existing, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
             }
         }
@@ -249,6 +258,11 @@ enum FixturePhotoSeeder {
             )
         }
         
+        // 55 WhatsApp-origin photos so Home → generateMessagingAppCards
+        // (threshold 50) runs on the launch path. Low score / .none so they
+        // do not flood the daily review queue.
+        photos.append(contentsOf: seedMessagingPhotos(into: context, existing: photos))
+        
         let oct26 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct26-") }
         let oct20 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct20-") }
         if !oct26.isEmpty {
@@ -277,6 +291,30 @@ enum FixturePhotoSeeder {
         return summarize(photos, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
     }
     
+    @discardableResult
+    private static func seedMessagingPhotos(into context: ModelContext, existing: [PersistedPhoto]) -> [PersistedPhoto] {
+        let already = Set(existing.map(\.localIdentifier))
+        let now = Date()
+        var created: [PersistedPhoto] = []
+        for index in 1...55 {
+            let identifier = "fixture-whatsapp-\(index)"
+            if already.contains(identifier) { continue }
+            let photo = PersistedPhoto(localIdentifier: identifier, creationDate: now.addingTimeInterval(Double(-index) * 3600))
+            photo.analysisCompleted = true
+            photo.lastAnalyzedAt = now
+            photo.cleanupCategory = .none
+            photo.deletionLikelihoodScore = 0.06
+            photo.estimatedFileSize = 400_000
+            photo.pixelWidth = 1200
+            photo.pixelHeight = 900
+            photo.mediaTypeRaw = "image"
+            photo.origin = .whatsapp
+            context.insert(photo)
+            created.append(photo)
+        }
+        return created
+    }
+    
     private static func summarize(_ photos: [PersistedPhoto], groups: [SimilarGroup]) -> SeedSummary {
         SeedSummary(
             photos: photos.count,
@@ -284,7 +322,8 @@ enum FixturePhotoSeeder {
             similarGroups: groups.filter { !$0.isExactDuplicate }.count,
             videos: photos.filter { $0.mediaTypeRaw == "video" }.count,
             screenshots: photos.filter { $0.cleanupCategory == .screenshot }.count,
-            blurry: photos.filter { $0.cleanupCategory == .blurry }.count
+            blurry: photos.filter { $0.cleanupCategory == .blurry }.count,
+            messaging: photos.filter { $0.origin.isMessagingApp }.count
         )
     }
 }

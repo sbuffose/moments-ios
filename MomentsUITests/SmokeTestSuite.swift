@@ -29,6 +29,25 @@ final class SmokeTestSuite: XCTestCase {
     
     // MARK: - 1. Cold Launch No Crash
     
+    func testHomeLaunchInSpanishWithMessagingPhotosDoesNotCrash() throws {
+        // 50+ WhatsApp fixtures + real es-AR locale: this is the device crash path
+        // (String(localized:) in generateMessagingAppCards).
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launch()
+        
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 30), "App must launch in es-AR")
+        app.tabBars.firstMatch.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(
+            app.otherElements["home.root"].waitForExistence(timeout: 15),
+            "Home launch path must survive 50+ messaging-origin photos in es-AR"
+        )
+    }
+    
     func testColdLaunchWithNoCrash() throws {
         // CRITICAL: App must launch without crashing
         // This catches BGTaskScheduler registration crashes, SwiftData crashes, etc.

@@ -149,7 +149,11 @@ class CatalogingService: ObservableObject {
     
     // MARK: - Messaging App Cards
     
-    private func generateMessagingAppCards() async -> [CatalogingCard] {
+    static func messagingAppCardTitle(originRawValue: String, count: Int) -> String {
+        String(localized: "cataloging_from_app \(originRawValue) \(count)")
+    }
+    
+    func generateMessagingAppCards() async -> [CatalogingCard] {
         guard let context = modelContext else { return [] }
         
         // Group by origin
@@ -176,7 +180,7 @@ class CatalogingService: ObservableObject {
             return CatalogingCard(
                 id: "messaging_\(origin.rawValue)",
                 type: .messagingAppPhotos,
-                title: String(localized: "cataloging_from_app \(origin.rawValue) \(groupPhotos.count)"),
+                title: Self.messagingAppCardTitle(originRawValue: origin.rawValue, count: groupPhotos.count),
                 subtitle: String(localized: "cataloging_review_these"),
                 photoCount: groupPhotos.count,
                 impactScore: groupPhotos.count,
