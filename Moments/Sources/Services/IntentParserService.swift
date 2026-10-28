@@ -122,19 +122,31 @@ class IntentParserService: ObservableObject {
             return parsePersonIntent(text, originalText: originalText)
         }
         
-        if matchesRecapIntent(text) {
-            return parseRecapIntent(text)
+        if let recap = Self.recapIntent(fromNormalized: text) {
+            return recap
         }
         
         // Default to search
         return .search(query: originalText, filters: MomentsIntent.SearchFilters())
     }
     
-    private func matchesRecapIntent(_ text: String) -> Bool {
-        text.contains("como fue") || text.contains("cómo fue") || text.contains("mi mes") || text.contains("recap")
+    /// Pure recap parse. `text` may still have accents; we fold them here.
+    nonisolated static func recapIntent(from text: String) -> MomentsIntent? {
+        let normalized = text.lowercased()
+            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_AR"))
+        return recapIntent(fromNormalized: normalized)
     }
     
-    private func parseRecapIntent(_ text: String) -> MomentsIntent {
+    nonisolated static func recapIntent(fromNormalized text: String) -> MomentsIntent? {
+        guard matchesRecapIntent(text) else { return nil }
+        return parseRecapIntent(text)
+    }
+    
+    nonisolated static func matchesRecapIntent(_ text: String) -> Bool {
+        text.contains("como fue") || text.contains("mi mes") || text.contains("recap")
+    }
+    
+    nonisolated static func parseRecapIntent(_ text: String) -> MomentsIntent {
         let months = [
             "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
             "julio": 7, "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10,

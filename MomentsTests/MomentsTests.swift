@@ -2578,7 +2578,15 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(person.name, "Mamá")
     }
     
+    @MainActor
     func testRecapIntentParsesOctober() async {
+        let fromRules = IntentParserService.recapIntent(from: "¿cómo fue mi octubre?")
+        guard case .monthlyRecap(let monthFromRules, _) = fromRules else {
+            XCTFail("Expected monthly recap intent from rules")
+            return
+        }
+        XCTAssertEqual(monthFromRules, 10)
+        
         let intent = await IntentParserService.shared.parseIntent("¿cómo fue mi octubre?")
         if case .monthlyRecap(let month, _) = intent {
             XCTAssertEqual(month, 10)
