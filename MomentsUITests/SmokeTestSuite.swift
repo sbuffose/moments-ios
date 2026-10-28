@@ -21,6 +21,9 @@ final class SmokeTestSuite: XCTestCase {
     }
     
     override func tearDownWithError() throws {
+        if app.state != .notRunning {
+            app.terminate()
+        }
         app = nil
     }
     
@@ -529,6 +532,9 @@ final class SmokeTestSuite: XCTestCase {
         // The actual identifier validation is in MomentsTests unit tests
         // This UI test verifies the app launches successfully (which means registration succeeded)
         
+        if app.state != .notRunning {
+            app.terminate()
+        }
         app.launch()
         
         let tabBar = app.tabBars.firstMatch
