@@ -196,7 +196,7 @@ final class NewPhotoCheckService: ObservableObject {
         )
     }
     
-    static func isObviouslyBad(category: CleanupCategoryType, keepDecision: String?) -> Bool {
+    nonisolated static func isObviouslyBad(category: CleanupCategoryType, keepDecision: String?) -> Bool {
         guard keepDecision == nil || keepDecision == "none" else { return false }
         return category == .blurry || category == .accidental || category == .underexposed
     }
