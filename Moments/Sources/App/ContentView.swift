@@ -124,7 +124,7 @@ struct FirstRunExplanationSheet: View {
                             
                             ExplanationRow(
                                 icon: "bell.badge",
-                                iconColor: .purple,
+                                iconColor: MomentsColors.accent,
                                 title: "Te avisamos cuando termine",
                                 description: "Recibirás una notificación cuando tu biblioteca esté lista."
                             )
@@ -374,6 +374,7 @@ struct MainTabView: View {
                 }
                 .tag(AppState.AppTab.home)
                 .accessibilityIdentifier("tab.home")
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
             
             AssistantView()
                 .tabItem {
@@ -398,6 +399,8 @@ struct MainTabView: View {
         }
         .tint(MomentsColors.accent)
         .accessibilityIdentifier("main_tab_view")
+        .animation(MomentsAnimation.spring, value: appState.shouldShowFirstRunAnalyzing)
+        .animation(MomentsAnimation.spring, value: appState.selectedTab)
     }
 }
 
@@ -504,7 +507,7 @@ struct OnboardingView: View {
                 TabView(selection: $currentPage) {
                     OnboardingPageView(
                         iconName: "externaldrive.badge.minus",
-                        iconGradient: [Color.blue, Color.purple],
+                        iconGradient: [MomentsColors.accent, MomentsColors.accentSecondary],
                         titleKey: "onboarding_page1_title",
                         subtitleKey: "onboarding_page1_subtitle",
                         highlights: [

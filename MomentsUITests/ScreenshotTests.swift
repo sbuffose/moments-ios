@@ -82,6 +82,58 @@ final class ScreenshotTests: XCTestCase {
         }
     }
     
+    func testCaptureFirstRunHomeReviewLightAndDark() throws {
+        if #available(iOS 17.0, *) {
+            XCUIDevice.shared.appearance = .light
+        }
+        captureFirstRunHomeReview(suffix: "light")
+        
+        if #available(iOS 17.0, *) {
+            XCUIDevice.shared.appearance = .dark
+        }
+        captureFirstRunHomeReview(suffix: "dark")
+    }
+    
+    private func captureFirstRunHomeReview(suffix: String) {
+        let analyzing = XCUIApplication()
+        analyzing.launchArguments = [
+            "-skipOnboarding",
+            "-simulateFirstScan",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        analyzing.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        analyzing.launch()
+        _ = analyzing.tabBars.firstMatch.waitForExistence(timeout: 20)
+        sleep(1)
+        captureScreenshot(name: "priority_firstrun_\(suffix)", app: analyzing)
+        analyzing.terminate()
+        
+        let ready = XCUIApplication()
+        ready.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        ready.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        ready.launch()
+        let tabBar = ready.tabBars.firstMatch
+        _ = tabBar.waitForExistence(timeout: 20)
+        tabBar.buttons.element(boundBy: 0).tap()
+        sleep(1)
+        captureScreenshot(name: "priority_home_\(suffix)", app: ready)
+        
+        let start = ready.buttons["home.reviewButton"]
+        if start.waitForExistence(timeout: 8) {
+            start.tap()
+            _ = ready.otherElements["review.root"].waitForExistence(timeout: 8)
+            sleep(1)
+            captureScreenshot(name: "priority_review_\(suffix)", app: ready)
+        }
+        ready.terminate()
+    }
+    
     func testCaptureLoadingStates() throws {
         // Launch app and capture loading states before content loads
         let freshApp = XCUIApplication()

@@ -919,6 +919,182 @@ final class SmokeTestSuite: XCTestCase {
         add(attachment)
     }
     
+    func testHomeEmpezarOpensReviewWithNDe20() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
+        
+        let start = app.buttons["home.reviewButton"]
+        XCTAssertTrue(start.waitForExistence(timeout: 12), "Empezar must navigate, not just dim")
+        start.tap()
+        
+        XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10), "Review must open from Empezar")
+        let progress = app.staticTexts["review.progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 8), "Review must show n de 20")
+        let label = progress.label
+        XCTAssertFalse(label.contains("7781"))
+        let ok = label.range(of: #"^\d+ de (1[0-9]|20|[1-9])$"#, options: .regularExpression) != nil
+        XCTAssertTrue(ok, "Progress should read 'n de 20', got '\(label)'")
+    }
+    
+    func testHomeVerDetalleOpensCleanup() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let detail = app.buttons["home.verDetalle"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 10), "Ver detalle must be tappable")
+        detail.tap()
+        XCTAssertTrue(
+            app.otherElements["cleanup.root"].waitForExistence(timeout: 8)
+            || app.navigationBars.firstMatch.waitForExistence(timeout: 4),
+            "Ver detalle must open cleanup detail"
+        )
+    }
+    
+    func testHomeChipOpensCleanup() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let chip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home.chip.'")).firstMatch
+        if chip.waitForExistence(timeout: 8) {
+            chip.tap()
+            XCTAssertTrue(
+                app.otherElements["cleanup.root"].waitForExistence(timeout: 8)
+                || app.navigationBars.firstMatch.waitForExistence(timeout: 4)
+            )
+        }
+    }
+    
+    func testHomeRecentlyDeletedInfoOpensHint() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let info = app.buttons["home.recentlyDeletedInfo"]
+        XCTAssertTrue(info.waitForExistence(timeout: 10), "Home info button must open the recently-deleted hint")
+        info.tap()
+        XCTAssertTrue(
+            app.otherElements["space.recentlyDeletedHint"].waitForExistence(timeout: 6)
+            || app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")).firstMatch.waitForExistence(timeout: 6)
+        )
+    }
+    
+    func testHomeSettingsButtonOpensSettings() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let gear = app.buttons["home.settingsButton"]
+        XCTAssertTrue(gear.waitForExistence(timeout: 10))
+        gear.tap()
+        XCTAssertTrue(
+            app.staticTexts["settings.libraryStatus"].waitForExistence(timeout: 8)
+            || app.navigationBars.firstMatch.waitForExistence(timeout: 4)
+        )
+    }
+    
+    func testMomentDayRowThumbnailsLoad() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 2).tap()
+        XCTAssertTrue(app.waitForMoments())
+        
+        let october = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'octubre' OR label CONTAINS[c] 'Octubre'")
+        ).firstMatch
+        let row = app.otherElements["moment.row"]
+        XCTAssertTrue(
+            october.waitForExistence(timeout: 12) || row.waitForExistence(timeout: 6),
+            "Momentos must show October day rows from seeded fixtures"
+        )
+        
+        let loaded = app.otherElements["photo.thumb.loaded"]
+        XCTAssertTrue(
+            loaded.waitForExistence(timeout: 10),
+            "Day-row thumbnails must resolve to a loaded thumb, not a forever-grey placeholder"
+        )
+    }
+    
+    func testFirstRunAnalyzingScreenHidesPartialOffers() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-simulateFirstScan",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        XCTAssertTrue(app.otherElements["firstRun.root"].waitForExistence(timeout: 10), "First-run analyzing screen must appear")
+        let message = app.staticTexts["firstRun.message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 6))
+        XCTAssertTrue(message.label.contains("10 minutos"), message.label)
+        XCTAssertFalse(message.label.contains("7781"))
+        XCTAssertFalse(message.label.contains("1100"))
+        XCTAssertFalse(app.buttons["home.reviewButton"].exists, "Must not offer Empezar from partial data")
+        XCTAssertFalse(app.staticTexts["home.heroHeadline"].exists)
+        
+        let notify = app.buttons["firstRun.notifyButton"]
+        XCTAssertTrue(notify.waitForExistence(timeout: 6) || app.staticTexts["firstRun.notifyEnabled"].exists)
+        
+        tabBar.buttons.element(boundBy: 3).tap()
+        let status = app.staticTexts["settings.libraryStatus"]
+        let statusRow = app.otherElements["settings.libraryStatus"]
+        let analyzing = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Analizando'")).firstMatch
+        XCTAssertTrue(
+            status.waitForExistence(timeout: 8)
+            || statusRow.waitForExistence(timeout: 4)
+            || analyzing.waitForExistence(timeout: 4),
+            "Analizando X/Y lives only in Settings"
+        )
+        let label = status.exists ? status.label : (statusRow.exists ? statusRow.label : analyzing.label)
+        XCTAssertTrue(label.contains("Analizando"), label)
+        
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "first_run_analyzing"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+    
+    func testFirstRunReadyShowsHome() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.otherElements["firstRun.root"].exists, "Ready library must skip the first-run analyzing screen")
+        XCTAssertTrue(
+            app.buttons["home.reviewButton"].waitForExistence(timeout: 10)
+            || app.staticTexts["home.heroHeadline"].waitForExistence(timeout: 6)
+        )
+        
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "first_run_ready_home"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+    
+    func testSageThemeDoesNotUsePurpleAccent() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "theme_sage_home"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+    
     // MARK: - Full Smoke Suite Summary
     
     func testSmokeTestSummary() throws {

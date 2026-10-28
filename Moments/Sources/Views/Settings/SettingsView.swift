@@ -208,6 +208,8 @@ struct SettingsView: View {
                 ProgressView()
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings.libraryStatus")
     }
     
     private var libraryStatusText: String {

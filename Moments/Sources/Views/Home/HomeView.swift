@@ -12,6 +12,11 @@ struct HomeView: View {
     
     @StateObject private var viewModel = HomeViewModel()
     @State private var showRecentlyDeletedInfo = false
+    @State private var heroReady = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    
+    /// Prevents the hero from laying out at zero width (one-letter columns).
+    static let heroMinWidth: CGFloat = 300
     
     var body: some View {
         NavigationStack {
@@ -22,36 +27,11 @@ struct HomeView: View {
                     .frame(width: 1, height: 1)
                     .accessibilityIdentifier("home.root")
                 
-                ScrollView {
-                    VStack(spacing: MomentsSpacing.lg) {
-                        searchBar
-                        
-                        if isPreparingFirstScan {
-                            firstScanCard
-                        } else {
-                            heroCard
-                        }
-                        
-                        freedAndStorageCard
-                        
-                        memoryHero
-                        
-                        if !viewModel.metadataCategories.isEmpty {
-                            detailLink
-                        }
-                        
-                        ForEach(viewModel.feedCards.filter { !$0.isOnThisDay }) { card in
-                            FeedCardView(card: card, viewModel: viewModel)
-                        }
-                        
-                        if !isPreparingFirstScan && viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty && viewModel.metadataCategories.isEmpty {
-                            emptyStateView
-                        }
-                    }
-                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
-                    .padding(.vertical, MomentsSpacing.md)
+                if appState.shouldShowFirstRunAnalyzing {
+                    FirstRunAnalyzingView()
+                } else {
+                    readyHomeScroll
                 }
-                .accessibilityIdentifier("home.scrollView")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -63,7 +43,7 @@ struct HomeView: View {
                 
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: MomentsSpacing.sm) {
-                        if appState.isAnalyzing || appState.isIndexing {
+                        if (appState.isAnalyzing || appState.isIndexing) && !appState.shouldShowFirstRunAnalyzing {
                             TimelineViewClock()
                                 .accessibilityIdentifier("home.scanClock")
                                 .accessibilityLabel("Preparando tu limpieza")
@@ -74,6 +54,8 @@ struct HomeView: View {
                             Image(systemName: "gear")
                                 .foregroundStyle(MomentsColors.textSecondary)
                         }
+                        .accessibilityIdentifier("home.settingsButton")
+                        .accessibilityLabel("Ajustes")
                     }
                 }
             }
@@ -91,16 +73,52 @@ struct HomeView: View {
             .presentationDetents([.medium])
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            if appState.isAnalyzing {
+            if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing {
                 viewModel.refreshCategories()
             }
         }
+        .animation(MomentsMotion.spring(reduceMotion: reduceMotion), value: appState.shouldShowFirstRunAnalyzing)
     }
     
-    private var isPreparingFirstScan: Bool {
-        (appState.isIndexing || appState.isAnalyzing)
-            && viewModel.cleanupItemCount == 0
-            && viewModel.metadataCategories.isEmpty
+    private var readyHomeScroll: some View {
+        ScrollView {
+            VStack(spacing: MomentsSpacing.lg) {
+                searchBar
+                
+                if heroReady {
+                    heroCard
+                        .transition(.opacity)
+                } else {
+                    heroSkeleton
+                }
+                
+                freedAndStorageCard
+                
+                memoryHero
+                
+                if !viewModel.metadataCategories.isEmpty {
+                    categoryChips
+                    detailLink
+                }
+                
+                ForEach(viewModel.feedCards.filter { !$0.isOnThisDay }) { card in
+                    FeedCardView(card: card, viewModel: viewModel)
+                }
+                
+                if viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty && viewModel.metadataCategories.isEmpty {
+                    emptyStateView
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, MomentsSpacing.screenHorizontal)
+            .padding(.vertical, MomentsSpacing.md)
+        }
+        .accessibilityIdentifier("home.scrollView")
+        .onAppear {
+            MomentsMotion.animate(reduceMotion: reduceMotion) {
+                heroReady = true
+            }
+        }
     }
     
     // MARK: - Header Section
@@ -166,19 +184,25 @@ struct HomeView: View {
         .accessibilityLabel("Buscá en tus fotos")
     }
     
-    private var firstScanCard: some View {
-        VStack(spacing: MomentsSpacing.md) {
-            ScanClockIcon()
-                .frame(width: 56, height: 56)
-            Text("Estamos preparando tu primera limpieza, tarda unos minutos, podés seguir usando el teléfono; te avisamos")
-                .font(MomentsTypography.bodyMedium)
-                .foregroundStyle(MomentsColors.textSecondary)
-                .multilineTextAlignment(.center)
-                .accessibilityIdentifier("home.firstScanMessage")
+    private var heroSkeleton: some View {
+        VStack(alignment: .leading, spacing: MomentsSpacing.md) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(MomentsColors.bgTertiary)
+                .frame(height: 32)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MomentsColors.bgTertiary)
+                .frame(width: 220, height: 16)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(MomentsColors.bgTertiary)
+                .frame(width: 180, height: 16)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MomentsColors.bgTertiary)
+                .frame(height: 52)
         }
-        .frame(maxWidth: .infinity)
+        .frame(minWidth: Self.heroMinWidth, maxWidth: .infinity, alignment: .leading)
         .momentsCard()
-        .accessibilityIdentifier("home.firstScanCard")
+        .accessibilityIdentifier("home.heroSkeleton")
+        .redacted(reason: .placeholder)
     }
     
     private var heroCard: some View {
@@ -186,8 +210,8 @@ struct HomeView: View {
             Text(Self.heroHeadline(bytes: viewModel.nextBatchBytes))
                 .font(MomentsTypography.headlineLarge)
                 .foregroundStyle(MomentsColors.textPrimary)
-                .contentTransition(.numericText())
-                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.nextBatchBytes)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("home.heroHeadline")
             
             ForEach(viewModel.topHumanReasons.prefix(3), id: \.self) { reason in
@@ -197,20 +221,50 @@ struct HomeView: View {
                     Text(reason)
                         .font(MomentsTypography.bodyMedium)
                         .foregroundStyle(MomentsColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             
             NavigationLink {
                 CleanupReviewView(viewModel: viewModel.cleanupViewModel)
             } label: {
-                Text("Empezar")
-                    .frame(maxWidth: .infinity)
+                MomentsAccentLinkLabel(title: "Empezar")
             }
-            .momentsAccentButton()
+            .buttonStyle(.plain)
             .accessibilityIdentifier("home.reviewButton")
+            .accessibilityLabel("Empezar")
         }
+        .frame(minWidth: Self.heroMinWidth, maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
+    }
+    
+    private var categoryChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: MomentsSpacing.sm) {
+                ForEach(viewModel.metadataCategories.prefix(6)) { category in
+                    NavigationLink {
+                        CleanupView()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: category.icon)
+                            Text(category.title)
+                                .font(MomentsTypography.labelMedium)
+                        }
+                        .padding(.horizontal, MomentsSpacing.sm)
+                        .padding(.vertical, MomentsSpacing.xs)
+                        .background(MomentsColors.accent.opacity(0.14))
+                        .clipShape(Capsule())
+                        .foregroundStyle(MomentsColors.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("home.chip.\(category.id)")
+                    .accessibilityLabel(category.title)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("home.categoryChips")
     }
     
     private var freedAndStorageCard: some View {
@@ -237,9 +291,10 @@ struct HomeView: View {
                         Capsule().fill(MomentsColors.bgTertiary)
                         Capsule()
                             .fill(MomentsColors.accentGradient)
-                            .frame(width: geo.size.width * storage.usedRatio)
+                            .frame(width: max(0, geo.size.width * storage.usedRatio))
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .frame(height: 10)
                 
                 Text("Espacio del teléfono: \(SpaceFormatting.string(from: storage.available)) libres de \(SpaceFormatting.string(from: storage.total))")
@@ -348,12 +403,13 @@ struct HomeView: View {
             NavigationLink {
                 CleanupReviewView(viewModel: viewModel.cleanupViewModel)
             } label: {
-                HStack {
-                    Image(systemName: "sparkles")
-                    Text(viewModel.cleanupItemCount > 0 ? "Revisar \(MomentsPluralization.photos(min(viewModel.cleanupItemCount, DailyReviewBatch.size)))" : "Revisar ahora")
-                }
+                MomentsAccentLinkLabel(
+                    title: viewModel.cleanupItemCount > 0
+                        ? "Revisar \(MomentsPluralization.photos(min(viewModel.cleanupItemCount, DailyReviewBatch.size)))"
+                        : "Revisar ahora"
+                )
             }
-            .momentsAccentButton()
+            .buttonStyle(.plain)
             .accessibilityIdentifier("home.reviewButton")
         }
         .accessibilityIdentifier("home.spaceCard")
@@ -869,15 +925,19 @@ enum DeviceStorage {
 }
 
 struct ScanClockIcon: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var spinning = false
     
     var body: some View {
         Image(systemName: "clock.arrow.circlepath")
-            .font(.system(size: 36, weight: .medium))
+            .font(.system(size: 36, weight: .medium, design: .rounded))
             .foregroundStyle(MomentsColors.accent)
-            .rotationEffect(.degrees(spinning ? 360 : 0))
-            .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: spinning)
-            .onAppear { spinning = true }
+            .rotationEffect(.degrees(spinning && !reduceMotion ? 360 : 0))
+            .animation(
+                reduceMotion ? nil : .linear(duration: 2).repeatForever(autoreverses: false),
+                value: spinning
+            )
+            .onAppear { spinning = !reduceMotion }
             .accessibilityIdentifier("home.scanClock.icon")
     }
 }

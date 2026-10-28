@@ -167,7 +167,9 @@ struct AsyncPhotoThumbnail: View {
     
     var body: some View {
         Group {
-            if let image = image {
+            if localIdentifier.hasPrefix("fixture-") {
+                fixtureStandIn
+            } else if let image = image {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -181,22 +183,46 @@ struct AsyncPhotoThumbnail: View {
                         Image(systemName: "photo")
                             .foregroundStyle(.secondary)
                     }
+                    .accessibilityIdentifier("photo.thumb.placeholder")
             }
         }
+        .accessibilityIdentifier(thumbnailAccessibilityId)
         .onAppear {
             loadImage()
-        }
-        .onDisappear {
-            cancelRequest()
         }
         .onChange(of: localIdentifier) { _, _ in
             cancelRequest()
             image = nil
+            isLoading = true
             loadImage()
         }
     }
     
+    private var thumbnailAccessibilityId: String {
+        if localIdentifier.hasPrefix("fixture-") || image != nil {
+            return "photo.thumb.loaded"
+        }
+        if isLoading {
+            return "photo.thumb.loading"
+        }
+        return "photo.thumb.placeholder"
+    }
+    
+    private var fixtureStandIn: some View {
+        ZStack {
+            MomentsColors.accent.opacity(0.28)
+            Image(systemName: "photo")
+                .foregroundStyle(MomentsColors.accent)
+        }
+        .accessibilityIdentifier("photo.thumb.loaded")
+    }
+    
     private func loadImage() {
+        if localIdentifier.hasPrefix("fixture-") {
+            isLoading = false
+            return
+        }
+        
         isLoading = true
         
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)

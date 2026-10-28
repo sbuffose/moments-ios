@@ -152,6 +152,7 @@ struct MomentRow: View {
                 AsyncPhotoThumbnail(localIdentifier: coverPhotoId)
                     .frame(width: 80, height: 80)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("moment.row.thumbnail")
             } else {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.gray.opacity(0.2))
@@ -196,6 +197,7 @@ struct MomentRow: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityIdentifier("moment.row")
     }
 }
 
