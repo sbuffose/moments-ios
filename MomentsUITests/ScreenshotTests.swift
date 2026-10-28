@@ -67,10 +67,11 @@ final class ScreenshotTests: XCTestCase {
     }
     
     func testCaptureDarkModeScreenshots() throws {
-        // Dark mode is default, these are the main screenshots
+        app.terminate()
+        app.launchArguments += ["-uiAppearanceDark"]
+        app.launch()
         skipOnboardingIfNeeded()
         
-        // Capture each tab in dark mode
         let tabs = ["Inicio", "Asistente", "Momentos", "Ajustes"]
         
         let tabBar = app.tabBars.firstMatch
@@ -83,22 +84,16 @@ final class ScreenshotTests: XCTestCase {
     }
     
     func testCaptureFirstRunHomeReviewLightAndDark() throws {
-        if #available(iOS 17.0, *) {
-            XCUIDevice.shared.appearance = .light
-        }
-        captureFirstRunHomeReview(suffix: "light")
-        
-        if #available(iOS 17.0, *) {
-            XCUIDevice.shared.appearance = .dark
-        }
-        captureFirstRunHomeReview(suffix: "dark")
+        captureFirstRunHomeReview(suffix: "light", appearance: "-uiAppearanceLight")
+        captureFirstRunHomeReview(suffix: "dark", appearance: "-uiAppearanceDark")
     }
     
-    private func captureFirstRunHomeReview(suffix: String) {
+    private func captureFirstRunHomeReview(suffix: String, appearance: String) {
         let analyzing = XCUIApplication()
         analyzing.launchArguments = [
             "-skipOnboarding",
             "-simulateFirstScan",
+            appearance,
             "-AppleLanguages", "(es-AR)",
             "-AppleLocale", "es_AR"
         ]
@@ -113,6 +108,7 @@ final class ScreenshotTests: XCTestCase {
         ready.launchArguments = [
             "-skipOnboarding",
             "-seedFixturePhotos",
+            appearance,
             "-AppleLanguages", "(es-AR)",
             "-AppleLocale", "es_AR"
         ]
@@ -125,12 +121,15 @@ final class ScreenshotTests: XCTestCase {
         captureScreenshot(name: "priority_home_\(suffix)", app: ready)
         
         let start = ready.buttons["home.reviewButton"]
-        if start.waitForExistence(timeout: 8) {
+        let startByLabel = ready.buttons["Empezar"]
+        if start.waitForExistence(timeout: 10) {
             start.tap()
-            _ = ready.otherElements["review.root"].waitForExistence(timeout: 8)
-            sleep(1)
-            captureScreenshot(name: "priority_review_\(suffix)", app: ready)
+        } else if startByLabel.waitForExistence(timeout: 4) {
+            startByLabel.tap()
         }
+        _ = ready.otherElements["review.root"].waitForExistence(timeout: 10)
+        sleep(1)
+        captureScreenshot(name: "priority_review_\(suffix)", app: ready)
         ready.terminate()
     }
     

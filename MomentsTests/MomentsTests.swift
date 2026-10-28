@@ -2643,8 +2643,39 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(copy.contains("Liberaste"), copy)
         XCTAssertTrue(copy.contains("Eliminados recientemente"), copy)
         XCTAssertTrue(copy.contains("30 días"), copy)
+        XCTAssertTrue(copy.contains("GB") || copy.contains("Gb"), copy)
+        XCTAssertEqual(
+            SpaceFormatting.recentlyDeletedRecovery,
+            "Se recupera el espacio al vaciar Eliminados recientemente (o solo en 30 días)"
+        )
+        XCTAssertTrue(
+            SpaceFormatting.homeCumulativeSpaceHeadline(bytes: 1_200_000_000).contains("Ya liberaste"),
+            SpaceFormatting.homeCumulativeSpaceHeadline(bytes: 1_200_000_000)
+        )
         XCTAssertEqual(SpaceFormatting.recentlyDeletedHowTo, "Fotos > Álbumes > Eliminados recientemente > Eliminar todo")
         XCTAssertEqual(SpaceFormatting.photosAppURL?.scheme, "photos-redirect")
+    }
+    
+    func testNewPhotoCheckCapsAndRespectsKeep() {
+        XCTAssertEqual(NewPhotoCheckService.maxPerDay, 3)
+        XCTAssertEqual(NewPhotoCheckService.delay, 5 * 60)
+        XCTAssertTrue(NewPhotoCheckService.isObviouslyBad(category: .blurry, keepDecision: nil))
+        XCTAssertTrue(NewPhotoCheckService.isObviouslyBad(category: .accidental, keepDecision: "none"))
+        XCTAssertFalse(NewPhotoCheckService.isObviouslyBad(category: .blurry, keepDecision: "forever"))
+        XCTAssertFalse(NewPhotoCheckService.isObviouslyBad(category: .screenshot, keepDecision: nil))
+    }
+    
+    func testAlbumSuggestionPrefersCooking4UForFood() {
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food, plate, dinner", lastChoice: nil), "Cooking4U")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "comida casera", lastChoice: nil), "Cooking4U")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "travel, beach", lastChoice: nil), "Viajes")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food", lastChoice: "Recetas"), "Recetas")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: nil, lastChoice: nil), "Moments")
+    }
+    
+    func testUITestAppearanceArgumentsDoNotHardCodePreferredDark() {
+        XCTAssertEqual(UITestAppearance.darkArgument, "-uiAppearanceDark")
+        XCTAssertEqual(UITestAppearance.lightArgument, "-uiAppearanceLight")
     }
     
     func testBackgroundTaskCompletesExactlyOnce() {

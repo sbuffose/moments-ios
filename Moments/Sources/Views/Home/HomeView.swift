@@ -70,7 +70,7 @@ struct HomeView: View {
                     .navigationTitle("Espacio liberado")
                     .navigationBarTitleDisplayMode(.inline)
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing {
@@ -271,7 +271,7 @@ struct HomeView: View {
     private var freedAndStorageCard: some View {
         VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
             HStack(alignment: .top) {
-                Text("Ya liberaste \(viewModel.formattedSpaceSaved) con Moments")
+                Text(SpaceFormatting.homeCumulativeSpaceHeadline(bytes: viewModel.totalSpaceSaved))
                     .font(MomentsTypography.headlineMedium)
                     .foregroundStyle(MomentsColors.textPrimary)
                     .accessibilityIdentifier("home.freedTotal")
@@ -284,6 +284,12 @@ struct HomeView: View {
                 .accessibilityIdentifier("home.recentlyDeletedInfo")
                 .accessibilityLabel("Cómo se recupera el espacio")
             }
+            
+            Text(SpaceFormatting.recentlyDeletedRecovery)
+                .font(MomentsTypography.bodySmall)
+                .foregroundStyle(MomentsColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("home.recentlyDeletedCopy")
             
             let storage = DeviceStorage.current()
             VStack(alignment: .leading, spacing: MomentsSpacing.xs) {

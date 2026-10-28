@@ -103,6 +103,7 @@ struct MomentsApp: App {
             ContentView()
                 .environmentObject(appState)
                 .modelContainer(container)
+                .preferredColorScheme(UITestAppearance.override)
                 .onAppear {
                     appState.initialize(modelContext: container.mainContext)
                 }
@@ -115,6 +116,7 @@ struct MomentsApp: App {
     private func handleScenePhaseChange(from oldPhase: ScenePhase, to newPhase: ScenePhase) {
         switch newPhase {
         case .background:
+            NewPhotoCheckService.shared.checkDuePhotos(isForeground: false)
             if appState.isIndexing || appState.isAnalyzing {
                 BackgroundTaskManager.shared.beginBackgroundTaskForAppExit()
                 
@@ -130,6 +132,7 @@ struct MomentsApp: App {
             }
         case .active:
             BackgroundTaskManager.shared.endBackgroundTask()
+            NewPhotoCheckService.shared.checkDuePhotos(isForeground: true)
         case .inactive:
             break
         @unknown default:
@@ -280,6 +283,7 @@ class AppState: ObservableObject {
         migrateInitialAnalysisFlagIfNeeded()
         
         DailyReviewService.shared.initialize(modelContext: modelContext)
+        NewPhotoCheckService.shared.initialize(modelContext: modelContext)
         installDailyReviewDeepLink()
         
         Task {
@@ -545,6 +549,16 @@ class AppState: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             self?.showDailyReview = true
+        }
+        NotificationCenter.default.addObserver(
+            forName: .openNewPhotoCheck,
+            object: nil,
+            queue: .main
+        ) { notification in
+            let info = notification.object as? [AnyHashable: Any] ?? notification.userInfo ?? [:]
+            Task { @MainActor in
+                NewPhotoCheckService.shared.present(fromNotification: info)
+            }
         }
     }
     

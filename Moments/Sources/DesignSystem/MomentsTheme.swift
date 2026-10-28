@@ -138,6 +138,20 @@ struct MomentsColors {
     }
 }
 
+// MARK: - UI-test appearance override (never hard-codes system dark)
+
+enum UITestAppearance {
+    static let darkArgument = "-uiAppearanceDark"
+    static let lightArgument = "-uiAppearanceLight"
+    
+    static var override: ColorScheme? {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains(darkArgument) { return ColorScheme.dark }
+        if args.contains(lightArgument) { return ColorScheme.light }
+        return nil
+    }
+}
+
 // MARK: - Typography (SF Pro Rounded + Dynamic Type)
 
 struct MomentsTypography {
