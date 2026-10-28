@@ -575,7 +575,7 @@
 "group_delete_others %lld" = "Borrar las otras %lld";
 
 /* Background Tasks */
-"bg_task_title" = "Analizando fotos";
+"bg_task_title" = "Analizando tus fotos";
 "bg_task_subtitle_remaining" = "Faltan";
 "bg_task_title_finishing" = "Finalizando";
 "bg_task_subtitle_almost_done" = "Casi listo";

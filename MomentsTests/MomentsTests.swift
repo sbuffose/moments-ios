@@ -2945,4 +2945,82 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: true),
                        "setTaskCompleted must run after the awaited scan, and only once")
     }
+    
+    // MARK: - Off-main scan pipeline + checkpoint resume (P0 build 266)
+    
+    func testScanPipelineRunsOffMainThreadAndResumesFromCheckpoint() async {
+        let suite = "test.scan.pipeline.\(UUID().uuidString)"
+        let store = ScanCheckpointStore(suiteName: suite)
+        store.start(totalPhotos: 20)
+        
+        let items = (0..<20).map { ScanWorkItem(id: "photo-\($0)") }
+        let pipeline = ScanPipeline()
+        
+        let firstPass = await Task.detached(priority: .utility) { () -> (Bool, Int) in
+            var sawOffMain = false
+            await pipeline.processBatch(Array(items.prefix(7)), store: store) { _ in
+                if !Thread.isMainThread {
+                    sawOffMain = true
+                }
+            }
+            return (sawOffMain, store.processedCount)
+        }.value
+        
+        XCTAssertTrue(firstPass.0, "Scan/Vision work must run off the main thread")
+        XCTAssertEqual(firstPass.1, 7, "Checkpoint should persist the first batch")
+        XCTAssertFalse(store.isComplete)
+        XCTAssertGreaterThan(store.processedCount, 0)
+        
+        let remaining = items.filter { !store.isProcessed($0.id) }
+        XCTAssertEqual(remaining.count, 13, "Resume must skip already-processed items, not restart from 0")
+        
+        let pipeline2 = ScanPipeline()
+        let secondPass = await Task.detached(priority: .utility) { () -> (Bool, Int) in
+            var stillOffMain = true
+            await pipeline2.processBatch(remaining, store: store) { _ in
+                if Thread.isMainThread {
+                    stillOffMain = false
+                }
+            }
+            return (stillOffMain, store.processedCount)
+        }.value
+        
+        XCTAssertTrue(secondPass.0, "Resumed batch must also stay off the main thread")
+        XCTAssertEqual(secondPass.1, 20, "Resume continues from the checkpoint instead of resetting")
+        XCTAssertGreaterThan(secondPass.1, firstPass.1)
+        XCTAssertTrue(store.isProcessed("photo-0"))
+        XCTAssertTrue(store.isProcessed("photo-19"))
+    }
+    
+    func testContinuedTaskRequestMatchesWildcardAndIsSubmittedOnEmpezar() {
+        ContinuedProcessingSubmissionRecorder.reset()
+        XCTAssertNil(ContinuedProcessingSubmissionRecorder.lastUserInitiatedSubmission)
+        
+        let request = FirstRunScanStart.submitContinuedProcessingOnEmpezar(remainingPhotos: 7800)
+        
+        XCTAssertTrue(request.matchesPermittedWildcard,
+                      "Identifier \(request.identifier) must match \(ContinuedProcessingRequest.identifierWildcard)")
+        XCTAssertTrue(request.identifier.hasPrefix(ContinuedProcessingRequest.identifierPrefix))
+        XCTAssertFalse(request.identifier.hasSuffix(".*"))
+        XCTAssertEqual(request.title, "Analizando tus fotos")
+        XCTAssertTrue(request.submittedFromUserAction, "Empezar is the required foreground user action")
+        XCTAssertEqual(request.remainingPhotos, 7800)
+        
+        let recorded = ContinuedProcessingSubmissionRecorder.lastUserInitiatedSubmission
+        XCTAssertEqual(recorded?.identifier, request.identifier)
+        XCTAssertEqual(recorded?.title, "Analizando tus fotos")
+        XCTAssertTrue(recorded?.submittedFromUserAction ?? false,
+                      "Continued-task submit must be recorded on the Empezar tap")
+        XCTAssertTrue(recorded?.matchesPermittedWildcard ?? false)
+        
+        let sceneBackgroundRequest = ContinuedProcessingRequest.make(
+            remainingPhotos: 7800,
+            fromUserAction: false
+        )
+        XCTAssertFalse(sceneBackgroundRequest.submittedFromUserAction,
+                       "Scene-phase background must not be treated as the user action")
+        
+        XCTAssertEqual(ScanCompletionNotificationCopy.title,
+                       "Tus fotos están listas para limpiar y etiquetar")
+    }
 }

@@ -1270,4 +1270,81 @@ final class SmokeTestSuite: XCTestCase {
             || app.staticTexts["Guardar en álbum"].waitForExistence(timeout: 4)
         )
     }
+    
+    func testActiveScanStaysResponsiveAndResumesAfterBackground() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-simulateActiveScan",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch during an active fixture scan")
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let progressEl = app.otherElements["scan.progress"]
+        XCTAssertTrue(progressEl.waitForExistence(timeout: 12), "scan.progress must be visible during analysis")
+        let before = Self.scanProgressValue(progressEl)
+        XCTAssertGreaterThan(before, 0, "Active scan should already have progress")
+        
+        let reviewButton = app.buttons["home.reviewButton"]
+        XCTAssertTrue(
+            reviewButton.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4),
+            "Review must stay reachable while analysis runs"
+        )
+        if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
+        XCTAssertTrue(
+            app.otherElements["review.root"].waitForExistence(timeout: 10),
+            "Opening review during an active scan must not stall the UI"
+        )
+        let keep = app.buttons["review.keepButton"]
+        if keep.waitForExistence(timeout: 6) {
+            XCTAssertTrue(keep.isHittable, "Review Conservar must be tappable during analysis")
+            keep.tap()
+        } else if app.buttons["Conservar"].waitForExistence(timeout: 3) {
+            app.buttons["Conservar"].tap()
+        }
+        
+        if app.navigationBars.buttons.count > 0 {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 8))
+        tabBar.buttons.element(boundBy: 1).tap()
+        XCTAssertTrue(app.waitForAssistant(), "Asistente must open while analysis is running")
+        let suggestion = app.buttons["assistant.suggestion"]
+        if suggestion.waitForExistence(timeout: 6) {
+            XCTAssertTrue(suggestion.isHittable || suggestion.exists, "Asistente chips must stay tappable")
+            suggestion.tap()
+        } else {
+            let input = app.textFields["assistant.input"]
+            XCTAssertTrue(input.waitForExistence(timeout: 6), "Asistente input must be tappable during analysis")
+            input.tap()
+        }
+        
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(progressEl.waitForExistence(timeout: 8))
+        
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 3)
+        app.activate()
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 20), "App must come back after home + activate")
+        XCTAssertTrue(progressEl.waitForExistence(timeout: 12))
+        let after = Self.scanProgressValue(progressEl)
+        XCTAssertGreaterThan(after, 0, "Progress must not reset to 0 after backgrounding")
+        XCTAssertGreaterThan(after, before, "Background work must advance the checkpoint, not restart")
+    }
+    
+    private static func scanProgressValue(_ element: XCUIElement) -> Double {
+        if let number = element.value as? NSNumber {
+            return number.doubleValue
+        }
+        let raw = (element.value as? String) ?? "0"
+        return Double(raw) ?? 0
+    }
 }

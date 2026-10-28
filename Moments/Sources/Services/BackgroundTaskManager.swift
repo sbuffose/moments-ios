@@ -5,6 +5,8 @@ import Foundation
 import BackgroundTasks
 import UIKit
 import Photos
+import SwiftData
+import UserNotifications
 
 @MainActor
 final class BackgroundTaskManager: ObservableObject {
@@ -39,6 +41,7 @@ final class BackgroundTaskManager: ObservableObject {
     private var completedTaskIds = Set<ObjectIdentifier>()
     private weak var photoLibraryService: PhotoLibraryService?
     private weak var analysisService: PhotoAnalysisService?
+    private var modelContainer: ModelContainer?
     
     // In-memory checkpoint sets (O(1) lookups instead of O(n) UserDefaults reads)
     private var indexedIdsCache: Set<String>?
@@ -53,9 +56,10 @@ final class BackgroundTaskManager: ObservableObject {
     
     // MARK: - Setup
     
-    func configure(photoLibraryService: PhotoLibraryService, analysisService: PhotoAnalysisService) {
+    func configure(photoLibraryService: PhotoLibraryService, analysisService: PhotoAnalysisService, container: ModelContainer) {
         self.photoLibraryService = photoLibraryService
         self.analysisService = analysisService
+        self.modelContainer = container
     }
     
     func registerBackgroundTasks() {
@@ -231,56 +235,37 @@ final class BackgroundTaskManager: ObservableObject {
     // MARK: - Checkpoint Management
     
     var hasPendingWork: Bool {
-        UserDefaults.standard.bool(forKey: checkpointScanInProgressKey)
+        ScanCheckpointStore.shared.isInProgress
     }
     
     var hasAnalysisPending: Bool {
-        let analyzedIds = Set(UserDefaults.standard.stringArray(forKey: checkpointAnalyzedIdsKey) ?? [])
-        let indexedIds = Set(UserDefaults.standard.stringArray(forKey: checkpointIndexedIdsKey) ?? [])
-        return indexedIds.count > analyzedIds.count
+        let snap = ScanCheckpointStore.shared.snapshot()
+        return snap.indexed > snap.analyzed
     }
     
     func startScan(totalPhotos: Int) {
-        UserDefaults.standard.set(true, forKey: checkpointScanInProgressKey)
-        UserDefaults.standard.set(totalPhotos, forKey: checkpointTotalPhotosKey)
+        ScanCheckpointStore.shared.start(totalPhotos: totalPhotos)
     }
     
     func markIndexed(assetId: String) {
-        loadCachesIfNeeded()
-        indexedIdsCache?.insert(assetId)
-        pendingIndexedBatch.insert(assetId)
-        
-        // Batch persist: only write to UserDefaults when batch is full or interval elapsed
-        if shouldPersistBatch() {
-            persistBatchedCheckpoints()
-        }
+        ScanCheckpointStore.shared.markIndexed(assetId)
     }
     
     func markAnalyzed(photoId: String) {
-        loadCachesIfNeeded()
-        analyzedIdsCache?.insert(photoId)
-        pendingAnalyzedBatch.insert(photoId)
-        
-        // Batch persist: only write to UserDefaults when batch is full or interval elapsed
-        if shouldPersistBatch() {
-            persistBatchedCheckpoints()
-        }
+        ScanCheckpointStore.shared.markAnalyzed(photoId)
     }
     
     func isAlreadyIndexed(_ assetId: String) -> Bool {
-        loadCachesIfNeeded()
-        return indexedIdsCache?.contains(assetId) ?? false
+        ScanCheckpointStore.shared.isIndexed(assetId)
     }
     
     func isAlreadyAnalyzed(_ photoId: String) -> Bool {
-        loadCachesIfNeeded()
-        return analyzedIdsCache?.contains(photoId) ?? false
+        ScanCheckpointStore.shared.isAnalyzed(photoId)
     }
     
     func getCheckpointProgress() -> (indexed: Int, analyzed: Int, total: Int) {
-        loadCachesIfNeeded()
-        let total = UserDefaults.standard.integer(forKey: checkpointTotalPhotosKey)
-        return (indexedIdsCache?.count ?? 0, analyzedIdsCache?.count ?? 0, total)
+        let snap = ScanCheckpointStore.shared.snapshot()
+        return (snap.indexed, snap.analyzed, snap.total)
     }
     
     private func loadCachesIfNeeded() {
@@ -323,100 +308,47 @@ final class BackgroundTaskManager: ObservableObject {
     }
     
     private func saveCheckpoint() {
-        // Force persist any pending batches
-        persistBatchedCheckpoints()
-        UserDefaults.standard.synchronize()
+        ScanCheckpointStore.shared.persist()
         print("[BackgroundTaskManager] Checkpoint saved")
     }
     
     func completeScan() {
-        UserDefaults.standard.set(false, forKey: checkpointScanInProgressKey)
+        ScanCheckpointStore.shared.complete()
         print("[BackgroundTaskManager] Scan marked complete")
     }
     
     func clearCheckpoint() {
-        // Clear in-memory caches
-        indexedIdsCache = nil
-        analyzedIdsCache = nil
-        pendingIndexedBatch.removeAll()
-        pendingAnalyzedBatch.removeAll()
-        
-        // Clear persisted data
-        UserDefaults.standard.removeObject(forKey: checkpointLastIndexedIdKey)
-        UserDefaults.standard.removeObject(forKey: checkpointLastAnalyzedIdKey)
-        UserDefaults.standard.removeObject(forKey: checkpointIndexedIdsKey)
-        UserDefaults.standard.removeObject(forKey: checkpointAnalyzedIdsKey)
-        UserDefaults.standard.removeObject(forKey: checkpointTotalPhotosKey)
-        UserDefaults.standard.removeObject(forKey: checkpointScanInProgressKey)
+        ScanCheckpointStore.shared.clear()
     }
     
     // MARK: - Background Work
     
     private func performBackgroundScan() async -> Bool {
-        guard let service = photoLibraryService else { return false }
-        
-        let status = await service.checkAuthorizationStatus()
-        guard status == .authorized || status == .limited else { return false }
-        
-        let fetchOptions = PHFetchOptions()
-        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let assets = PHAsset.fetchAssets(with: fetchOptions)
-        
-        var pending: [PHAsset] = []
-        pending.reserveCapacity(min(assets.count, 512))
-        assets.enumerateObjects { [weak self] asset, _, stop in
-            guard let self else {
-                stop.pointee = true
-                return
-            }
-            if self.scanExpired {
-                stop.pointee = true
-                return
-            }
-            if !self.isAlreadyIndexed(asset.localIdentifier) {
-                pending.append(asset)
-            }
-        }
-        
-        let totalCount = max(1, assets.count)
-        var processedCount = assets.count - pending.count
-        
-        // Await each asset. Fire-and-forget Tasks used to return true before work finished.
-        for asset in pending {
-            if scanExpired || Task.isCancelled {
-                saveCheckpoint()
-                return false
-            }
-            await service.indexSingleAsset(asset)
-            autoreleasepool {
-                self.markIndexed(assetId: asset.localIdentifier)
-                processedCount += 1
-                self.backgroundProgress = Double(processedCount) / Double(totalCount)
-            }
-        }
-        
-        persistBatchedCheckpoints()
-        return !scanExpired
+        await performSharedPipeline()
     }
     
     private func performBackgroundAnalysis() async -> Bool {
-        guard let service = analysisService else { return false }
-        
-        let success = await service.analyzeUnprocessedPhotosInBackground { [weak self] progress in
-            Task { @MainActor in
-                self?.backgroundProgress = progress
+        await performSharedPipeline()
+    }
+    
+    private func performSharedPipeline() async -> Bool {
+        guard let container = modelContainer else { return false }
+        return await ScanPipelineCoordinator.shared.run(
+            container: container,
+            shouldStop: { Task.isCancelled }
+        ) { [weak self] snapshot in
+            await MainActor.run {
+                self?.backgroundProgress = snapshot.overallProgress
             }
         }
-        
-        return success
     }
     
     // MARK: - Notifications
     
     private func sendScanCompleteNotification() {
         let content = UNMutableNotificationContent()
-        content.title = "¡Análisis completado!"
-        content.body = "Tu biblioteca de fotos está lista. Abrí Moments para ver las sugerencias de limpieza."
+        content.title = ScanCompletionNotificationCopy.title
+        content.body = ScanCompletionNotificationCopy.body
         content.sound = .default
         
         let request = UNNotificationRequest(
@@ -440,8 +372,8 @@ extension BackgroundTaskManager {
     
     // Continued processing tasks use a wildcard identifier pattern
     // Must register with the EXACT identifier from Info.plist including the asterisk
-    private static let continuedTaskIdentifierWildcard = "com.sbuffose.moments.continued.*"
-    private static let continuedTaskIdentifierPrefix = "com.sbuffose.moments.continued."
+    private static let continuedTaskIdentifierWildcard = ContinuedProcessingRequest.identifierWildcard
+    private static let continuedTaskIdentifierPrefix = ContinuedProcessingRequest.identifierPrefix
     
     // Track the active continued processing task
     private static var activeContinuedTask: BGContinuedProcessingTask?
@@ -477,48 +409,40 @@ extension BackgroundTaskManager {
         return registered
     }
     
-    /// Submit a continued processing task. Only call while a user-initiated scan is actively running.
-    /// - Parameter remainingPhotos: Number of photos remaining to process (must be > 0)
+    /// Submit a continued processing task. Only call from a foreground user action
+    /// (first-run Empezar). Scene-phase `.background` must not call this.
     func submitContinuedProcessingTask(remainingPhotos: Int) {
-        // Guard against registration not having succeeded - NSException from submit
-        // cannot be caught by Swift do/catch, so we must check this flag
+        let request = FirstRunScanStart.submitContinuedProcessingOnEmpezar(remainingPhotos: remainingPhotos)
+        submitRecordedContinuedRequest(request)
+    }
+    
+    /// Submit a request already recorded on the Empezar call stack.
+    func submitRecordedContinuedRequest(_ request: ContinuedProcessingRequest) {
         guard Self.isContinuedProcessingRegistered else {
             print("[BackgroundTaskManager] Skipping continued task - handler not registered")
             scheduleScanTaskIfNeeded()
             return
         }
         
-        // Don't submit if no work remains
-        guard remainingPhotos > 0 else {
+        guard request.remainingPhotos > 0 else {
             print("[BackgroundTaskManager] Skipping continued task - no photos remaining")
             return
         }
         
-        // Don't submit if scan isn't in progress
-        guard hasPendingWork else {
-            print("[BackgroundTaskManager] Skipping continued task - no scan in progress")
-            return
-        }
-        
-        // Generate unique identifier for this task: prefix + UUID
-        // The wildcard registration "com.sbuffose.moments.continued.*" matches this
-        let taskId = Self.continuedTaskIdentifierPrefix + UUID().uuidString
-        
-        let request = BGContinuedProcessingTaskRequest(
-            identifier: taskId,
-            title: NSLocalizedString("bg_task_title", comment: "Analizando fotos"),
-            subtitle: NSLocalizedString("bg_task_subtitle_remaining", comment: "") + " \(remainingPhotos)"
+        let bgRequest = BGContinuedProcessingTaskRequest(
+            identifier: request.identifier,
+            title: request.title,
+            subtitle: request.subtitle
         )
         
         do {
-            try BGTaskScheduler.shared.submit(request)
-            print("[BackgroundTaskManager] Submitted continued processing task: \(taskId)")
+            try BGTaskScheduler.shared.submit(bgRequest)
+            print("[BackgroundTaskManager] Submitted continued processing task: \(request.identifier)")
         } catch BGTaskScheduler.Error.unavailable {
             print("[BackgroundTaskManager] Continued processing unavailable, falling back to BGProcessingTask")
             scheduleScanTaskIfNeeded()
         } catch {
             print("[BackgroundTaskManager] Failed to submit continued processing task: \(error)")
-            // Silent fallback - don't surface error to user
             scheduleScanTaskIfNeeded()
         }
     }
@@ -541,7 +465,8 @@ extension BackgroundTaskManager {
         task.expirationHandler = { [weak self] in
             Task { @MainActor in
                 print("[BackgroundTaskManager] Continued task expiring, checkpointing...")
-                Self.continuedTaskWorkItem?.cancel()
+                // Do not cancel the shared detached pipeline — checkpoint and
+                // let BGProcessingTask pick up after iOS suspends us.
                 self?.completeContinuedTaskOnce(task, success: false)
                 self?.scheduleScanTaskIfNeeded()
                 self?.scheduleAnalysisTaskIfNeeded()
@@ -584,31 +509,30 @@ extension BackgroundTaskManager {
     
     /// Perform the continued processing work with progress updates
     private func performContinuedProcessing(task: BGContinuedProcessingTask) async -> Bool {
-        guard let analysisService = self.analysisService else { return false }
+        guard let container = modelContainer else { return false }
         
-        var processedCount: Int64 = 0
         let totalCount = task.progress.totalUnitCount
         var lastTitleUpdate = Date()
-        let titleUpdateInterval: TimeInterval = 5.0 // Update subtitle every 5 seconds
+        let titleUpdateInterval: TimeInterval = 5.0
         
-        let success = await analysisService.analyzeUnprocessedPhotosInBackground { [weak self] progress in
-            Task { @MainActor in
+        let success = await ScanPipelineCoordinator.shared.run(
+            container: container,
+            shouldStop: { Task.isCancelled }
+        ) { [weak self] snapshot in
+            await MainActor.run {
                 guard let self = self, Self.activeContinuedTask === task else { return }
-                
-                // Update completed count
-                processedCount = Int64(Double(totalCount) * progress)
+                let processedCount = Int64(Double(totalCount) * snapshot.overallProgress)
                 task.progress.completedUnitCount = processedCount
-                self.backgroundProgress = progress
+                self.backgroundProgress = snapshot.overallProgress
                 
-                // Periodically update the subtitle with remaining count
                 let now = Date()
                 if now.timeIntervalSince(lastTitleUpdate) >= titleUpdateInterval {
                     lastTitleUpdate = now
-                    let remaining = Int(totalCount - processedCount)
+                    let remaining = max(0, snapshot.total - snapshot.analyzed)
                     if remaining > 0 {
                         task.updateTitle(
-                            NSLocalizedString("bg_task_title", comment: "Analizando fotos"),
-                            subtitle: NSLocalizedString("bg_task_subtitle_remaining", comment: "Faltan") + " \(remaining)"
+                            ContinuedProcessingRequest.progressTitle,
+                            subtitle: "Faltan \(remaining)"
                         )
                     } else {
                         task.updateTitle(
@@ -620,7 +544,6 @@ extension BackgroundTaskManager {
             }
         }
         
-        // Ensure progress shows completion
         await MainActor.run {
             task.progress.completedUnitCount = totalCount
             self.backgroundProgress = 1.0

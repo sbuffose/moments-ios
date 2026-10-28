@@ -174,6 +174,6 @@ enum FirstRunCopy {
         return text.range(of: pattern, options: .regularExpression) != nil
     }
     
-    static let analysisCompleteNotificationTitle = "Moments ya está listo"
-    static let analysisCompleteNotificationBody = "Ya podés limpiar y etiquetar tus fotos."
+    static let analysisCompleteNotificationTitle = ScanCompletionNotificationCopy.title
+    static let analysisCompleteNotificationBody = ScanCompletionNotificationCopy.body
 }

@@ -118,20 +118,17 @@ struct MomentsApp: App {
         case .background:
             NewPhotoCheckService.shared.checkDuePhotos(isForeground: false)
             if appState.isIndexing || appState.isAnalyzing {
+                // Grace period only. BGContinuedProcessingTask MUST already have
+                // been submitted from the foreground Empezar tap — iOS 26 rejects
+                // a continued-task submit that is not a user action.
                 BackgroundTaskManager.shared.beginBackgroundTaskForAppExit()
-                
-                if #available(iOS 26.0, *) {
-                    // Calculate remaining photos based on checkpoint
-                    let progress = BackgroundTaskManager.shared.getCheckpointProgress()
-                    let remainingPhotos = max(0, progress.total - progress.analyzed)
-                    BackgroundTaskManager.shared.submitContinuedProcessingTask(remainingPhotos: remainingPhotos)
-                } else {
-                    BackgroundTaskManager.shared.scheduleScanTaskIfNeeded()
-                    BackgroundTaskManager.shared.scheduleAnalysisTaskIfNeeded()
-                }
+                BackgroundTaskManager.shared.scheduleScanTaskIfNeeded()
+                BackgroundTaskManager.shared.scheduleAnalysisTaskIfNeeded()
+                ActiveScanSimulation.handleDidEnterBackground()
             }
         case .active:
             BackgroundTaskManager.shared.endBackgroundTask()
+            ActiveScanSimulation.handleDidBecomeActive(appState: appState)
             NewPhotoCheckService.shared.checkDuePhotos(isForeground: true)
         case .inactive:
             break
@@ -168,6 +165,8 @@ class AppState: ObservableObject {
     private var analysisTask: Task<Void, Never>?
     private var indexingTask: Task<Void, Never>?
     private var modelContext: ModelContext?
+    private var modelContainer: ModelContainer?
+    private var scanCancellation: ScanCancellation?
     
     private let onboardingCompletedKey = "com.moments.hasCompletedOnboarding"
     private let notificationPromptShownKey = "com.moments.notificationPromptShown"
@@ -199,6 +198,10 @@ class AppState: ObservableObject {
             totalPhotosToAnalyze = 7781
             hasCompletedInitialAnalysis = false
         }
+        
+        if ActiveScanSimulation.isRequested {
+            ActiveScanSimulation.bootstrapAppState(self)
+        }
     }
     
     func markInitialAnalysisComplete() {
@@ -221,7 +224,7 @@ class AppState: ObservableObject {
     func dismissFirstRunExplanation() {
         UserDefaults.standard.set(true, forKey: firstRunExplanationShownKey)
         showFirstRunExplanation = false
-        startBackgroundIndexingAndAnalysis()
+        startUserInitiatedScan()
     }
     
     func resetOnboarding() {
@@ -255,13 +258,15 @@ class AppState: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        self.modelContainer = modelContext.container
         photoLibraryService = PhotoLibraryService(modelContext: modelContext)
         analysisService = PhotoAnalysisService(modelContext: modelContext)
         
         if let photoService = photoLibraryService, let analysisService = analysisService {
             BackgroundTaskManager.shared.configure(
                 photoLibraryService: photoService,
-                analysisService: analysisService
+                analysisService: analysisService,
+                container: modelContext.container
             )
         }
         
@@ -286,8 +291,17 @@ class AppState: ObservableObject {
         NewPhotoCheckService.shared.initialize(modelContext: modelContext)
         installDailyReviewDeepLink()
         
+        if ActiveScanSimulation.isRequested {
+            ActiveScanSimulation.start(appState: self)
+        }
+        
         Task {
             if FirstRunAnalyzingView.isSimulated {
+                await checkNotificationStatus()
+                return
+            }
+            
+            if ActiveScanSimulation.isRequested {
                 await checkNotificationStatus()
                 return
             }
@@ -358,83 +372,109 @@ class AppState: ObservableObject {
     // MARK: - Background Processing (Non-blocking)
     
     func startBackgroundIndexingAndAnalysis() {
-        guard let photoService = photoLibraryService else { return }
+        guard modelContainer != nil || modelContext != nil else { return }
+        guard !ActiveScanSimulation.isRequested else { return }
         
-        // Cancel any existing tasks
         indexingTask?.cancel()
         analysisTask?.cancel()
+        scanCancellation?.cancel()
         
         isIndexing = true
         indexingProgress = 0
         
-        // Start tracking in BackgroundTaskManager
         let fetchOptions = PHFetchOptions()
         let totalPhotos = PHAsset.fetchAssets(with: fetchOptions).count
-        BackgroundTaskManager.shared.startScan(totalPhotos: totalPhotos)
-        
-        // Start indexing in background with checkpointing
-        indexingTask = Task { @MainActor in
-            await photoService.scanLibraryWithCheckpointing(
-                checkpointHandler: { assetId in
-                    BackgroundTaskManager.shared.markIndexed(assetId: assetId)
-                },
-                isAlreadyIndexed: { assetId in
-                    BackgroundTaskManager.shared.isAlreadyIndexed(assetId)
-                },
-                progressHandler: { progress, indexed in
-                    Task { @MainActor in
-                        self.indexingProgress = progress
-                        self.totalPhotosIndexed = indexed
-                    }
-                }
-            )
-            
-            self.isIndexing = false
-            // Immediately start analysis after indexing
-            self.startBackgroundAnalysis()
+        if !BackgroundTaskManager.shared.hasPendingWork {
+            BackgroundTaskManager.shared.startScan(totalPhotos: totalPhotos)
         }
+        
+        startDetachedPipeline()
     }
     
-    func resumeBackgroundProcessing() {
-        guard let photoService = photoLibraryService else { return }
+    /// User-tapped first-run Empezar / Settings scan. Submits the iOS 26
+    /// continued-processing task on this foreground call stack.
+    func startUserInitiatedScan() {
+        guard modelContainer != nil || modelContext != nil else { return }
+        guard !ActiveScanSimulation.isRequested else { return }
         
         indexingTask?.cancel()
         analysisTask?.cancel()
+        scanCancellation?.cancel()
         
-        let progress = BackgroundTaskManager.shared.getCheckpointProgress()
+        isIndexing = true
+        indexingProgress = 0
         
-        if progress.indexed < progress.total {
-            isIndexing = true
-            indexingProgress = Double(progress.indexed) / Double(max(progress.total, 1))
-            totalPhotosIndexed = progress.indexed
-            
-            indexingTask = Task { @MainActor in
-                await photoService.scanLibraryWithCheckpointing(
-                    checkpointHandler: { assetId in
-                        BackgroundTaskManager.shared.markIndexed(assetId: assetId)
-                    },
-                    isAlreadyIndexed: { assetId in
-                        BackgroundTaskManager.shared.isAlreadyIndexed(assetId)
-                    },
-                    progressHandler: { progress, indexed in
-                        Task { @MainActor in
-                            self.indexingProgress = progress
-                            self.totalPhotosIndexed = indexed
-                        }
-                    }
-                )
-                
-                self.isIndexing = false
-                self.startBackgroundAnalysis()
+        let fetchOptions = PHFetchOptions()
+        let totalPhotos = PHAsset.fetchAssets(with: fetchOptions).count
+        let remaining = max(totalPhotos, 1)
+        BackgroundTaskManager.shared.startScan(totalPhotos: remaining)
+        
+        let request = FirstRunScanStart.submitContinuedProcessingOnEmpezar(remainingPhotos: remaining)
+        if #available(iOS 26.0, *) {
+            BackgroundTaskManager.shared.submitRecordedContinuedRequest(request)
+        }
+        
+        startDetachedPipeline()
+    }
+    
+    func resumeBackgroundProcessing() {
+        startDetachedPipeline()
+    }
+    
+    func startScan() {
+        startUserInitiatedScan()
+    }
+    
+    private func startDetachedPipeline() {
+        guard let container = modelContainer ?? modelContext?.container else { return }
+        if ActiveScanSimulation.isRequested { return }
+        
+        let cancellation = ScanCancellation()
+        scanCancellation = cancellation
+        isIndexing = true
+        
+        indexingTask = Task { [weak self] in
+            let success = await ScanPipelineCoordinator.shared.run(
+                container: container,
+                shouldStop: { cancellation.isCancelled }
+            ) { snapshot in
+                await MainActor.run { [weak self] in
+                    self?.applyScanSnapshot(snapshot)
+                }
             }
-        } else {
-            startBackgroundAnalysis()
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.isIndexing = false
+                self.isAnalyzing = false
+                if success {
+                    BackgroundTaskManager.shared.completeScan()
+                    self.markInitialAnalysisComplete()
+                }
+            }
+            if success {
+                await self?.calculateEstimatedSavings()
+                await self?.sendAnalysisCompleteNotification()
+            }
         }
     }
     
-    // Legacy alias for startScan - now non-blocking
-    func startScan() {
-        startBackgroundIndexingAndAnalysis()
+    private func applyScanSnapshot(_ snapshot: ScanProgressSnapshot) {
+        totalPhotosIndexed = snapshot.indexed
+        totalPhotosAnalyzed = snapshot.analyzed
+        totalPhotosToAnalyze = max(snapshot.total, snapshot.indexed)
+        indexingProgress = snapshot.indexProgress
+        analysisProgress = snapshot.analysisProgress
+        switch snapshot.phase {
+        case .indexing:
+            isIndexing = true
+            isAnalyzing = false
+        case .analyzing:
+            isIndexing = false
+            isAnalyzing = true
+        case .done:
+            isIndexing = false
+            isAnalyzing = false
+        }
     }
     
     func startBackgroundAnalysis() {
@@ -483,6 +523,7 @@ class AppState: ObservableObject {
     }
     
     func pauseAnalysis() {
+        scanCancellation?.cancel()
         analysisTask?.cancel()
         indexingTask?.cancel()
         isAnalyzing = false

@@ -24,7 +24,9 @@ struct ContentView: View {
                         appState.isLibraryAuthorized = true
                         appState.hasCompletedOnboarding = true
                         // Start background processing (non-blocking)
-                        if !FixturePhotoSeeder.isRequested && !appState.isIndexing && !appState.isAnalyzing {
+                        if !FixturePhotoSeeder.isRequested
+                            && !ActiveScanSimulation.isRequested
+                            && !appState.isIndexing && !appState.isAnalyzing {
                             appState.startBackgroundIndexingAndAnalysis()
                         }
                     }
@@ -152,7 +154,7 @@ struct FirstRunExplanationSheet: View {
                     Button {
                         appState.dismissFirstRunExplanation()
                     } label: {
-                        Text("¡Entendido, comenzar!")
+                        Text("Empezar")
                             .font(MomentsTypography.buttonLarge)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -168,6 +170,7 @@ struct FirstRunExplanationSheet: View {
                     }
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
                     .padding(.bottom, MomentsSpacing.xl)
+                    .accessibilityIdentifier("firstRun.startButton")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -403,6 +406,18 @@ struct MainTabView: View {
         }
         .tint(MomentsColors.accent)
         .accessibilityIdentifier("main_tab_view")
+        .overlay(alignment: .topLeading) {
+            if appState.isIndexing || appState.isAnalyzing {
+                let progress = appState.isIndexing ? appState.indexingProgress : appState.analysisProgress
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("scan.progress")
+                    .accessibilityLabel("Progreso del análisis")
+                    .accessibilityValue(String(format: "%.4f", progress))
+                    .accessibilityHidden(false)
+                    .allowsHitTesting(false)
+            }
+        }
         .animation(MomentsAnimation.spring, value: appState.shouldShowFirstRunAnalyzing)
         .animation(MomentsAnimation.spring, value: appState.selectedTab)
     }

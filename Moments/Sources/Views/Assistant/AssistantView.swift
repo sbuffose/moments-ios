@@ -131,6 +131,7 @@ struct AssistantView: View {
                             .background(MomentsColors.bgTertiary)
                             .cornerRadius(16)
                     }
+                    .accessibilityIdentifier("assistant.suggestion")
                 }
             }
             .padding(.horizontal, MomentsSpacing.screenHorizontal)
