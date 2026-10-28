@@ -128,7 +128,7 @@ class TimelineViewModel: ObservableObject {
             
             let momentItems = moments.map { moment -> MomentItem in
                 let rawCover = moment.coverPhotoId ?? moment.photoIdArray.first
-                MomentItem(
+                return MomentItem(
                     id: moment.id,
                     title: moment.title ?? generateMomentTitle(for: moment),
                     subtitle: moment.subtitle,
