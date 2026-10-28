@@ -511,9 +511,8 @@ enum SpaceFormatting {
         formatter.includesUnit = true
         formatter.allowedUnits = bytes >= 1_000_000_000 ? [.useGB] : bytes >= 1_000_000 ? [.useMB] : [.useKB, .useMB]
         formatter.formattingContext = .standalone
-        if let locale = Locale(identifier: "es_AR") as Locale? {
-            formatter.numberFormatter.locale = locale
-        }
+        // ByteCountFormatter has no public numberFormatter; locale comes
+        // from the process (es_AR in the app and UI tests).
         return formatter.string(fromByteCount: bytes)
     }
     
