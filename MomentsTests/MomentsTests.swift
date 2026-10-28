@@ -2598,6 +2598,72 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(meta.origin, .whatsapp)
     }
     
+    @MainActor
+    func testSuppressedCategoryIsExcludedFromQueue() throws {
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self, LearnedPreferences.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let screenshot = PersistedPhoto(localIdentifier: "pref-shot")
+        screenshot.analysisCompleted = true
+        screenshot.cleanupCategoryRaw = "screenshot"
+        screenshot.deletionLikelihoodScore = 0.9
+        context.insert(screenshot)
+        
+        let blurry = PersistedPhoto(localIdentifier: "pref-blur")
+        blurry.analysisCompleted = true
+        blurry.cleanupCategoryRaw = "blurry"
+        blurry.deletionLikelihoodScore = 0.4
+        context.insert(blurry)
+        
+        let prefs = LearnedPreferences()
+        prefs.setSuppressedCategories([.screenshot])
+        context.insert(prefs)
+        try context.save()
+        
+        XCTAssertFalse(PreferenceLearningService.shouldShow(.screenshot, preferences: prefs))
+        XCTAssertTrue(PreferenceLearningService.shouldShow(.blurry, preferences: prefs))
+        
+        let queue = CleanupViewModel.makeQueue(photos: [screenshot, blurry], groups: [], preferences: prefs)
+        XCTAssertEqual(queue.count, 1)
+        guard case .single(let photo) = queue[0] else {
+            return XCTFail("Expected remaining blurry photo")
+        }
+        XCTAssertEqual(photo.id, blurry.id)
+    }
+    
+    @MainActor
+    func testAdjustedScoreReordersQueue() throws {
+        let highBase = PersistedPhoto(localIdentifier: "pref-high-base")
+        highBase.analysisCompleted = true
+        highBase.cleanupCategoryRaw = "screenshot"
+        highBase.deletionLikelihoodScore = 0.55
+        
+        let lowBase = PersistedPhoto(localIdentifier: "pref-low-base")
+        lowBase.analysisCompleted = true
+        lowBase.cleanupCategoryRaw = "blurry"
+        lowBase.deletionLikelihoodScore = 0.50
+        
+        let prefs = LearnedPreferences()
+        prefs.totalDecisions = 50
+        prefs.blurryKeepRate = 0.05
+        prefs.screenshotKeepRate = 0.95
+        
+        let highAdj = PreferenceLearningService.adjustedScore(for: highBase, baseScore: highBase.deletionLikelihoodScore, preferences: prefs)
+        let lowAdj = PreferenceLearningService.adjustedScore(for: lowBase, baseScore: lowBase.deletionLikelihoodScore, preferences: prefs)
+        XCTAssertGreaterThan(lowAdj, highAdj, "Learned keep rates must change ordering")
+        
+        let capped = DailyReviewBatch.cap([
+            .single(highBase),
+            .single(lowBase)
+        ], preferences: prefs)
+        guard case .single(let first) = capped.batch[0] else {
+            return XCTFail("Expected a single photo first")
+        }
+        XCTAssertEqual(first.id, lowBase.id)
+    }
+    
     func testDailyReviewUsesSingleSchedulerIdentifier() {
         XCTAssertEqual(DailyReviewService.notificationIdentifier, "daily-review")
         XCTAssertTrue(DailyReviewService.legacyNotificationIdentifiers.contains("daily-review"))

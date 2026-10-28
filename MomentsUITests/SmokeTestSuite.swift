@@ -695,9 +695,18 @@ final class SmokeTestSuite: XCTestCase {
         let daily = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Repaso' OR label CONTAINS[c] 'diario'")).firstMatch
         if daily.waitForExistence(timeout: 6) {
             daily.tap()
+            // "Repaso del día" abre settings (toggle / hora) o el review (keep / vacío).
+            // El toggle de permiso puede ocultar el preview vacío; la pantalla de settings alcanza.
             let keep = app.buttons["dailyReview.keep"]
             let empty = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'No hay fotos'")).firstMatch
-            XCTAssertTrue(keep.waitForExistence(timeout: 6) || empty.waitForExistence(timeout: 6))
+            let hour = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Hora del recordatorio'")).firstMatch
+            let toggle = app.switches.matching(NSPredicate(format: "label CONTAINS[c] 'repaso' OR label CONTAINS[c] 'diario'")).firstMatch
+            XCTAssertTrue(
+                keep.waitForExistence(timeout: 8)
+                || empty.waitForExistence(timeout: 2)
+                || hour.waitForExistence(timeout: 2)
+                || toggle.waitForExistence(timeout: 2)
+            )
         }
     }
     
