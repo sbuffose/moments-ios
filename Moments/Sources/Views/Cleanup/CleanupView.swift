@@ -465,14 +465,7 @@ struct CleanupCelebrationView: View {
                     .font(.title)
                     .fontWeight(.bold)
                 
-                HStack(spacing: 4) {
-                    Text("celebration_freed")
-                        .foregroundStyle(.secondary)
-                    Text(formattedSize(spaceSaved))
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.green)
-                }
+                RecentlyDeletedHintView(bytes: spaceSaved)
             }
             
             Divider()
@@ -638,6 +631,16 @@ struct CleanupReviewView: View {
                     .animation(.easeInOut(duration: 0.3), value: currentPosition)
                     .accessibilityIdentifier("review.progress")
                 
+                if deletionSize > 0 {
+                    Text(SpaceFormatting.pendingLiberationLabel(bytes: deletionSize))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .padding(.top, 4)
+                        .contentTransition(.numericText())
+                        .animation(.spring(response: 0.35), value: deletionSize)
+                        .accessibilityIdentifier("review.pendingSpace")
+                }
+                
                 // Category label for current photo
                 if let category = currentCategory {
                     Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
@@ -799,6 +802,17 @@ struct CleanupReviewView: View {
                 )
                 .frame(width: cardWidth, height: cardHeight)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottomTrailing) {
+                    if let size = photo.estimatedFileSize, size > 0 {
+                        Text(SpaceFormatting.string(from: size))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(10)
+                            .accessibilityIdentifier("review.itemSize")
+                    }
+                }
             }
             .padding(.horizontal, 16)
             
@@ -1419,9 +1433,7 @@ struct ReviewSummarySheet: View {
                             .fontWeight(.bold)
                             .foregroundStyle(.red)
                         
-                        Text("Se moverán a Eliminados Recientemente")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        RecentlyDeletedHintView(bytes: deletionSize)
                     }
                     
                     // Preview of photos to delete

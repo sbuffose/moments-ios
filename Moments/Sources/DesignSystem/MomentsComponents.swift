@@ -2,6 +2,7 @@
 // Reusable UI components: Cards, Chips, Buttons
 
 import SwiftUI
+import UIKit
 
 // MARK: - Photo Grid Card
 
@@ -508,14 +509,54 @@ enum SpaceFormatting {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         formatter.includesUnit = true
-        if bytes >= 1_000_000_000 {
-            formatter.allowedUnits = [.useGB]
-        } else if bytes >= 1_000_000 {
-            formatter.allowedUnits = [.useMB]
-        } else {
-            formatter.allowedUnits = [.useKB, .useMB]
-        }
+        formatter.allowedUnits = bytes >= 1_000_000_000 ? [.useGB] : bytes >= 1_000_000 ? [.useMB] : [.useKB, .useMB]
+        formatter.formattingContext = .standalone
+        // ByteCountFormatter has no public numberFormatter; locale comes
+        // from the process (es_AR in the app and UI tests).
         return formatter.string(fromByteCount: bytes)
+    }
+    
+    static func pendingLiberationLabel(bytes: Int64) -> String {
+        "Vas a liberar \(string(from: bytes))"
+    }
+    
+    static func recentlyDeletedSummary(bytes: Int64) -> String {
+        "Liberaste \(string(from: bytes)). Se recupera el espacio al vaciar Eliminados recientemente (o solo en 30 días)"
+    }
+    
+    static let recentlyDeletedHowTo = "Fotos > Álbumes > Eliminados recientemente > Eliminar todo"
+    
+    static let photosAppURL = URL(string: "photos-redirect://")
+}
+
+struct RecentlyDeletedHintView: View {
+    var bytes: Int64?
+    var showsOpenPhotosButton: Bool = true
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let bytes {
+                Text(SpaceFormatting.recentlyDeletedSummary(bytes: bytes))
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Se recupera el espacio al vaciar Eliminados recientemente (o solo en 30 días)")
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(SpaceFormatting.recentlyDeletedHowTo)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if showsOpenPhotosButton, let url = SpaceFormatting.photosAppURL {
+                Button {
+                    UIApplication.shared.open(url)
+                } label: {
+                    Label("Abrir Fotos", systemImage: "photo.on.rectangle")
+                }
+                .accessibilityIdentifier("space.openPhotos")
+            }
+        }
+        .accessibilityIdentifier("space.recentlyDeletedHint")
     }
 }
 

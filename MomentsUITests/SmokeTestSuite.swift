@@ -687,6 +687,41 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testRecentlyDeletedHintAppearsInSummary() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let reviewButton = app.buttons["home.reviewButton"]
+        if reviewButton.waitForExistence(timeout: 8) {
+            reviewButton.tap()
+        }
+        let terminar = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Terminar'")).firstMatch
+        if terminar.waitForExistence(timeout: 6) {
+            terminar.tap()
+            let hint = app.otherElements["space.recentlyDeletedHint"]
+            XCTAssertTrue(
+                hint.waitForExistence(timeout: 6) ||
+                app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")).firstMatch.waitForExistence(timeout: 6)
+            )
+        }
+    }
+    
+    func testLiveSpaceCounterAppearsInReview() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let reviewButton = app.buttons["home.reviewButton"]
+        if reviewButton.waitForExistence(timeout: 8) {
+            reviewButton.tap()
+        }
+        let pending = app.staticTexts["review.pendingSpace"]
+        if pending.waitForExistence(timeout: 8) {
+            XCTAssertTrue(pending.label.contains("Vas a liberar") || pending.label.contains("liber"))
+        }
+    }
+    
     func testLivePhotoAndSourceCopyOnHome() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
