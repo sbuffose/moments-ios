@@ -1429,6 +1429,9 @@ struct ReviewSummarySheet: View {
                     
                     Text("Conservaste todas las fotos revisadas")
                         .foregroundStyle(.secondary)
+                    
+                    RecentlyDeletedHintView(bytes: nil)
+                        .padding(.horizontal)
                 } else {
                     // Photos marked for deletion
                     ZStack {

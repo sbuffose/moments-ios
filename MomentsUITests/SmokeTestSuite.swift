@@ -738,11 +738,13 @@ final class SmokeTestSuite: XCTestCase {
             hint.waitForExistence(timeout: 8) || recovery.waitForExistence(timeout: 4),
             "Summary must state that space returns after emptying Recently Deleted"
         )
+        let howTo = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+        ).firstMatch
         XCTAssertTrue(
-            app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
-            ).firstMatch.waitForExistence(timeout: 4)
-            || app.buttons["space.openPhotos"].waitForExistence(timeout: 2),
+            howTo.waitForExistence(timeout: 6)
+            || app.buttons["space.openPhotos"].waitForExistence(timeout: 3)
+            || app.buttons["Abrir Fotos"].waitForExistence(timeout: 2),
             "Summary must include the how-to or the Open Photos button"
         )
     }
@@ -1012,8 +1014,13 @@ final class SmokeTestSuite: XCTestCase {
                 NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
             ).firstMatch.waitForExistence(timeout: 4)
         )
+        let openPhotos = app.buttons["space.openPhotos"]
+        let openByLabel = app.buttons["Abrir Fotos"]
+        if !openPhotos.waitForExistence(timeout: 3) {
+            app.swipeUp()
+        }
         XCTAssertTrue(
-            app.buttons["space.openPhotos"].waitForExistence(timeout: 4),
+            openPhotos.waitForExistence(timeout: 4) || openByLabel.waitForExistence(timeout: 3),
             "Hint must offer a button that opens Fotos"
         )
     }

@@ -70,7 +70,7 @@ struct HomeView: View {
                     .navigationTitle("Espacio liberado")
                     .navigationBarTitleDisplayMode(.inline)
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing {
