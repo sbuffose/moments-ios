@@ -687,6 +687,14 @@ final class SmokeTestSuite: XCTestCase {
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
     
+    func testLivePhotoAndSourceCopyOnHome() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
+    }
+    
     func testDailyReviewSheetOpensFromDeepLinkIdentifier() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch

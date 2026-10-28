@@ -343,6 +343,10 @@ class PhotoAnalysisService: ObservableObject {
                 photo.cleanupCategory = .accidental
                 return
             }
+            
+            if photo.isLivePhoto {
+                photo.cleanupCategory = .livePhoto
+            }
         }
     }
     
