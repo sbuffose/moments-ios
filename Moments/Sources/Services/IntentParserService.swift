@@ -70,14 +70,9 @@ class IntentParserService: ObservableObject {
         let normalizedText = text.lowercased()
             .folding(options: .diacriticInsensitive, locale: Locale(identifier: "es_AR"))
         
-        // Try Foundation Models first if available (iOS 26+)
-        if #available(iOS 26, *), useFoundationModels {
-            if let intent = await parseWithFoundationModels(text) {
-                return intent
-            }
-        }
-        
-        // Fallback to rule-based parsing
+        // Rules first so known Spanish intents (recap, cleanup, search)
+        // never block on FoundationModels. The model is used for narrative,
+        // not as a gate on parse.
         return parseWithRules(normalizedText, originalText: text)
     }
     

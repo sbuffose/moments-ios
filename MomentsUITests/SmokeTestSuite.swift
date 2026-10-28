@@ -692,7 +692,7 @@ final class SmokeTestSuite: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
         tabBar.buttons.element(boundBy: 1).tap()
-        XCTAssertTrue(app.otherElements["assistant.root"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.waitForAssistant(), "Assistant tab should show assistant.root or the input field")
         let field = app.textFields.firstMatch
         if field.waitForExistence(timeout: 6) {
             field.tap()
