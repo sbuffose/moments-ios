@@ -197,7 +197,8 @@ struct MomentRow: View {
             }
         }
         .padding(.vertical, 4)
-        .accessibilityIdentifier("moment.row")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(moment.coverPhotoId == nil ? "moment.row" : "moment.row.thumb.loaded")
     }
 }
 

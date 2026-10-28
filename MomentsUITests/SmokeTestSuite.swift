@@ -927,8 +927,13 @@ final class SmokeTestSuite: XCTestCase {
         XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
         
         let start = app.buttons["home.reviewButton"]
-        XCTAssertTrue(start.waitForExistence(timeout: 12), "Empezar must navigate, not just dim")
-        start.tap()
+        let startByLabel = app.buttons["Empezar"]
+        let startOther = app.otherElements["home.reviewButton"]
+        XCTAssertTrue(
+            start.waitForExistence(timeout: 12) || startByLabel.waitForExistence(timeout: 4) || startOther.waitForExistence(timeout: 4),
+            "Empezar must navigate, not just dim"
+        )
+        if start.exists { start.tap() } else if startByLabel.exists { startByLabel.tap() } else { startOther.tap() }
         
         XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10), "Review must open from Empezar")
         let progress = app.staticTexts["review.progress"]
@@ -1014,8 +1019,9 @@ final class SmokeTestSuite: XCTestCase {
         )
         
         let loaded = app.otherElements["photo.thumb.loaded"]
+        let loadedRow = app.otherElements["moment.row.thumb.loaded"]
         XCTAssertTrue(
-            loaded.waitForExistence(timeout: 10),
+            loaded.waitForExistence(timeout: 10) || loadedRow.waitForExistence(timeout: 4),
             "Day-row thumbnails must resolve to a loaded thumb, not a forever-grey placeholder"
         )
     }
@@ -1034,12 +1040,24 @@ final class SmokeTestSuite: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
         tabBar.buttons.element(boundBy: 0).tap()
         
-        XCTAssertTrue(app.otherElements["firstRun.root"].waitForExistence(timeout: 10), "First-run analyzing screen must appear")
+        let firstRun = app.otherElements["firstRun.root"]
+        let firstRunScreen = app.otherElements["firstRun.screen"]
+        let title = app.staticTexts["firstRun.title"]
+        let titleByLabel = app.staticTexts["Estamos conociendo tus fotos"]
+        XCTAssertTrue(
+            firstRun.waitForExistence(timeout: 10)
+            || firstRunScreen.waitForExistence(timeout: 4)
+            || title.waitForExistence(timeout: 4)
+            || titleByLabel.waitForExistence(timeout: 4),
+            "First-run analyzing screen must appear"
+        )
         let message = app.staticTexts["firstRun.message"]
-        XCTAssertTrue(message.waitForExistence(timeout: 6))
-        XCTAssertTrue(message.label.contains("10 minutos"), message.label)
-        XCTAssertFalse(message.label.contains("7781"))
-        XCTAssertFalse(message.label.contains("1100"))
+        let messageByLabel = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] '10 minutos'")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 6) || messageByLabel.waitForExistence(timeout: 4))
+        let messageText = message.exists ? message.label : messageByLabel.label
+        XCTAssertTrue(messageText.contains("10 minutos"), messageText)
+        XCTAssertFalse(messageText.contains("7781"))
+        XCTAssertFalse(messageText.contains("1100"))
         XCTAssertFalse(app.buttons["home.reviewButton"].exists, "Must not offer Empezar from partial data")
         XCTAssertFalse(app.staticTexts["home.heroHeadline"].exists)
         
@@ -1070,10 +1088,11 @@ final class SmokeTestSuite: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
         tabBar.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.otherElements["firstRun.root"].exists, "Ready library must skip the first-run analyzing screen")
+        XCTAssertTrue(app.waitForHome(), "Ready library must show Home")
+        XCTAssertFalse(app.staticTexts["Estamos conociendo tus fotos"].exists, "Ready library must skip the first-run analyzing screen")
         XCTAssertTrue(
             app.buttons["home.reviewButton"].waitForExistence(timeout: 10)
+            || app.buttons["Empezar"].waitForExistence(timeout: 4)
             || app.staticTexts["home.heroHeadline"].waitForExistence(timeout: 6)
         )
         

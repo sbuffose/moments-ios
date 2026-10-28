@@ -12,7 +12,7 @@ struct HomeView: View {
     
     @StateObject private var viewModel = HomeViewModel()
     @State private var showRecentlyDeletedInfo = false
-    @State private var heroReady = false
+    @State private var heroReady = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     /// Prevents the hero from laying out at zero width (one-letter columns).
@@ -85,11 +85,12 @@ struct HomeView: View {
             VStack(spacing: MomentsSpacing.lg) {
                 searchBar
                 
-                if heroReady {
+                ZStack {
+                    if !heroReady {
+                        heroSkeleton
+                    }
                     heroCard
-                        .transition(.opacity)
-                } else {
-                    heroSkeleton
+                        .opacity(heroReady ? 1 : 0)
                 }
                 
                 freedAndStorageCard

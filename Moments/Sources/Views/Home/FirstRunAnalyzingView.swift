@@ -7,7 +7,7 @@ struct FirstRunAnalyzingView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
-    @State private var appeared = false
+    @State private var appeared = true
     
     static let title = "Estamos conociendo tus fotos"
     static let bodyCopy = "Esto tarda unos 10 minutos. Podés cerrar la app y seguir con lo tuyo: te avisamos cuando esté listo para limpiar y etiquetar."
@@ -87,9 +87,9 @@ struct FirstRunAnalyzingView: View {
                 Spacer()
             }
             .padding(.horizontal, MomentsSpacing.xl)
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared || reduceMotion ? 0 : 16)
+            .offset(y: appeared || reduceMotion ? 0 : 0)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("firstRun.screen")
         .onAppear {
             MomentsMotion.animate(reduceMotion: reduceMotion) {
