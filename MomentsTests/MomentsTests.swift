@@ -2361,6 +2361,7 @@ final class MomentsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(summary.exactGroups, 3)
         XCTAssertGreaterThanOrEqual(summary.similarGroups, 1)
         XCTAssertGreaterThanOrEqual(summary.videos, 1)
+        XCTAssertGreaterThanOrEqual(summary.messaging, 50, "Home launch formats messaging cards only at 50+")
         
         let photos = try context.fetch(FetchDescriptor<PersistedPhoto>())
         XCTAssertTrue(photos.contains { $0.localIdentifier == "fixture-night-sharp" })
@@ -2577,7 +2578,15 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(person.name, "Mamá")
     }
     
+    @MainActor
     func testRecapIntentParsesOctober() async {
+        let fromRules = IntentParserService.recapIntent(from: "¿cómo fue mi octubre?")
+        guard case .monthlyRecap(let monthFromRules, _) = fromRules else {
+            XCTFail("Expected monthly recap intent from rules")
+            return
+        }
+        XCTAssertEqual(monthFromRules, 10)
+        
         let intent = await IntentParserService.shared.parseIntent("¿cómo fue mi octubre?")
         if case .monthlyRecap(let month, _) = intent {
             XCTAssertEqual(month, 10)
@@ -2696,6 +2705,85 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "travel, beach", lastChoice: nil), "Viajes")
         XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food", lastChoice: "Recetas"), "Recetas")
         XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: nil, lastChoice: nil), "Moments")
+    }
+    
+    func testFormatAuditRejectsReorderedCatalogingFromApp() {
+        let old = LocalizationFormatAudit.check(
+            key: "cataloging_from_app %@ %lld",
+            value: "Tenés %lld fotos de %@"
+        )
+        XCTAssertFalse(old.isValid, "Old line 323 must fail: \(old.reason)")
+        
+        let oldEN = LocalizationFormatAudit.check(
+            key: "cataloging_from_app %@ %lld",
+            value: "You have %lld photos from %@"
+        )
+        XCTAssertFalse(oldEN.isValid, "Old English cataloging_from_app must fail: \(oldEN.reason)")
+        
+        let fixed = LocalizationFormatAudit.check(
+            key: "cataloging_from_app %@ %lld",
+            value: "Tenés %2$lld fotos de %1$@"
+        )
+        XCTAssertTrue(fixed.isValid, fixed.reason)
+        
+        let sameOrder = LocalizationFormatAudit.check(
+            key: "cataloging_every_date %@ %lld",
+            value: "Cada %@ hay fotos (%lld años)"
+        )
+        XCTAssertTrue(sameOrder.isValid, sameOrder.reason)
+    }
+    
+    func testLocalizedFormatSpecifiersMatchAcrossLanguages() throws {
+        let resources = LocalizationFormatAudit.resourcesDirectoryFromTestFile()
+        let es = resources.appendingPathComponent("es-AR.lproj/Localizable.strings")
+        let en = resources.appendingPathComponent("en.lproj/Localizable.strings")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: es.path), es.path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: en.path), en.path)
+        let findings = try LocalizationFormatAudit.auditFiles(in: resources)
+        XCTAssertTrue(
+            findings.isEmpty,
+            findings.map { "\($0.language) \($0.key): \($0.reason) [\($0.value)]" }.joined(separator: "\n")
+        )
+    }
+    
+    @MainActor
+    func testGenerateMessagingAppCardsFormatsTitleWith60WhatsAppPhotos() async throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        for index in 1...60 {
+            let photo = PersistedPhoto(localIdentifier: "wa-card-\(index)")
+            photo.analysisCompleted = true
+            photo.origin = .whatsapp
+            context.insert(photo)
+        }
+        try context.save()
+        
+        let service = CatalogingService()
+        service.initialize(modelContext: context)
+        let cards = await service.generateMessagingAppCards()
+        
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards.first?.photoCount, 60)
+        
+        let title = cards.first?.title ?? ""
+        XCTAssertTrue(title.contains("60"), "Title should include the count: \(title)")
+        XCTAssertTrue(title.lowercased().contains("whatsapp"), "Title should include the origin: \(title)")
+        
+        let formatted = CatalogingService.messagingAppCardTitle(originRawValue: "whatsapp", count: 60)
+        XCTAssertTrue(formatted.contains("60"), formatted)
+        XCTAssertTrue(formatted.lowercased().contains("whatsapp"), formatted)
+        
+        let esPath = LocalizationFormatAudit.resourcesDirectoryFromTestFile()
+            .appendingPathComponent("es-AR.lproj/Localizable.strings")
+        let dict = NSDictionary(contentsOf: esPath) as? [String: String]
+        let format = try XCTUnwrap(dict?["cataloging_from_app %@ %lld"])
+        XCTAssertTrue(format.contains("%2$lld"), format)
+        XCTAssertTrue(format.contains("%1$@"), format)
+        let esTitle = String(format: format, locale: Locale(identifier: "es_AR"), "whatsapp", Int64(60))
+        XCTAssertEqual(esTitle, "Tenés 60 fotos de whatsapp")
     }
     
     func testUITestAppearanceArgumentsDoNotHardCodePreferredDark() {
