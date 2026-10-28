@@ -51,6 +51,7 @@ struct MomentsApp: App {
         // This MUST happen before the app finishes launching
         BackgroundTaskManager.shared.registerBackgroundTasks()
         DailyReviewService.shared.registerBackgroundTask()
+        UNUserNotificationCenter.current().delegate = MomentsNotificationDelegate.shared
     }
     
     private static func createContainer(schema: Schema, inMemory: Bool) -> ModelContainer? {
@@ -155,6 +156,8 @@ class AppState: ObservableObject {
     @Published var showFirstRunExplanation = false
     @Published var notificationsAuthorized = false
     @Published var estimatedSpaceSavings: Int64 = 0
+    @Published var showDailyReview = false
+    private var dailyReviewObserver: NSObjectProtocol?
     
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
@@ -245,6 +248,9 @@ class AppState: ObservableObject {
                 print("[FixturePhotoSeeder] failed: \(error)")
             }
         }
+        
+        DailyReviewService.shared.initialize(modelContext: modelContext)
+        installDailyReviewDeepLink()
         
         Task {
             if FixturePhotoSeeder.isRequested {
@@ -478,51 +484,29 @@ class AppState: ObservableObject {
     
     // MARK: - Daily Review
     
-    func scheduleDailyReviewIfNeeded() {
-        guard let context = modelContext else { return }
-        
-        let descriptor = FetchDescriptor<DailyReviewSettings>(
-            predicate: #Predicate { $0.id == "main" }
-        )
-        
-        guard let settings = try? context.fetch(descriptor).first,
-              settings.isEnabled else { return }
-        
-        scheduleDailyReviewNotification(hour: settings.reviewHour, minute: settings.reviewMinute)
+    func installDailyReviewDeepLink() {
+        guard dailyReviewObserver == nil else { return }
+        dailyReviewObserver = NotificationCenter.default.addObserver(
+            forName: .openDailyReview,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.showDailyReview = true
+        }
     }
     
-    func scheduleDailyReviewNotification(hour: Int, minute: Int) {
-        guard notificationsAuthorized else { return }
-        
-        let center = UNUserNotificationCenter.current()
-        
-        // Remove existing daily review notifications
-        center.removePendingNotificationRequests(withIdentifiers: ["daily-review"])
-        
-        let content = UNMutableNotificationContent()
-        content.title = "Repaso del día"
-        content.body = "Revisá las fotos de hoy y organizá tu biblioteca"
-        content.sound = .default
-        
-        var dateComponents = DateComponents()
-        dateComponents.hour = hour
-        dateComponents.minute = minute
-        
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-        let request = UNNotificationRequest(
-            identifier: "daily-review",
-            content: content,
-            trigger: trigger
-        )
-        
+    func scheduleDailyReviewIfNeeded() {
+        guard let context = modelContext else { return }
+        DailyReviewService.shared.initialize(modelContext: context)
         Task {
-            try? await center.add(request)
+            await DailyReviewService.shared.scheduleNotificationIfEnabled()
         }
     }
     
     func cancelDailyReviewNotification() {
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: ["daily-review"])
+        UNUserNotificationCenter.current().removePendingNotificationRequests(
+            withIdentifiers: DailyReviewService.legacyNotificationIdentifiers
+        )
     }
     
     // MARK: - Photo Reminders

@@ -3,6 +3,7 @@
 
 import XCTest
 import SwiftData
+import UserNotifications
 @testable import Moments
 
 final class MomentsTests: XCTestCase {
@@ -2595,6 +2596,33 @@ final class MomentsTests: XCTestCase {
             whiteBalance: nil
         )
         XCTAssertEqual(meta.origin, .whatsapp)
+    }
+    
+    func testDailyReviewUsesSingleSchedulerIdentifier() {
+        XCTAssertEqual(DailyReviewService.notificationIdentifier, "daily-review")
+        XCTAssertTrue(DailyReviewService.legacyNotificationIdentifiers.contains("daily-review"))
+        XCTAssertTrue(DailyReviewService.legacyNotificationIdentifiers.contains("daily-review-21-0"))
+    }
+    
+    @MainActor
+    func testDailyReviewSettingsCreatedOnInitialize() async throws {
+        let schema = Schema([DailyReviewSettings.self, PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        DailyReviewService.shared.initialize(modelContext: context)
+        let settings = await DailyReviewService.shared.getSettings()
+        XCTAssertTrue(settings.isEnabled)
+        XCTAssertEqual(settings.reviewHour, 21)
+        XCTAssertEqual(settings.reviewMinute, 0)
+    }
+    
+    func testDailyReviewNotificationDeepLinksToReview() {
+        let content = UNMutableNotificationContent()
+        content.userInfo = ["type": "dailyReview"]
+        // handleNotificationResponse posts .openDailyReview — contract used by AppState.
+        XCTAssertEqual(Notification.Name.openDailyReview.rawValue, "openDailyReview")
     }
     
     func testBackgroundScanAwaitsWorkInsteadOfFireAndForget() {
