@@ -11,7 +11,10 @@ enum FoundationModelsClient {
     static var isDefaultModelAvailable: Bool {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            return SystemLanguageModel.default.availability != .unavailable
+            if case .available = SystemLanguageModel.default.availability {
+                return true
+            }
+            return false
         }
         #endif
         return false
