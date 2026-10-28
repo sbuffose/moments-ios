@@ -461,6 +461,10 @@ final class MomentsUITests: XCTestCase {
                 // Check for "Conservar una copia" button
                 let keepBestButton = app.buttons["group.keepBest"]
                 XCTAssertTrue(keepBestButton.exists, "Exact duplicate group should have 'Conservar una copia' button")
+                XCTAssertFalse(
+                    app.staticTexts["Fotos idénticas"].exists,
+                    "Exact-duplicate review should not repeat Fotos idénticas next to Duplicados exactos"
+                )
             }
             
             if similarGroup.exists {

@@ -668,6 +668,7 @@ struct CleanupReviewView: View {
                         group: group,
                         photos: photos,
                         viewModel: viewModel,
+                        onSaveToAlbum: { showAlbumSheet = true },
                         onComplete: {
                             // Queue shrinks automatically - don't advance index
                         }
@@ -678,6 +679,7 @@ struct CleanupReviewView: View {
                         group: group,
                         photos: photos,
                         viewModel: viewModel,
+                        onSaveToAlbum: { showAlbumSheet = true },
                         onComplete: {
                             // Queue shrinks automatically - don't advance index
                         }
@@ -706,17 +708,10 @@ struct CleanupReviewView: View {
             }
             
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 12) {
-                    Button("Guardar en álbum") {
-                        showAlbumSheet = true
-                    }
-                    .accessibilityIdentifier("review.saveToAlbum")
-                    .accessibilityLabel("Guardar en álbum")
-                    Button("Terminar") {
-                        showFinishSheet = true
-                    }
-                    .fontWeight(.medium)
+                Button("Terminar") {
+                    showFinishSheet = true
                 }
+                .fontWeight(.medium)
             }
         }
         .interactiveDismissDisabled(photosToDelete.count > 0)
@@ -855,6 +850,11 @@ struct CleanupReviewView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             }
+            
+            SaveToAlbumReviewButton {
+                showAlbumSheet = true
+            }
+            .padding(.bottom, 8)
             
             // Action buttons - fixed width, equal spacing, centered labels
             HStack(spacing: 0) {
@@ -1026,6 +1026,7 @@ struct ExactDuplicateGroupCard: View {
     let group: SimilarGroup
     let photos: [PersistedPhoto]
     @ObservedObject var viewModel: CleanupViewModel
+    var onSaveToAlbum: () -> Void = {}
     let onComplete: () -> Void
     
     private var bestPhoto: PersistedPhoto? {
@@ -1042,11 +1043,6 @@ struct ExactDuplicateGroupCard: View {
     
     var body: some View {
         VStack(spacing: 16) {
-            // Header
-            Label("Fotos idénticas", systemImage: "doc.on.doc.fill")
-                .font(.caption)
-                .foregroundStyle(.orange)
-            
             Spacer()
             
             // Main preview of best photo
@@ -1099,7 +1095,7 @@ struct ExactDuplicateGroupCard: View {
                 Text("\(MomentsPluralization.photos(photos.count)) idénticas")
                     .font(.headline)
                 
-                Text("Conservar la mejor y eliminar \(MomentsPluralization.deleteOthers(duplicateCount))")
+                Text(MomentsPluralization.keepBestAndDeleteOthers(duplicateCount))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 
@@ -1128,13 +1124,8 @@ struct ExactDuplicateGroupCard: View {
                         Image(systemName: "checkmark.circle.fill")
                         Text("Conservar una copia")
                     }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.green)
-                    .cornerRadius(14)
                 }
+                .momentsAccentButton()
                 .accessibilityIdentifier("group.keepBest")
                 
                 // Secondary action: Keep all (with menu for duration)
@@ -1167,6 +1158,8 @@ struct ExactDuplicateGroupCard: View {
                     viewModel.keepPhotos(photos.map { $0.id }, duration: .forever, groupId: group.id)
                     onComplete()
                 }
+                
+                SaveToAlbumReviewButton(action: onSaveToAlbum)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -1188,6 +1181,7 @@ struct SimilarGroupCard: View {
     let group: SimilarGroup
     let photos: [PersistedPhoto]
     @ObservedObject var viewModel: CleanupViewModel
+    var onSaveToAlbum: () -> Void = {}
     let onComplete: () -> Void
     
     @State private var selectedToKeep: Set<String> = []
@@ -1297,7 +1291,7 @@ struct SimilarGroupCard: View {
                     .font(.headline)
                 
                 if photosToDelete.count > 0 {
-                    Text("Eliminar \(MomentsPluralization.deleteOthers(photosToDelete.count)) (\(formattedSize(deletionSize)))")
+                    Text("\(MomentsPluralization.deleteOthers(photosToDelete.count)) (\(formattedSize(deletionSize)))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -1373,6 +1367,8 @@ struct SimilarGroupCard: View {
                         onComplete()
                     }
                 }
+                
+                SaveToAlbumReviewButton(action: onSaveToAlbum)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -2417,6 +2413,22 @@ struct SimilarPhotoCell: View {
             .onLongPressGesture {
                 onLongPress()
             }
+    }
+}
+
+// MARK: - Save to album (under the photo, not in the nav bar)
+
+struct SaveToAlbumReviewButton: View {
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Label("Guardar en álbum", systemImage: "rectangle.stack.badge.plus")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(MomentsColors.accent)
+        }
+        .accessibilityIdentifier("review.saveToAlbum")
+        .accessibilityLabel("Guardar en álbum")
     }
 }
 

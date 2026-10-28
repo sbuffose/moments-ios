@@ -2638,6 +2638,31 @@ final class MomentsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(HomeView.heroMinWidth, 280)
     }
     
+    func testGroupReviewCopyStrings() {
+        XCTAssertEqual(
+            MomentsPluralization.keepBestAndDeleteOthers(1),
+            "Conservamos la mejor y borramos la otra"
+        )
+        XCTAssertEqual(
+            MomentsPluralization.keepBestAndDeleteOthers(2),
+            "Conservamos la mejor y borramos las otras"
+        )
+        XCTAssertEqual(MomentsPluralization.deleteOthers(1), "Borrar la otra")
+        XCTAssertEqual(MomentsPluralization.deleteOthers(3), "Borrar las otras 3")
+        
+        let singular = MomentsPluralization.keepBestAndDeleteOthers(1)
+        XCTAssertFalse(singular.contains("eliminar"), singular)
+        XCTAssertFalse(singular.contains("Eliminar"), singular)
+        XCTAssertFalse(singular.contains("eliminar Borrar"), singular)
+        XCTAssertFalse(
+            "Conservar la mejor y eliminar \(MomentsPluralization.deleteOthers(1))"
+                == singular,
+            "Must not concatenate a verb onto deleteOthers"
+        )
+        
+        XCTAssertEqual(CleanupCategoryType.duplicate.localizedKey, "cleanup_category_duplicate")
+    }
+    
     func testRecentlyDeletedHintCopy() {
         let copy = SpaceFormatting.recentlyDeletedSummary(bytes: 1_200_000_000)
         XCTAssertTrue(copy.contains("Liberaste"), copy)
