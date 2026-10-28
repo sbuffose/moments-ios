@@ -2562,6 +2562,30 @@ final class MomentsTests: XCTestCase {
         XCTAssertTrue(label.contains("MB") || label.contains("KB"), label)
     }
     
+    @MainActor
+    func testCatalogAnswerNamesPerson() throws {
+        let schema = Schema([PersistedPerson.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        let person = PersistedPerson(faceClusterId: "c1", faceCount: 8)
+        context.insert(person)
+        try context.save()
+        
+        CatalogingService.shared.initialize(modelContext: context)
+        CatalogingService.shared.applyAnswer("person:\(person.id):Mamá")
+        XCTAssertEqual(person.name, "Mamá")
+    }
+    
+    func testRecapIntentParsesOctober() async {
+        let intent = await IntentParserService.shared.parseIntent("¿cómo fue mi octubre?")
+        if case .monthlyRecap(let month, _) = intent {
+            XCTAssertEqual(month, 10)
+        } else {
+            XCTFail("Expected monthly recap intent")
+        }
+    }
+    
     func testThemeUsesWarmLightAndDarkGrey() {
         let light = UIColor(red: 0.98, green: 0.96, blue: 0.93, alpha: 1)
         let dark = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)

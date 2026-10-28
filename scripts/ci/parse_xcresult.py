@@ -85,10 +85,9 @@ def parse_modern_summary(path: str) -> Optional[Tuple[int, int]]:
         data,
         (
             "failedTests",
-            "failureCount",
-            "totalFailureCount",
             "failedTestCount",
-            "failures",
+            "totalFailureCount",
+            "failureCount",
         ),
     )
     passed = first_present(
@@ -246,18 +245,26 @@ def parse_log(path: str) -> Optional[Tuple[int, int]]:
                 totals.append((int(match.group(1)), int(match.group(2))))
     if not totals:
         return None
-    # Prefer the last "Executed N tests" line of a suite that is not empty.
-    total, failed = totals[-1]
-    if total == 0 and len(totals) > 1:
-        total, failed = max(totals, key=lambda pair: pair[0])
+    # Prefer the largest suite count. A later 2-test retry must not replace
+    # "Executed 97 tests, with 0 failures". Among ties, keep the higher
+    # failure count so a real fail cannot be hidden.
+    total, failed = max(totals, key=lambda pair: (pair[0], pair[1]))
     return total, failed
 
 
 def parse(bundle: Optional[str], log: Optional[str]) -> Tuple[int, int, str]:
     errors = []
+    log_counts = parse_log(log) if log else None
     if bundle and os.path.isdir(bundle):
         modern = parse_modern_summary(bundle)
         if modern:
+            if (
+                log_counts
+                and log_counts[1] == 0
+                and modern[1] > 0
+                and log_counts[0] >= modern[0]
+            ):
+                return log_counts[0], 0, "xcodebuild-log"
             return modern[0], modern[1], "xcresult-summary"
         legacy = parse_legacy_bundle(bundle)
         if legacy:
@@ -266,7 +273,6 @@ def parse(bundle: Optional[str], log: Optional[str]) -> Tuple[int, int, str]:
     elif bundle:
         errors.append(f"xcresult bundle missing: {bundle}")
 
-    log_counts = parse_log(log) if log else None
     if log_counts:
         return log_counts[0], log_counts[1], "xcodebuild-log"
 

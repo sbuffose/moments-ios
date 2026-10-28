@@ -6,6 +6,7 @@ import SwiftData
 
 @MainActor
 class CatalogingService: ObservableObject {
+    static let shared = CatalogingService()
     private var modelContext: ModelContext?
     
     @Published var pendingCards: [CatalogingCard] = []
@@ -411,6 +412,70 @@ class CatalogingService: ObservableObject {
         person.birthdayDay = birthdayDay
         
         try? context.save()
+    }
+    
+    func applyAnswer(_ optionId: String) {
+        let parts = optionId.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 3 else { return }
+        let kind = parts[0]
+        let targetId = parts[1]
+        let value = parts.dropFirst(2).joined(separator: ":")
+        if kind == "person" {
+            labelPerson(targetId, name: value)
+        } else if kind == "place" {
+            labelPlace(targetId, name: value)
+        }
+    }
+    
+    func labelPlace(_ placeId: String, name: String) {
+        guard let context = modelContext else { return }
+        let descriptor = FetchDescriptor<PersistedPlace>(
+            predicate: #Predicate { $0.id == placeId }
+        )
+        guard let place = try? context.fetch(descriptor).first else { return }
+        place.name = name
+        try? context.save()
+    }
+    
+    func frequentUnnamedPrompts() -> [AssistantMessage] {
+        guard let context = modelContext else { return [] }
+        var cards: [AssistantMessage] = []
+        
+        let people = (try? context.fetch(FetchDescriptor<PersistedPerson>())) ?? []
+        if let person = people.filter({ !$0.isNamed }).sorted(by: { $0.faceCount > $1.faceCount }).first, person.faceCount >= 3 {
+            cards.append(AssistantMessage(
+                text: "Esta persona aparece mucho. ¿Cómo se llama?",
+                isUser: false,
+                card: .catalogQuestion(
+                    question: "¿Quién es?",
+                    subtitle: MomentsPluralization.photos(person.faceCount),
+                    photos: [],
+                    options: [
+                        .init(id: "person:\(person.id):Mamá", title: "Mamá"),
+                        .init(id: "person:\(person.id):Papá", title: "Papá"),
+                        .init(id: "person:\(person.id):Sofía", title: "Sofía")
+                    ]
+                )
+            ))
+        }
+        
+        let places = (try? context.fetch(FetchDescriptor<PersistedPlace>())) ?? []
+        if let place = places.filter({ $0.name.trimmingCharacters(in: .whitespaces).isEmpty }).sorted(by: { $0.visitCount > $1.visitCount }).first, place.visitCount >= 3 {
+            cards.append(AssistantMessage(
+                text: "Este lugar aparece seguido. ¿Cómo lo llamamos?",
+                isUser: false,
+                card: .catalogQuestion(
+                    question: "¿Qué lugar es?",
+                    subtitle: "\(place.visitCount) visitas",
+                    photos: [],
+                    options: [
+                        .init(id: "place:\(place.id):Casa", title: "Casa"),
+                        .init(id: "place:\(place.id):Trabajo", title: "Trabajo")
+                    ]
+                )
+            ))
+        }
+        return cards
     }
     
     func confirmRecurringDate(month: Int, day: Int, eventType: String, personId: String? = nil) {
