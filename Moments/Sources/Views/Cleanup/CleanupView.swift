@@ -457,7 +457,8 @@ struct CleanupCelebrationView: View {
                     .foregroundStyle(.green)
             }
             .scaleEffect(showConfetti ? 1.0 : 0.5)
-            .animation(.spring(response: 0.5, dampingFraction: 0.6), value: showConfetti)
+            .animation(MomentsAnimation.spring, value: showConfetti)
+            .momentsEntrance()
             
             // Space freed
             VStack(spacing: 8) {
@@ -1001,6 +1002,7 @@ struct CleanupReviewView: View {
             .padding(.bottom, 32)
             .accessibilityIdentifier("review.doneForToday")
         }
+        .momentsEntrance()
     }
 }
 
@@ -1194,7 +1196,7 @@ struct SimilarGroupCard: View {
             // Header
             Label("Fotos similares", systemImage: "square.on.square")
                 .font(.caption)
-                .foregroundStyle(.purple)
+                .foregroundStyle(MomentsColors.accent)
             
             Spacer()
             

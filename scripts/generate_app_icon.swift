@@ -26,11 +26,11 @@ guard let context = CGContext(
 
 let rect = CGRect(x: 0, y: 0, width: size, height: size)
 
-// Draw dark gradient background
+// Draw sage-on-cream gradient background (no purple)
 let gradientColors = [
-    CGColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 1.0),
-    CGColor(red: 0.12, green: 0.10, blue: 0.20, alpha: 1.0),
-    CGColor(red: 0.05, green: 0.05, blue: 0.10, alpha: 1.0)
+    CGColor(red: 0.93, green: 0.90, blue: 0.82, alpha: 1.0),
+    CGColor(red: 0.31, green: 0.48, blue: 0.38, alpha: 1.0),
+    CGColor(red: 0.12, green: 0.16, blue: 0.14, alpha: 1.0)
 ]
 
 guard let gradient = CGGradient(
@@ -54,8 +54,8 @@ let glowCenter = CGPoint(x: CGFloat(size) / 2, y: CGFloat(size) / 2)
 let glowRadius = CGFloat(size) * 0.4
 
 let glowColors = [
-    CGColor(red: 0.4, green: 0.3, blue: 0.8, alpha: 0.3),
-    CGColor(red: 0.3, green: 0.2, blue: 0.6, alpha: 0.0)
+    CGColor(red: 0.76, green: 0.37, blue: 0.23, alpha: 0.28),
+    CGColor(red: 0.31, green: 0.48, blue: 0.38, alpha: 0.0)
 ]
 
 if let glowGradient = CGGradient(
@@ -86,11 +86,11 @@ let framePath = CGPath(
     transform: nil
 )
 
-context.setFillColor(CGColor(red: 0.2, green: 0.15, blue: 0.35, alpha: 0.8))
+context.setFillColor(CGColor(red: 0.22, green: 0.32, blue: 0.26, alpha: 0.85))
 context.addPath(framePath)
 context.fillPath()
 
-context.setStrokeColor(CGColor(red: 0.5, green: 0.4, blue: 0.8, alpha: 0.6))
+context.setStrokeColor(CGColor(red: 0.76, green: 0.37, blue: 0.23, alpha: 0.7))
 context.setLineWidth(4)
 context.addPath(framePath)
 context.strokePath()
@@ -107,11 +107,11 @@ let frame2Path = CGPath(
     transform: nil
 )
 
-context.setFillColor(CGColor(red: 0.15, green: 0.12, blue: 0.28, alpha: 0.9))
+context.setFillColor(CGColor(red: 0.18, green: 0.26, blue: 0.21, alpha: 0.92))
 context.addPath(frame2Path)
 context.fillPath()
 
-context.setStrokeColor(CGColor(red: 0.6, green: 0.5, blue: 0.9, alpha: 0.7))
+context.setStrokeColor(CGColor(red: 0.86, green: 0.55, blue: 0.36, alpha: 0.75))
 context.setLineWidth(3)
 context.addPath(frame2Path)
 context.strokePath()
@@ -158,13 +158,13 @@ drawSparkle(
 drawSparkle(
     at: CGPoint(x: CGFloat(size) * 0.85, y: CGFloat(size) * 0.35),
     size: 35,
-    color: CGColor(red: 0.9, green: 0.8, blue: 1.0, alpha: 0.8)
+    color: CGColor(red: 0.95, green: 0.72, blue: 0.48, alpha: 0.85)
 )
 
 drawSparkle(
     at: CGPoint(x: CGFloat(size) * 0.20, y: CGFloat(size) * 0.80),
     size: 45,
-    color: CGColor(red: 0.7, green: 0.6, blue: 1.0, alpha: 0.7)
+    color: CGColor(red: 0.55, green: 0.70, blue: 0.58, alpha: 0.75)
 )
 
 // Save the image

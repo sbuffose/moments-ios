@@ -108,6 +108,8 @@ class TimelineViewModel: ObservableObject {
     
     private func loadFromPersistedMoments(_ persistedMoments: [PersistedMoment]) async {
         let calendar = Calendar(identifier: .gregorian)
+        let allPhotos = ((try? modelContext?.fetch(FetchDescriptor<PersistedPhoto>())) ?? [])
+        let idToLocal = PhotoIdentifierResolver.idToLocalMap(from: allPhotos)
         
         let grouped = Dictionary(grouping: persistedMoments) { moment -> String in
             let year = calendar.component(.year, from: moment.startDate)
@@ -125,14 +127,15 @@ class TimelineViewModel: ObservableObject {
             let month = Int(parts[1]) ?? 0
             
             let momentItems = moments.map { moment -> MomentItem in
-                MomentItem(
+                let rawCover = moment.coverPhotoId ?? moment.photoIdArray.first
+                return MomentItem(
                     id: moment.id,
                     title: moment.title ?? generateMomentTitle(for: moment),
                     subtitle: moment.subtitle,
                     startDate: moment.startDate,
                     endDate: moment.endDate,
                     photoIds: moment.photoIdArray,
-                    coverPhotoId: moment.coverPhotoId,
+                    coverPhotoId: PhotoIdentifierResolver.photoKitIdentifier(for: rawCover, idToLocal: idToLocal),
                     locationName: moment.locationName,
                     isTrip: moment.isTrip
                 )
@@ -167,7 +170,10 @@ class TimelineViewModel: ObservableObject {
                     startDate: moment.startDate,
                     endDate: moment.endDate,
                     photoCount: moment.photoIdArray.count,
-                    coverPhotoId: moment.coverPhotoId,
+                    coverPhotoId: PhotoIdentifierResolver.photoKitIdentifier(
+                        for: moment.coverPhotoId ?? moment.photoIdArray.first,
+                        idToLocal: idToLocal
+                    ),
                     distanceFromHome: 0
                 )
             }
@@ -212,13 +218,16 @@ class TimelineViewModel: ObservableObject {
             
             // Persistir momentos
             for moment in moments {
+                let coverLocal = photos.first { $0.id == moment.coverPhotoId }?.localIdentifier
+                    ?? photos.first { $0.localIdentifier == moment.coverPhotoId }?.localIdentifier
+                    ?? photos.first?.localIdentifier
                 let persisted = PersistedMoment(
                     id: moment.id,
                     title: moment.title,
                     startDate: moment.startDate,
                     endDate: moment.endDate,
                     photoIds: moment.photos.map { $0.id },
-                    coverPhotoId: moment.coverPhotoId,
+                    coverPhotoId: coverLocal,
                     latitude: moment.location?.latitude,
                     longitude: moment.location?.longitude,
                     isTrip: moment.isTrip

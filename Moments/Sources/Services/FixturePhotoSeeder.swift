@@ -219,6 +219,59 @@ enum FixturePhotoSeeder {
             )
         }
         
+        // October 2026 day rows (device report: grey thumbs on lunes 26 / martes 20)
+        let calendar = Calendar(identifier: .gregorian)
+        func octoberDay(_ day: Int, hour: Int) -> Date {
+            calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour)) ?? now
+        }
+        for index in 1...3 {
+            makePhoto(
+                identifier: "fixture-oct26-\(index)",
+                category: .none,
+                score: 0.05,
+                size: 2_100_000,
+                date: octoberDay(26, hour: 10 + index),
+                extra: { photo in
+                    photo.sharpnessScore = 0.82
+                    photo.placeCity = "Buenos Aires"
+                }
+            )
+            makePhoto(
+                identifier: "fixture-oct20-\(index)",
+                category: .none,
+                score: 0.05,
+                size: 2_000_000,
+                date: octoberDay(20, hour: 14 + index),
+                extra: { photo in
+                    photo.sharpnessScore = 0.8
+                    photo.placeCity = "Córdoba"
+                }
+            )
+        }
+        
+        let oct26 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct26-") }
+        let oct20 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct20-") }
+        if !oct26.isEmpty {
+            context.insert(PersistedMoment(
+                id: "fixture-moment-oct26",
+                title: "lunes 26 de octubre",
+                startDate: octoberDay(26, hour: 10),
+                endDate: octoberDay(26, hour: 13),
+                photoIds: oct26.map(\.id),
+                coverPhotoId: oct26.first?.localIdentifier
+            ))
+        }
+        if !oct20.isEmpty {
+            context.insert(PersistedMoment(
+                id: "fixture-moment-oct20",
+                title: "martes 20 de octubre",
+                startDate: octoberDay(20, hour: 14),
+                endDate: octoberDay(20, hour: 17),
+                photoIds: oct20.map(\.id),
+                coverPhotoId: oct20.first?.localIdentifier
+            ))
+        }
+        
         try context.save()
         UserDefaults.standard.set(true, forKey: seededFlagKey)
         return summarize(photos, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])

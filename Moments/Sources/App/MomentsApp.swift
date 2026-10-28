@@ -151,6 +151,7 @@ class AppState: ObservableObject {
     @Published var totalPhotosAnalyzed = 0
     @Published var totalPhotosToAnalyze = 0
     @Published var hasCompletedOnboarding = false
+    @Published var hasCompletedInitialAnalysis = false
     @Published var selectedTab: AppTab = .home
     @Published var showProcessingSheet = false
     @Published var showFirstRunExplanation = false
@@ -169,13 +170,37 @@ class AppState: ObservableObject {
     private let notificationPromptShownKey = "com.moments.notificationPromptShown"
     private let analysisCompleteNotificationSentKey = "com.moments.analysisCompleteNotificationSent"
     private let firstRunExplanationShownKey = "com.moments.firstRunExplanationShown"
+    private let initialAnalysisCompletedKey = "com.moments.hasCompletedInitialAnalysis"
     
-    // Legacy compatibility - always returns true after onboarding
-    var hasCompletedInitialIndexing: Bool { hasCompletedOnboarding }
-    var hasCompletedInitialScan: Bool { hasCompletedOnboarding }
+    // Legacy compatibility
+    var hasCompletedInitialIndexing: Bool { hasCompletedInitialAnalysis }
+    var hasCompletedInitialScan: Bool { hasCompletedInitialAnalysis }
+    
+    /// Home must not offer cleanup from a partial first scan.
+    var shouldShowFirstRunAnalyzing: Bool {
+        if FirstRunAnalyzingView.isSimulated { return true }
+        if FixturePhotoSeeder.isRequested { return false }
+        return !hasCompletedInitialAnalysis
+    }
     
     init() {
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingCompletedKey)
+        self.hasCompletedInitialAnalysis = UserDefaults.standard.bool(forKey: initialAnalysisCompletedKey)
+        
+        if FirstRunAnalyzingView.isSimulated {
+            hasCompletedOnboarding = true
+            isLibraryAuthorized = true
+            isAnalyzing = true
+            analysisProgress = 0.14
+            totalPhotosAnalyzed = 1100
+            totalPhotosToAnalyze = 7781
+            hasCompletedInitialAnalysis = false
+        }
+    }
+    
+    func markInitialAnalysisComplete() {
+        hasCompletedInitialAnalysis = true
+        UserDefaults.standard.set(true, forKey: initialAnalysisCompletedKey)
     }
     
     func completeOnboarding() {
@@ -198,9 +223,11 @@ class AppState: ObservableObject {
     
     func resetOnboarding() {
         hasCompletedOnboarding = false
+        hasCompletedInitialAnalysis = false
         UserDefaults.standard.removeObject(forKey: onboardingCompletedKey)
         UserDefaults.standard.removeObject(forKey: notificationPromptShownKey)
         UserDefaults.standard.removeObject(forKey: analysisCompleteNotificationSentKey)
+        UserDefaults.standard.removeObject(forKey: initialAnalysisCompletedKey)
     }
     
     enum AppTab: String, CaseIterable, Sendable {
@@ -243,16 +270,24 @@ class AppState: ObservableObject {
                 totalPhotosToAnalyze = summary.photos
                 isLibraryAuthorized = true
                 hasCompletedOnboarding = true
+                markInitialAnalysisComplete()
                 print("[FixturePhotoSeeder] seeded \(summary.photos) photos")
             } catch {
                 print("[FixturePhotoSeeder] failed: \(error)")
             }
         }
         
+        migrateInitialAnalysisFlagIfNeeded()
+        
         DailyReviewService.shared.initialize(modelContext: modelContext)
         installDailyReviewDeepLink()
         
         Task {
+            if FirstRunAnalyzingView.isSimulated {
+                await checkNotificationStatus()
+                return
+            }
+            
             if FixturePhotoSeeder.isRequested {
                 await checkNotificationStatus()
                 scheduleDailyReviewIfNeeded()
@@ -420,11 +455,26 @@ class AppState: ObservableObject {
             
             if success {
                 BackgroundTaskManager.shared.completeScan()
+                self.markInitialAnalysisComplete()
             }
             
             // Calculate estimated savings and send notification
             await self.calculateEstimatedSavings()
             await self.sendAnalysisCompleteNotification()
+        }
+    }
+    
+    private func migrateInitialAnalysisFlagIfNeeded() {
+        if FirstRunAnalyzingView.isSimulated { return }
+        if FixturePhotoSeeder.isRequested { return }
+        if UserDefaults.standard.object(forKey: initialAnalysisCompletedKey) != nil { return }
+        guard let context = modelContext, hasCompletedOnboarding else { return }
+        
+        let all = (try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? []
+        let analyzed = all.filter(\.analysisCompleted)
+        let scanInProgress = BackgroundTaskManager.shared.hasPendingWork
+        if !all.isEmpty && analyzed.count >= all.count && !scanInProgress {
+            markInitialAnalysisComplete()
         }
     }
     
@@ -468,8 +518,11 @@ class AppState: ObservableObject {
             formattedSavings = String(format: "%.0f MB", mbSavings)
         }
         
-        content.title = "¡Listo!"
-        content.body = "Encontramos \(formattedSavings) para liberar"
+        content.title = FirstRunCopy.analysisCompleteNotificationTitle
+        content.body = FirstRunCopy.analysisCompleteNotificationBody
+        if formattedSavings != "0 KB" && estimatedSpaceSavings > 0 {
+            content.body = "\(FirstRunCopy.analysisCompleteNotificationBody) Encontramos \(formattedSavings) para liberar."
+        }
         content.sound = .default
         
         let request = UNNotificationRequest(

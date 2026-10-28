@@ -2586,21 +2586,56 @@ final class MomentsTests: XCTestCase {
         }
     }
     
-    func testThemeUsesWarmLightAndDarkGrey() {
-        let light = UIColor(red: 0.98, green: 0.96, blue: 0.93, alpha: 1)
-        let dark = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
-        XCTAssertGreaterThan(MomentsColors.relativeLuminance(light), 0.85)
-        XCTAssertGreaterThan(MomentsColors.relativeLuminance(dark), 0.01)
-        XCTAssertLessThan(MomentsColors.relativeLuminance(dark), 0.05)
-        let black = UIColor.black
-        XCTAssertGreaterThan(MomentsColors.relativeLuminance(dark), MomentsColors.relativeLuminance(black))
+    func testThemeUsesSageCreamAndDeepGreenGrey() {
+        XCTAssertGreaterThan(MomentsColors.relativeLuminance(MomentsColors.lightCream), 0.80)
+        XCTAssertGreaterThan(MomentsColors.relativeLuminance(MomentsColors.darkGreenGrey), 0.01)
+        XCTAssertLessThan(MomentsColors.relativeLuminance(MomentsColors.darkGreenGrey), 0.08)
+        XCTAssertGreaterThan(
+            MomentsColors.relativeLuminance(MomentsColors.darkGreenGrey),
+            MomentsColors.relativeLuminance(.black)
+        )
+    }
+    
+    func testThemeAccentIsSageNotPurple() {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        MomentsColors.sageUIColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertGreaterThan(g, r, "Sage primary must be green-forward, not purple/blue")
+        XCTAssertGreaterThan(g, b)
+        var tr: CGFloat = 0, tg: CGFloat = 0, tb: CGFloat = 0, ta: CGFloat = 0
+        MomentsColors.terracottaUIColor.getRed(&tr, green: &tg, blue: &tb, alpha: &ta)
+        XCTAssertGreaterThan(tr, tb, "Terracotta accent must be warm orange, not violet")
     }
     
     func testThemeMeetsAAContrast() {
-        let lightBg = UIColor(red: 0.98, green: 0.96, blue: 0.93, alpha: 1)
-        let darkBg = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
-        XCTAssertGreaterThanOrEqual(MomentsColors.contrastRatio(foreground: .black, background: lightBg), 4.5)
-        XCTAssertGreaterThanOrEqual(MomentsColors.contrastRatio(foreground: .white, background: darkBg), 4.5)
+        XCTAssertGreaterThanOrEqual(
+            MomentsColors.contrastRatio(foreground: .black, background: MomentsColors.lightCream),
+            4.5
+        )
+        XCTAssertGreaterThanOrEqual(
+            MomentsColors.contrastRatio(foreground: .white, background: MomentsColors.darkGreenGrey),
+            4.5
+        )
+    }
+    
+    func testFirstRunCopyHasNoRawLibraryCount() {
+        XCTAssertFalse(FirstRunCopy.containsRawLibraryCount(FirstRunCopy.title))
+        XCTAssertFalse(FirstRunCopy.containsRawLibraryCount(FirstRunCopy.body))
+        XCTAssertTrue(FirstRunCopy.body.contains("10 minutos"))
+        XCTAssertTrue(FirstRunCopy.containsRawLibraryCount("1100 / 7781"))
+        XCTAssertTrue(FirstRunCopy.containsRawLibraryCount("1100/7781"))
+    }
+    
+    func testPhotoIdentifierResolverMapsPersistedIdToLocalIdentifier() {
+        let map = ["uuid-1": "local-ABC", "local-ABC": "local-ABC"]
+        XCTAssertEqual(PhotoIdentifierResolver.photoKitIdentifier(for: "uuid-1", idToLocal: map), "local-ABC")
+        XCTAssertEqual(PhotoIdentifierResolver.photoKitIdentifier(for: "local-ABC", idToLocal: map), "local-ABC")
+        XCTAssertEqual(PhotoIdentifierResolver.photoKitIdentifier(for: "unknown", idToLocal: map), "unknown")
+        XCTAssertNil(PhotoIdentifierResolver.photoKitIdentifier(for: nil, idToLocal: map))
+        XCTAssertNil(PhotoIdentifierResolver.photoKitIdentifier(for: "", idToLocal: map))
+    }
+    
+    func testHeroHasNonZeroMinimumWidth() {
+        XCTAssertGreaterThanOrEqual(HomeView.heroMinWidth, 280)
     }
     
     func testRecentlyDeletedHintCopy() {
