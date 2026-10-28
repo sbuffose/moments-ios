@@ -158,6 +158,8 @@ struct AsyncPhotoThumbnail: View {
     
     @State private var image: UIImage?
     @State private var isLoading = true
+    @State private var loadFailed = false
+    @State private var retryCount = 0
     @State private var requestID: PHImageRequestID?
     
     private var scaledTargetSize: CGSize {
@@ -167,7 +169,17 @@ struct AsyncPhotoThumbnail: View {
     
     var body: some View {
         Group {
-            if localIdentifier.hasPrefix("fixture-") {
+            if loadFailed {
+                PhotoLoadFailureOverlay {
+                    retryCount += 1
+                    loadFailed = false
+                    isLoading = true
+                    loadImage()
+                }
+            } else if localIdentifier.hasPrefix("fixture-black-frame") {
+                Color.black
+                    .accessibilityIdentifier("photo.thumb.loaded")
+            } else if localIdentifier.hasPrefix("fixture-") {
                 fixtureStandIn
             } else if let image = image {
                 Image(uiImage: image)
@@ -177,13 +189,11 @@ struct AsyncPhotoThumbnail: View {
             } else if isLoading {
                 ShimmerEffect()
             } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .overlay {
-                        Image(systemName: "photo")
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityIdentifier("photo.thumb.placeholder")
+                PhotoLoadFailureOverlay {
+                    retryCount += 1
+                    isLoading = true
+                    loadImage()
+                }
             }
         }
         .accessibilityIdentifier(thumbnailAccessibilityId)
@@ -194,18 +204,23 @@ struct AsyncPhotoThumbnail: View {
             cancelRequest()
             image = nil
             isLoading = true
+            loadFailed = false
+            retryCount = 0
             loadImage()
         }
     }
     
     private var thumbnailAccessibilityId: String {
+        if loadFailed {
+            return "photo.thumb.failed"
+        }
         if localIdentifier.hasPrefix("fixture-") || image != nil {
             return "photo.thumb.loaded"
         }
         if isLoading {
             return "photo.thumb.loading"
         }
-        return "photo.thumb.placeholder"
+        return "photo.thumb.failed"
     }
     
     private var fixtureStandIn: some View {
@@ -218,16 +233,25 @@ struct AsyncPhotoThumbnail: View {
     }
     
     private func loadImage() {
+        if ThumbnailLoadFailureSimulation.isRequested && retryCount == 0 {
+            isLoading = false
+            loadFailed = true
+            return
+        }
+        
         if localIdentifier.hasPrefix("fixture-") {
             isLoading = false
+            loadFailed = false
             return
         }
         
         isLoading = true
+        loadFailed = false
         
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
         guard let asset = fetchResult.firstObject else {
             isLoading = false
+            loadFailed = true
             return
         }
         
@@ -247,13 +271,18 @@ struct AsyncPhotoThumbnail: View {
             guard !isCancelled else { return }
             
             DispatchQueue.main.async {
-                if let loadedImage = loadedImage {
+                let hasError = info?[PHImageErrorKey] != nil
+                if let loadedImage = loadedImage, !hasError {
                     self.image = loadedImage
+                    self.loadFailed = false
                 }
                 
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
                 if !isDegraded {
                     self.isLoading = false
+                    if self.image == nil {
+                        self.loadFailed = true
+                    }
                 }
             }
         }

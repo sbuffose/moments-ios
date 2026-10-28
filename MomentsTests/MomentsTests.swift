@@ -2938,6 +2938,27 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(Notification.Name.openDailyReview.rawValue, "openDailyReview")
     }
     
+    func testPhotoLuminanceClassifiesBlackFrameDarkAndNormal() {
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.0), .blackFrame)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.01), .blackFrame)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: PhotoLuminanceClass.blackFrameThreshold), .blackFrame)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.05), .dark)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.10), .dark)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.149), .dark)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: PhotoLuminanceClass.darkThreshold), .normal)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.22), .normal)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.5), .normal)
+        XCTAssertLessThan(PhotoLuminanceClass.blackFrameThreshold, PhotoLuminanceClass.darkThreshold)
+        XCTAssertEqual(PhotoLuminanceClass.blackFrameTitle, "Foto casi toda negra")
+        XCTAssertEqual(PhotoLuminanceClass.loadFailureTitle, "No pudimos cargar esta foto")
+    }
+    
+    func testHomeRevealDisablesAnimationWhenNotActive() {
+        XCTAssertTrue(HomeRevealPolicy.disablesAnimations(applicationState: .background))
+        XCTAssertTrue(HomeRevealPolicy.disablesAnimations(applicationState: .inactive))
+        XCTAssertFalse(HomeRevealPolicy.disablesAnimations(applicationState: .active))
+    }
+    
     func testBackgroundScanAwaitsWorkInsteadOfFireAndForget() {
         // performBackgroundScan used to spawn unstructured Tasks and return true immediately.
         // The completion gate plus sequential indexing is the contract: work finishes first.

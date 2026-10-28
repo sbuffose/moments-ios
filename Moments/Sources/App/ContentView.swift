@@ -418,7 +418,6 @@ struct MainTabView: View {
                     .allowsHitTesting(false)
             }
         }
-        .animation(MomentsAnimation.spring, value: appState.shouldShowFirstRunAnalyzing)
         .animation(MomentsAnimation.spring, value: appState.selectedTab)
     }
 }

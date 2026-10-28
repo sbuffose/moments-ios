@@ -29,10 +29,22 @@ struct HomeView: View {
                 
                 if appState.shouldShowFirstRunAnalyzing {
                     FirstRunAnalyzingView()
+                        .id("home.firstRun")
+                        .transition(.opacity)
                 } else {
                     readyHomeScroll
+                        .id("home.ready.\(appState.homeRevealGeneration)")
+                        .transition(.opacity)
+                        .opacity(1)
+                        .allowsHitTesting(true)
                 }
             }
+            .animation(
+                appState.prefersUnanimatedHomeReveal
+                    ? nil
+                    : MomentsMotion.spring(reduceMotion: reduceMotion),
+                value: appState.shouldShowFirstRunAnalyzing
+            )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -73,11 +85,10 @@ struct HomeView: View {
             .presentationDetents([.medium, .large])
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing {
+            if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing && heroReady {
                 viewModel.refreshCategories()
             }
         }
-        .animation(MomentsMotion.spring(reduceMotion: reduceMotion), value: appState.shouldShowFirstRunAnalyzing)
     }
     
     private var readyHomeScroll: some View {
@@ -116,7 +127,9 @@ struct HomeView: View {
         }
         .accessibilityIdentifier("home.scrollView")
         .onAppear {
-            MomentsMotion.animate(reduceMotion: reduceMotion) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
                 heroReady = true
             }
         }

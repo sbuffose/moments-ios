@@ -34,12 +34,15 @@ enum FixturePhotoSeeder {
                 if existing.filter({ $0.origin.isMessagingApp }).count < 50 {
                     seedMessagingPhotos(into: context, existing: existing)
                     try context.save()
-                    let refreshed = try context.fetch(FetchDescriptor<PersistedPhoto>()).filter {
-                        $0.localIdentifier.hasPrefix("fixture-")
-                    }
-                    return summarize(refreshed, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
                 }
-                return summarize(existing, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
+                if !existing.contains(where: { $0.localIdentifier == "fixture-black-frame-1" }) {
+                    seedBlackFramePhotos(into: context)
+                    try context.save()
+                }
+                let refreshed = try context.fetch(FetchDescriptor<PersistedPhoto>()).filter {
+                    $0.localIdentifier.hasPrefix("fixture-")
+                }
+                return summarize(refreshed, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
             }
         }
         
@@ -174,6 +177,32 @@ enum FixturePhotoSeeder {
             )
         }
         
+        // Fully black underexposed frame — user must see a label, not a silent rectangle
+        makePhoto(
+            identifier: "fixture-black-frame-1",
+            category: .underexposed,
+            score: 0.99,
+            size: 180_000,
+            extra: { photo in
+                photo.exposureScore = 0.01
+                photo.sharpnessScore = 0.02
+                photo.visionAestheticsScore = 0.05
+                photo.visionIsUtility = true
+            }
+        )
+        
+        // Underexposed but visible
+        makePhoto(
+            identifier: "fixture-dark-visible-1",
+            category: .underexposed,
+            score: 0.62,
+            size: 420_000,
+            extra: { photo in
+                photo.exposureScore = 0.10
+                photo.sharpnessScore = 0.4
+            }
+        )
+        
         // Sharp night photo — NOT a cleanup candidate
         makePhoto(
             identifier: "fixture-night-sharp",
@@ -289,6 +318,29 @@ enum FixturePhotoSeeder {
         try context.save()
         UserDefaults.standard.set(true, forKey: seededFlagKey)
         return summarize(photos, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
+    }
+    
+    @discardableResult
+    private static func seedBlackFramePhotos(into context: ModelContext) -> [PersistedPhoto] {
+        let now = Date()
+        func insert(identifier: String, score: Double, exposure: Double, size: Int64) -> PersistedPhoto {
+            let photo = PersistedPhoto(localIdentifier: identifier, creationDate: now)
+            photo.analysisCompleted = true
+            photo.lastAnalyzedAt = now
+            photo.cleanupCategory = .underexposed
+            photo.deletionLikelihoodScore = score
+            photo.estimatedFileSize = size
+            photo.pixelWidth = 1200
+            photo.pixelHeight = 900
+            photo.mediaTypeRaw = "image"
+            photo.exposureScore = exposure
+            context.insert(photo)
+            return photo
+        }
+        return [
+            insert(identifier: "fixture-black-frame-1", score: 0.99, exposure: 0.01, size: 180_000),
+            insert(identifier: "fixture-dark-visible-1", score: 0.62, exposure: 0.10, size: 420_000)
+        ]
     }
     
     @discardableResult

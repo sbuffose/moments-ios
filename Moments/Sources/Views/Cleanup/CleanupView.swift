@@ -2142,6 +2142,15 @@ struct SwipeablePhotoCard: View {
                 AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 600, height: 600))
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay {
+                        if !ThumbnailLoadFailureSimulation.isRequested {
+                            PhotoDarknessOverlay(
+                                classification: PhotoLuminanceClass.classify(
+                                    meanLuminance: photo.exposureScore ?? 0.5
+                                )
+                            )
+                        }
+                    }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .cornerRadius(16)

@@ -6,6 +6,7 @@ import SwiftData
 import UserNotifications
 import BackgroundTasks
 import Photos
+import UIKit
 
 @main
 struct MomentsApp: App {
@@ -117,6 +118,9 @@ struct MomentsApp: App {
         switch newPhase {
         case .background:
             NewPhotoCheckService.shared.checkDuePhotos(isForeground: false)
+            if FirstRunCompletionSimulation.isRequested {
+                appState.noteBackgroundDuringFirstRun()
+            }
             if appState.isIndexing || appState.isAnalyzing {
                 // Grace period only. BGContinuedProcessingTask MUST already have
                 // been submitted from the foreground Empezar tap — iOS 26 rejects
@@ -129,6 +133,10 @@ struct MomentsApp: App {
         case .active:
             BackgroundTaskManager.shared.endBackgroundTask()
             ActiveScanSimulation.handleDidBecomeActive(appState: appState)
+            appState.settleReadyHomeWithoutAnimation()
+            if FirstRunCompletionSimulation.isRequested {
+                appState.completeSimulatedFirstRunIfNeeded()
+            }
             NewPhotoCheckService.shared.checkDuePhotos(isForeground: true)
         case .inactive:
             break
@@ -158,7 +166,10 @@ class AppState: ObservableObject {
     @Published var notificationsAuthorized = false
     @Published var estimatedSpaceSavings: Int64 = 0
     @Published var showDailyReview = false
+    @Published var homeRevealGeneration = 0
+    @Published var prefersUnanimatedHomeReveal = false
     private var dailyReviewObserver: NSObjectProtocol?
+    private var didBackgroundDuringFirstRun = false
     
     private var photoLibraryService: PhotoLibraryService?
     private var analysisService: PhotoAnalysisService?
@@ -181,6 +192,9 @@ class AppState: ObservableObject {
     /// Home must not offer cleanup from a partial first scan.
     var shouldShowFirstRunAnalyzing: Bool {
         if FirstRunAnalyzingView.isSimulated { return true }
+        if FirstRunCompletionSimulation.isRequested {
+            return !hasCompletedInitialAnalysis
+        }
         if FixturePhotoSeeder.isRequested { return false }
         return !hasCompletedInitialAnalysis
     }
@@ -202,11 +216,60 @@ class AppState: ObservableObject {
         if ActiveScanSimulation.isRequested {
             ActiveScanSimulation.bootstrapAppState(self)
         }
+        
+        if FirstRunCompletionSimulation.isRequested {
+            hasCompletedOnboarding = true
+            isLibraryAuthorized = true
+            isAnalyzing = true
+            hasCompletedInitialAnalysis = false
+        }
     }
     
-    func markInitialAnalysisComplete() {
-        hasCompletedInitialAnalysis = true
-        UserDefaults.standard.set(true, forKey: initialAnalysisCompletedKey)
+    func markInitialAnalysisComplete(animated: Bool = true) {
+        let disable = !animated || HomeRevealPolicy.disablesAnimations(
+            applicationState: UIApplication.shared.applicationState
+        )
+        let apply = {
+            self.hasCompletedInitialAnalysis = true
+            UserDefaults.standard.set(true, forKey: self.initialAnalysisCompletedKey)
+            if disable {
+                self.prefersUnanimatedHomeReveal = true
+                self.homeRevealGeneration += 1
+            }
+        }
+        if disable {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction, apply)
+        } else {
+            apply()
+        }
+    }
+    
+    func noteBackgroundDuringFirstRun() {
+        didBackgroundDuringFirstRun = true
+    }
+    
+    func settleReadyHomeWithoutAnimation() {
+        guard hasCompletedInitialAnalysis else { return }
+        prefersUnanimatedHomeReveal = true
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            homeRevealGeneration += 1
+        }
+    }
+    
+    func completeSimulatedFirstRunIfNeeded() {
+        guard FirstRunCompletionSimulation.isRequested else { return }
+        guard didBackgroundDuringFirstRun else { return }
+        guard !hasCompletedInitialAnalysis else {
+            settleReadyHomeWithoutAnimation()
+            return
+        }
+        isAnalyzing = false
+        isIndexing = false
+        markInitialAnalysisComplete(animated: false)
     }
     
     func completeOnboarding() {
@@ -278,7 +341,9 @@ class AppState: ObservableObject {
                 totalPhotosToAnalyze = summary.photos
                 isLibraryAuthorized = true
                 hasCompletedOnboarding = true
-                markInitialAnalysisComplete()
+                if !FirstRunCompletionSimulation.isRequested {
+                    markInitialAnalysisComplete()
+                }
                 print("[FixturePhotoSeeder] seeded \(summary.photos) photos")
             } catch {
                 print("[FixturePhotoSeeder] failed: \(error)")
