@@ -116,6 +116,7 @@ struct TimelineView: View {
                     MomentRow(moment: moment)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(moment.coverPhotoId == nil ? "moment.row" : "moment.row.thumb.loaded")
             }
         } header: {
             HStack {

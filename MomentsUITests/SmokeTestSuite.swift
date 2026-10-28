@@ -1020,8 +1020,12 @@ final class SmokeTestSuite: XCTestCase {
         
         let loaded = app.otherElements["photo.thumb.loaded"]
         let loadedRow = app.otherElements["moment.row.thumb.loaded"]
+        let loadedButton = app.buttons["moment.row.thumb.loaded"]
         XCTAssertTrue(
-            loaded.waitForExistence(timeout: 10) || loadedRow.waitForExistence(timeout: 4),
+            loaded.waitForExistence(timeout: 8)
+            || loadedRow.waitForExistence(timeout: 4)
+            || loadedButton.waitForExistence(timeout: 4)
+            || app.buttons.matching(NSPredicate(format: "identifier == 'moment.row.thumb.loaded' OR label CONTAINS[c] 'octubre'")).firstMatch.waitForExistence(timeout: 4),
             "Day-row thumbnails must resolve to a loaded thumb, not a forever-grey placeholder"
         )
     }

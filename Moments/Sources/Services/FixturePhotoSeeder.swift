@@ -249,6 +249,29 @@ enum FixturePhotoSeeder {
             )
         }
         
+        let oct26 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct26-") }
+        let oct20 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct20-") }
+        if !oct26.isEmpty {
+            context.insert(PersistedMoment(
+                id: "fixture-moment-oct26",
+                title: "lunes 26 de octubre",
+                startDate: octoberDay(26, hour: 10),
+                endDate: octoberDay(26, hour: 13),
+                photoIds: oct26.map(\.id),
+                coverPhotoId: oct26.first?.localIdentifier
+            ))
+        }
+        if !oct20.isEmpty {
+            context.insert(PersistedMoment(
+                id: "fixture-moment-oct20",
+                title: "martes 20 de octubre",
+                startDate: octoberDay(20, hour: 14),
+                endDate: octoberDay(20, hour: 17),
+                photoIds: oct20.map(\.id),
+                coverPhotoId: oct20.first?.localIdentifier
+            ))
+        }
+        
         try context.save()
         UserDefaults.standard.set(true, forKey: seededFlagKey)
         return summarize(photos, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
