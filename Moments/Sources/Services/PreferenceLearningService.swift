@@ -210,13 +210,13 @@ final class PreferenceLearningService: ObservableObject {
     
     // MARK: - Calculate Adjusted Score
     
-    static func shouldShow(_ category: CleanupCategoryType, preferences: LearnedPreferences?) -> Bool {
+    nonisolated static func shouldShow(_ category: CleanupCategoryType, preferences: LearnedPreferences?) -> Bool {
         guard let preferences else { return true }
         if category == .none { return true }
         return !preferences.suppressedCategories.contains(category)
     }
     
-    static func adjustedScore(for photo: PersistedPhoto, baseScore: Double, preferences: LearnedPreferences?) -> Double {
+    nonisolated static func adjustedScore(for photo: PersistedPhoto, baseScore: Double, preferences: LearnedPreferences?) -> Double {
         guard let preferences else { return baseScore }
         let confidence = preferences.confidenceWeight
         var adjustedScore = baseScore
