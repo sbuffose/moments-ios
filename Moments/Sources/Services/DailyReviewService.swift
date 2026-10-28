@@ -371,7 +371,7 @@ final class MomentsNotificationDelegate: NSObject, UNUserNotificationCenterDeleg
             DailyReviewService.shared.handleNotificationResponse(response)
             let info = response.notification.request.content.userInfo
             if info["type"] as? String == "newPhotoCheck" {
-                NotificationCenter.default.post(name: .openNewPhotoCheck, object: nil)
+                NotificationCenter.default.post(name: .openNewPhotoCheck, object: info)
             }
         }
     }

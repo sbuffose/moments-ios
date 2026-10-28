@@ -1178,4 +1178,64 @@ final class SmokeTestSuite: XCTestCase {
         print("=== SMOKE TEST SUITE COMPLETED ===")
         print("All critical paths have been verified")
     }
+    
+    func testNewPhotoCheckToggleExistsInSettings() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 3).tap()
+        XCTAssertTrue(
+            app.switches["settings.newPhotoCheck"].waitForExistence(timeout: 8)
+            || app.buttons["settings.newPhotoCheck"].waitForExistence(timeout: 3),
+            "Settings must offer Revisar fotos nuevas"
+        )
+    }
+    
+    func testNewPhotoCheckSheetAppearsWhenSimulated() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-simulateNewPhotoCheck",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(
+            app.otherElements["newPhotoCheck.sheet"].waitForExistence(timeout: 10)
+            || app.navigationBars["Foto nueva"].waitForExistence(timeout: 4)
+            || app.buttons["newPhotoCheck.delete"].waitForExistence(timeout: 4),
+            "New-photo check must offer a delete/keep sheet"
+        )
+        XCTAssertTrue(
+            app.buttons["newPhotoCheck.delete"].waitForExistence(timeout: 4)
+            || app.buttons["Borrar"].waitForExistence(timeout: 2)
+        )
+    }
+    
+    func testSaveToAlbumButtonInReview() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        let reviewButton = app.buttons["home.reviewButton"]
+        XCTAssertTrue(
+            reviewButton.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4)
+        )
+        if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
+        XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
+        
+        let save = app.buttons["review.saveToAlbum"]
+        XCTAssertTrue(
+            save.waitForExistence(timeout: 8) || app.buttons["Guardar en álbum"].waitForExistence(timeout: 4),
+            "Review must offer Guardar en álbum"
+        )
+        if save.exists { save.tap() } else { app.buttons["Guardar en álbum"].tap() }
+        XCTAssertTrue(
+            app.otherElements["review.albumSheet"].waitForExistence(timeout: 8)
+            || app.navigationBars["Guardar en álbum"].waitForExistence(timeout: 4)
+            || app.staticTexts["Guardar en álbum"].waitForExistence(timeout: 4)
+        )
+    }
 }

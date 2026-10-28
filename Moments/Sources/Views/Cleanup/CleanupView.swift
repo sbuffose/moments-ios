@@ -563,6 +563,7 @@ struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
     @StateObject private var shareService = ShareLoadingService()
     @State private var showFinishSheet = false
+    @State private var showAlbumSheet = false
     @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
     @State private var sharedPhotoId: String?
@@ -705,13 +706,27 @@ struct CleanupReviewView: View {
             }
             
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Terminar") {
-                    showFinishSheet = true
+                HStack(spacing: 12) {
+                    Button("Guardar en álbum") {
+                        showAlbumSheet = true
+                    }
+                    .accessibilityIdentifier("review.saveToAlbum")
+                    .accessibilityLabel("Guardar en álbum")
+                    Button("Terminar") {
+                        showFinishSheet = true
+                    }
+                    .fontWeight(.medium)
                 }
-                .fontWeight(.medium)
             }
         }
         .interactiveDismissDisabled(photosToDelete.count > 0)
+        .sheet(isPresented: $showAlbumSheet) {
+            SaveToAlbumSheet(item: currentItem) { identifiers in
+                for id in identifiers {
+                    viewModel.keepPhoto(id, duration: .forever)
+                }
+            }
+        }
         .sheet(isPresented: $showFinishSheet) {
             ReviewSummarySheet(
                 photosToDelete: photosToDelete,

@@ -113,32 +113,50 @@ struct FirstRunAnalyzingView: View {
 
 struct FirstRunClockIllustration: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var spinning = false
-    @State private var pulsing = false
+    @State private var minuteAngle: Double = -20
+    @State private var hourAngle: Double = -50
     
     var body: some View {
         ZStack {
             Circle()
                 .fill(MomentsColors.accent.opacity(0.12))
-                .scaleEffect(pulsing && !reduceMotion ? 1.08 : 1.0)
             Circle()
-                .stroke(MomentsColors.accent.opacity(0.25), lineWidth: 3)
+                .stroke(MomentsColors.accent.opacity(0.35), lineWidth: 6)
                 .padding(10)
-            Image(systemName: "clock.badge.checkmark")
-                .font(.system(size: 56, weight: .medium, design: .rounded))
-                .foregroundStyle(MomentsColors.accentGradient)
-                .rotationEffect(.degrees(spinning && !reduceMotion ? 360 : 0))
+            
+            ForEach(0..<12, id: \.self) { tick in
+                Capsule()
+                    .fill(MomentsColors.accent.opacity(tick % 3 == 0 ? 0.55 : 0.28))
+                    .frame(width: tick % 3 == 0 ? 3 : 2, height: tick % 3 == 0 ? 10 : 6)
+                    .offset(y: -48)
+                    .rotationEffect(.degrees(Double(tick) * 30))
+            }
+            
+            Capsule()
+                .fill(MomentsColors.accent)
+                .frame(width: 4, height: 28)
+                .offset(y: -12)
+                .rotationEffect(.degrees(hourAngle))
+            Capsule()
+                .fill(MomentsColors.accentSecondary)
+                .frame(width: 3, height: 40)
+                .offset(y: -18)
+                .rotationEffect(.degrees(minuteAngle))
+            
+            Circle()
+                .fill(MomentsColors.accent)
+                .frame(width: 8, height: 8)
         }
         .onAppear {
             if reduceMotion {
-                spinning = false
-                pulsing = false
+                minuteAngle = 18
+                hourAngle = -12
             } else {
                 withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
-                    spinning = true
+                    minuteAngle = 340
                 }
-                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
-                    pulsing = true
+                withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: false)) {
+                    hourAngle = 40
                 }
             }
         }

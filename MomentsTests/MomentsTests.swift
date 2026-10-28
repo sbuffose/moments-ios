@@ -2656,6 +2656,28 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(SpaceFormatting.photosAppURL?.scheme, "photos-redirect")
     }
     
+    func testNewPhotoCheckCapsAndRespectsKeep() {
+        XCTAssertEqual(NewPhotoCheckService.maxPerDay, 3)
+        XCTAssertEqual(NewPhotoCheckService.delay, 5 * 60)
+        XCTAssertTrue(NewPhotoCheckService.isObviouslyBad(category: .blurry, keepDecision: nil))
+        XCTAssertTrue(NewPhotoCheckService.isObviouslyBad(category: .accidental, keepDecision: "none"))
+        XCTAssertFalse(NewPhotoCheckService.isObviouslyBad(category: .blurry, keepDecision: "forever"))
+        XCTAssertFalse(NewPhotoCheckService.isObviouslyBad(category: .screenshot, keepDecision: nil))
+    }
+    
+    func testAlbumSuggestionPrefersCooking4UForFood() {
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food, plate, dinner", lastChoice: nil), "Cooking4U")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "comida casera", lastChoice: nil), "Cooking4U")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "travel, beach", lastChoice: nil), "Viajes")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food", lastChoice: "Recetas"), "Recetas")
+        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: nil, lastChoice: nil), "Moments")
+    }
+    
+    func testUITestAppearanceArgumentsDoNotHardCodePreferredDark() {
+        XCTAssertEqual(UITestAppearance.darkArgument, "-uiAppearanceDark")
+        XCTAssertEqual(UITestAppearance.lightArgument, "-uiAppearanceLight")
+    }
+    
     func testBackgroundTaskCompletesExactlyOnce() {
         XCTAssertTrue(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: false))
         XCTAssertFalse(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: true))
