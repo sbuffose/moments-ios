@@ -90,7 +90,8 @@ final class Build266SurfaceTests: XCTestCase {
             progress: 1
         )
         XCTAssertEqual(settings, "40 elementos indexados")
-        XCTAssertFalse(settings.contains("0 elementos"))
+        XCTAssertFalse(settings.hasPrefix("0 "), "Settings must show the real indexed count, not 0")
+        XCTAssertNotEqual(settings, "0 elementos indexados")
     }
     
     func testMomentCoverFallsBackToARealPhotoFromThatDay() {

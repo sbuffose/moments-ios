@@ -1287,8 +1287,11 @@ final class SmokeTestSuite: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch during an active fixture scan")
         tabBar.buttons.element(boundBy: 0).tap()
         
-        let progressEl = app.otherElements["scan.progress"]
-        XCTAssertTrue(progressEl.waitForExistence(timeout: 12), "scan.progress must be visible during analysis")
+        let progressEl = app.descendants(matching: .any)["scan.progress"]
+        XCTAssertTrue(
+            progressEl.waitForExistence(timeout: 12) || app.otherElements["scan.progress"].waitForExistence(timeout: 4),
+            "scan.progress must be visible during analysis"
+        )
         let before = Self.scanProgressValue(progressEl)
         XCTAssertGreaterThan(before, 0, "Active scan should already have progress")
         

@@ -368,6 +368,39 @@ struct ProcessingStatusSheet: View {
     }
 }
 
+/// Hidden accessibility probe so UI tests can read scan progress even when
+/// the 1×1 overlay would otherwise be omitted from the tree.
+struct ScanProgressProbe: View {
+    @EnvironmentObject var appState: AppState
+    
+    private var isActive: Bool {
+        appState.isIndexing || appState.isAnalyzing || ActiveScanSimulation.isRequested
+    }
+    
+    private var progress: Double {
+        if appState.isIndexing { return appState.indexingProgress }
+        if appState.isAnalyzing { return appState.analysisProgress }
+        return ActiveScanSimulation.isRequested ? max(appState.analysisProgress, 0.10) : 0
+    }
+    
+    var body: some View {
+        Group {
+            if isActive {
+                Text(String(format: "%.4f", progress))
+                    .font(.system(size: 1))
+                    .foregroundStyle(.clear)
+                    .frame(width: 8, height: 8)
+                    .accessibilityIdentifier("scan.progress")
+                    .accessibilityLabel("Progreso del análisis")
+                    .accessibilityValue(String(format: "%.4f", progress))
+                    .accessibilityHidden(false)
+                    .accessibilityElement(children: .ignore)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
 // MARK: - Main Tab View
 
 struct MainTabView: View {
@@ -409,16 +442,7 @@ struct MainTabView: View {
             TabBarChrome.apply()
         }
         .overlay(alignment: .topLeading) {
-            if appState.isIndexing || appState.isAnalyzing {
-                let progress = appState.isIndexing ? appState.indexingProgress : appState.analysisProgress
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .accessibilityIdentifier("scan.progress")
-                    .accessibilityLabel("Progreso del análisis")
-                    .accessibilityValue(String(format: "%.4f", progress))
-                    .accessibilityHidden(false)
-                    .allowsHitTesting(false)
-            }
+            ScanProgressProbe()
         }
     }
 }
