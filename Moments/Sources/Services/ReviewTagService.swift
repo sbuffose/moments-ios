@@ -19,6 +19,7 @@ protocol ReverseGeocoding: Sendable {
 /// Offline-first wrapper around `GeocodingService` (cache, then CLGeocoder).
 struct CachedCLGeocoder: ReverseGeocoding {
     func placeName(latitude: Double, longitude: Double) async -> String? {
+        if MomentsTestRuntime.shouldSkipLiveScan { return nil }
         if let cached = await GeocodingService.shared.cachedLocationName(
             latitude: latitude,
             longitude: longitude
@@ -281,6 +282,7 @@ enum ReviewTagService {
     static func defaultGeocoder() -> ReverseGeocoding {
         let testing = ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
             || ProcessInfo.processInfo.arguments.contains("-seedFixturePhotos")
+            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         if testing {
             return StubReverseGeocoder(places: [
                 (-38.0055, -57.5426, "Mar del Plata"),
@@ -295,10 +297,11 @@ enum ReviewTagService {
     static func sheetData(
         photos: [PersistedPhoto],
         context: ModelContext,
-        geocoder: ReverseGeocoding = ReviewTagService.defaultGeocoder()
+        geocoder: ReverseGeocoding? = nil
     ) async -> ReviewTagSheetData {
+        let resolved = geocoder ?? defaultGeocoder()
         let people = namedPeople(in: context)
-        let trips = await suggestedTrips(photos: photos, context: context, geocoder: geocoder)
+        let trips = await suggestedTrips(photos: photos, context: context, geocoder: resolved)
         var data = ReviewTagSheetData(
             people: people,
             categories: ReviewTagOption.fixedCategories,
