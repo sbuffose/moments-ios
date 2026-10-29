@@ -213,6 +213,48 @@ enum DesignLayoutAssert {
         )
     }
     
+    static func assertScrolledNavReadable(
+        _ app: XCUIApplication,
+        titleIdentifiers: [String],
+        titleLabels: [String],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let nav = app.navigationBars.firstMatch
+        XCTAssertTrue(nav.exists, "Navigation bar must stay after scroll", file: file, line: line)
+        let window = app.windows.firstMatch.exists ? app.windows.firstMatch.frame : app.frame
+        if nav.exists {
+            XCTAssertLessThan(
+                nav.frame.minY,
+                window.minY + 120,
+                "Nav bar must stay pinned at the top when scrolled: \(nav.frame)",
+                file: file,
+                line: line
+            )
+            XCTAssertGreaterThan(nav.frame.height, 20, "Nav bar collapsed to nothing", file: file, line: line)
+        }
+        
+        var foundTitle = false
+        for identifier in titleIdentifiers {
+            let title = app.descendants(matching: .any)[identifier].firstMatch
+            if title.exists {
+                foundTitle = true
+                XCTAssertGreaterThan(title.frame.width, 8, "Nav title \(identifier) has no width", file: file, line: line)
+                break
+            }
+        }
+        if !foundTitle {
+            for label in titleLabels {
+                if app.staticTexts[label].exists || app.navigationBars[label].exists {
+                    foundTitle = true
+                    break
+                }
+            }
+        }
+        XCTAssertTrue(foundTitle, "Nav title must remain readable after scroll (\(titleLabels.joined(separator: "/")))", file: file, line: line)
+        assertNoTruncatedLabels(app, file: file, line: line)
+    }
+    
     static func assertNoAlbumCopy(
         _ app: XCUIApplication,
         file: StaticString = #filePath,

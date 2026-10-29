@@ -47,6 +47,7 @@ struct HomeView: View {
                     Text("Moments")
                         .font(MomentsTypography.headlineLarge)
                         .foregroundStyle(MomentsColors.textPrimary)
+                        .accessibilityIdentifier("home.navTitle")
                 }
                 
                 if (appState.isAnalyzing || appState.isIndexing) && !appState.shouldShowFirstRunAnalyzing {

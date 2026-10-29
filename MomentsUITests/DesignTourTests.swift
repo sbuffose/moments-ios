@@ -67,6 +67,9 @@ final class DesignTourTests: XCTestCase {
         capture("home_ready", scheme: scheme, device: device)
         assertScreen(.home)
         assertChrome([app.buttons["home.reviewButton"]])
+        scrollMainContent()
+        capture("home_scrolled", scheme: scheme, device: device)
+        DesignLayoutAssert.assertScrolledNavReadable(app, titleIdentifiers: ["home.navTitle"], titleLabels: ["Moments"])
         
         launch(["-simulateEmptyHome", appearance], seed: false)
         openHome()
@@ -116,10 +119,24 @@ final class DesignTourTests: XCTestCase {
         launch(["-seedFixturePhotos", appearance])
         openTab(2)
         capture("momentos_list", scheme: scheme, device: device)
+        scrollMainContent()
+        capture("momentos_scrolled", scheme: scheme, device: device)
+        DesignLayoutAssert.assertScrolledNavReadable(
+            app,
+            titleIdentifiers: [],
+            titleLabels: ["Línea de Tiempo", "Línea de tiempo", "Momentos"]
+        )
         openTab(1)
         capture("asistente_empty", scheme: scheme, device: device)
         openTab(3)
         capture("settings", scheme: scheme, device: device)
+        scrollMainContent()
+        capture("settings_scrolled", scheme: scheme, device: device)
+        DesignLayoutAssert.assertScrolledNavReadable(
+            app,
+            titleIdentifiers: [],
+            titleLabels: ["Ajustes"]
+        )
     }
     
     private func resolvedDeviceSlug() -> String {
@@ -183,6 +200,17 @@ final class DesignTourTests: XCTestCase {
         guard tabBar.waitForExistence(timeout: 12) else { return }
         let button = tabBar.buttons.element(boundBy: index)
         if button.exists { button.tap() }
+    }
+    
+    private func scrollMainContent() {
+        let scroll = app.scrollViews.firstMatch
+        if scroll.exists {
+            scroll.swipeUp()
+            scroll.swipeUp()
+            return
+        }
+        app.swipeUp()
+        app.swipeUp()
     }
     
     private func openReview() {

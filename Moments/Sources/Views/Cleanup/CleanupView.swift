@@ -2117,44 +2117,51 @@ struct KeepDurationChipRow: View {
     let onDismiss: () -> Void
     
     var body: some View {
-        HStack(spacing: 8) {
-            chip("Siempre", duration: .forever, emphasized: true)
-            chip("1 sem", duration: .oneWeek, emphasized: false)
-            chip("1 mes", duration: .oneMonth, emphasized: false)
-            chip("3 mes", duration: .threeMonths, emphasized: false)
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                chip(.forever, emphasized: true)
+                chip(.oneWeek, emphasized: false)
             }
-            .accessibilityLabel("Cerrar")
+            HStack(spacing: 6) {
+                chip(.oneMonth, emphasized: false)
+                chip(.threeMonths, emphasized: false)
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 32)
+                }
+                .accessibilityLabel("Cerrar")
+                .accessibilityIdentifier("review.keepChips.dismiss")
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .background(.ultraThinMaterial)
         .cornerRadius(16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.keepChips")
     }
     
-    private func chip(_ title: String, duration: CleanupViewModel.KeepDuration, emphasized: Bool) -> some View {
+    private func chip(_ duration: CleanupViewModel.KeepDuration, emphasized: Bool) -> some View {
         Button {
             MomentsHaptics.selection()
             onSelect(duration)
         } label: {
-            Text(title)
-                .font(.caption.weight(.medium))
+            Text(duration.displayLabel)
+                .font(.caption.weight(.semibold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .minimumScaleFactor(1)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 7)
                 .frame(maxWidth: .infinity)
                 .background(emphasized ? Color.green.opacity(0.15) : Color(.systemGray5))
                 .foregroundStyle(emphasized ? Color.green : Color.primary)
                 .cornerRadius(12)
         }
         .accessibilityIdentifier("review.keepChip.\(duration.testId)")
-        .accessibilityLabel(title)
+        .accessibilityLabel(duration.displayLabel)
     }
 }
 

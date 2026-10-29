@@ -29,10 +29,21 @@ final class RealDeviceReviewUITests: XCTestCase {
         
         let chips = app.otherElements["review.keepChips"]
         XCTAssertTrue(chips.waitForExistence(timeout: 4), "Conservar still shows duration chips")
-        for identifier in ["review.keepChip.forever", "review.keepChip.week", "review.keepChip.month", "review.keepChip.threeMonths"] {
+        let expected = [
+            ("review.keepChip.forever", "Siempre"),
+            ("review.keepChip.week", "1 semana"),
+            ("review.keepChip.month", "1 mes"),
+            ("review.keepChip.threeMonths", "3 meses")
+        ]
+        let window = app.windows.firstMatch.exists ? app.windows.firstMatch.frame : app.frame
+        for (identifier, label) in expected {
             let chip = app.buttons[identifier]
-            XCTAssertTrue(chip.waitForExistence(timeout: 2), "Chip \(identifier) must fit on screen")
-            XCTAssertTrue(chip.isHittable, "Chip \(identifier) must not be truncated off-screen")
+            XCTAssertTrue(chip.waitForExistence(timeout: 2), "Chip \(identifier) must exist")
+            XCTAssertEqual(chip.label, label, "Chip \(identifier) must use the full untruncated Spanish label")
+            XCTAssertFalse(chip.label.hasSuffix("…") || chip.label.hasSuffix("..."), "Chip \(identifier) is truncated: \(chip.label)")
+            XCTAssertTrue(chip.isHittable, "Chip \(identifier) must be tappable")
+            XCTAssertGreaterThan(chip.frame.width, 48, "Chip \(identifier) is too narrow to show '\(label)'")
+            XCTAssertLessThanOrEqual(chip.frame.maxX, window.maxX + 1, "Chip \(identifier) overflows the screen")
         }
         
         let changed = NSPredicate { _, _ in
@@ -160,10 +171,10 @@ final class RealDeviceReviewUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 20))
         app.swipeUp()
         app.swipeUp()
-        let title = app.staticTexts["Moments"].firstMatch
-        XCTAssertTrue(
-            title.exists || app.navigationBars.firstMatch.exists,
-            "Home nav title must stay readable over an opaque bar"
+        DesignLayoutAssert.assertScrolledNavReadable(
+            app,
+            titleIdentifiers: ["home.navTitle"],
+            titleLabels: ["Moments"]
         )
         
         let gear = app.buttons["home.settingsButton"]

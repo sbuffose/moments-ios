@@ -474,6 +474,15 @@ class CleanupViewModel: ObservableObject {
             }
         }
         
+        var displayLabel: String {
+            switch self {
+            case .forever: return "Siempre"
+            case .oneWeek: return "1 semana"
+            case .oneMonth: return "1 mes"
+            case .threeMonths: return "3 meses"
+            }
+        }
+        
         var keepUntilDate: Date? {
             switch self {
             case .forever: return nil

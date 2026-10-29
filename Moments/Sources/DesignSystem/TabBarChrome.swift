@@ -25,5 +25,32 @@ enum TabBarChrome {
         if #available(iOS 15.0, *) {
             UITabBar.appearance().scrollEdgeAppearance = appearance
         }
+        
+        NavigationBarChrome.apply()
+    }
+}
+
+enum NavigationBarChrome {
+    static func apply() {
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? MomentsColors.darkGreenGrey
+                : MomentsColors.lightCream
+        }
+        appearance.shadowColor = .clear
+        appearance.titleTextAttributes = [
+            .foregroundColor: MomentsColors.textPrimaryUIColor
+        ]
+        appearance.largeTitleTextAttributes = [
+            .foregroundColor: MomentsColors.textPrimaryUIColor
+        ]
+        
+        let nav = UINavigationBar.appearance()
+        nav.standardAppearance = appearance
+        nav.scrollEdgeAppearance = appearance
+        nav.compactAppearance = appearance
+        nav.isTranslucent = false
     }
 }

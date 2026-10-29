@@ -67,7 +67,9 @@ final class ReviewSessionTests: XCTestCase {
             return .single(photo)
         }
         let capped = DailyReviewBatch.cap(items)
-        XCTAssertEqual(capped.batch.count, DailyReviewBatch.size)
+        XCTAssertEqual(DailyReviewBatch.size, 20, "User rule: a review batch is at most 20")
+        XCTAssertLessThanOrEqual(capped.batch.count, 20, "No review batch may exceed 20 items")
+        XCTAssertEqual(capped.batch.count, 20, "80-item library is a stress test; the session must still be 20")
         XCTAssertEqual(capped.remaining, 60)
         XCTAssertTrue(capped.batch.contains { $0.photos.contains(where: \.isVideo) })
         XCTAssertTrue(capped.batch.contains { $0.photos.contains(where: { !$0.isVideo }) })
@@ -106,10 +108,19 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertTrue(viewModel.sections.isEmpty)
     }
     
-    func testKeepDurationChipLabelsFit() {
-        XCTAssertEqual(CleanupViewModel.KeepDuration.forever.testId, "forever")
-        XCTAssertEqual(CleanupViewModel.KeepDuration.oneWeek.testId, "week")
-        XCTAssertEqual(CleanupViewModel.KeepDuration.oneMonth.testId, "month")
-        XCTAssertEqual(CleanupViewModel.KeepDuration.threeMonths.testId, "threeMonths")
+    func testKeepDurationChipLabelsAreFullSpanish() {
+        let labels = [
+            CleanupViewModel.KeepDuration.forever.displayLabel,
+            CleanupViewModel.KeepDuration.oneWeek.displayLabel,
+            CleanupViewModel.KeepDuration.oneMonth.displayLabel,
+            CleanupViewModel.KeepDuration.threeMonths.displayLabel
+        ]
+        XCTAssertEqual(labels, ["Siempre", "1 semana", "1 mes", "3 meses"])
+        XCTAssertFalse(labels.contains("1 sem"))
+        XCTAssertFalse(labels.contains("3 mes"))
+        for label in labels {
+            XCTAssertFalse(label.hasSuffix("…") || label.hasSuffix("..."), "Chip label must not truncate: \(label)")
+            XCTAssertFalse(label.contains("sem") && label != "1 semana", "Do not abbreviate semana: \(label)")
+        }
     }
 }

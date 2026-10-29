@@ -115,6 +115,7 @@ extension View {
         self
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(MomentsColors.bgPrimary, for: .navigationBar)
+            .toolbarColorScheme(nil, for: .navigationBar)
     }
 }
 
