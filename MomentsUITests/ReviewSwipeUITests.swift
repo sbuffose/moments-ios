@@ -98,20 +98,25 @@ final class ReviewSwipeUITests: XCTestCase {
     }
     
     private func waitForDecision(_ expected: String, timeout: TimeInterval = 4) -> Bool {
-        let last = app.descendants(matching: .any)["review.lastDecision"].firstMatch
-        let toast = app.descendants(matching: .any)["review.decisionToast"].firstMatch
-        let stamp = app.descendants(matching: .any)["review.swipeStamp"].firstMatch
         let predicate = NSPredicate { _, _ in
-            let lastText = (last.label + (last.value as? String ?? "")).lowercased()
-            let toastText = (toast.label + (toast.value as? String ?? "")).lowercased()
-            let stampText = (stamp.label + (stamp.value as? String ?? "")).lowercased()
-            return lastText.contains(expected)
-                || (toast.exists && !toastText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                || stamp.exists
-                || stampText.contains(expected)
+            self.decisionSignal(contains: expected)
         }
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+    
+    private func decisionSignal(contains expected: String) -> Bool {
+        let last = app.descendants(matching: .any)["review.lastDecision"].firstMatch
+        if last.exists {
+            let text = (last.label + (last.value as? String ?? "")).lowercased()
+            if text.contains(expected) { return true }
+        }
+        let toast = app.descendants(matching: .any)["review.decisionToast"].firstMatch
+        if toast.exists {
+            let text = (toast.label + (toast.value as? String ?? "")).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { return true }
+        }
+        return app.descendants(matching: .any)["review.swipeStamp"].firstMatch.exists
     }
     
     private func drag(_ card: XCUIElement, direction: Swipe) {

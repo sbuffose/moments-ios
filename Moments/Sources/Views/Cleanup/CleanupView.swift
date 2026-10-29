@@ -2252,23 +2252,32 @@ struct SwipeablePhotoCard: View {
     }
     
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                nextCard
-                    .frame(width: geometry.size.width * 0.94, height: geometry.size.height * 0.94)
-                    .scaleEffect(nextCardPop ? 1.0 : 0.92)
-                
-                cardStack
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(offset)
-                    .rotationEffect(.degrees(rotation))
-                    .gesture(drag)
-                    .onTapGesture { onOpen?() }
-                    .accessibilityIdentifier("review.photoCard")
+        Color.clear
+            .aspectRatio(3 / 4, contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                GeometryReader { geometry in
+                    let cardWidth = geometry.size.width
+                    let cardHeight = geometry.size.height
+                    ZStack {
+                        nextCard
+                            .frame(width: cardWidth * 0.94, height: cardHeight * 0.94)
+                            .scaleEffect(nextCardPop ? 1.0 : 0.92)
+                        
+                        cardStack
+                            .frame(width: cardWidth, height: cardHeight)
+                            .offset(offset)
+                            .rotationEffect(.degrees(rotation))
+                            .gesture(drag)
+                            .onTapGesture { onOpen?() }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("review.photoCard")
+                    }
+                    .frame(width: cardWidth, height: cardHeight)
+                    .clipped()
+                }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-        }
-        .onAppear(perform: applyTourOffset)
+            .onAppear(perform: applyTourOffset)
     }
     
     private var cardStack: some View {
@@ -2276,6 +2285,10 @@ struct SwipeablePhotoCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(MomentsColors.bgCard)
             thumbnail
+                .accessibilityHidden(true)
+            darknessOverlay
+            sourceChip
+            sizeChip
             wash
             trail
             if ReviewSwipePhysics.pastStampThreshold(offset) || committed != .none {
@@ -2291,17 +2304,24 @@ struct SwipeablePhotoCard: View {
             .aspectRatio(contentMode: .fill)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
-            .overlay {
-                if !ThumbnailLoadFailureSimulation.isRequested {
-                    PhotoDarknessOverlay(
-                        classification: PhotoLuminanceClass.classify(
-                            meanLuminance: photo.exposureScore ?? 0.5
-                        )
-                    )
-                }
-            }
-            .overlay(alignment: .topLeading) {
-                if let origin = PhotoOrigin.reviewChip(for: photo) {
+    }
+    
+    @ViewBuilder
+    private var darknessOverlay: some View {
+        if !ThumbnailLoadFailureSimulation.isRequested {
+            PhotoDarknessOverlay(
+                classification: PhotoLuminanceClass.classify(
+                    meanLuminance: photo.exposureScore ?? 0.5
+                )
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private var sourceChip: some View {
+        if let origin = PhotoOrigin.reviewChip(for: photo) {
+            VStack {
+                HStack {
                     HStack(spacing: 4) {
                         Image(systemName: origin.iconName)
                         Text(origin.displayName)
@@ -2314,10 +2334,21 @@ struct SwipeablePhotoCard: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier("review.sourceChip")
                     .accessibilityLabel(origin.displayName)
+                    Spacer()
                 }
+                Spacer()
             }
-            .overlay(alignment: .bottomTrailing) {
-                if let size = photo.estimatedFileSize, size > 0 {
+            .allowsHitTesting(false)
+        }
+    }
+    
+    @ViewBuilder
+    private var sizeChip: some View {
+        if let size = photo.estimatedFileSize, size > 0 {
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
                     Text(SpaceFormatting.string(from: size))
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 8)
@@ -2327,6 +2358,8 @@ struct SwipeablePhotoCard: View {
                         .accessibilityIdentifier("review.itemSize")
                 }
             }
+            .allowsHitTesting(false)
+        }
     }
     
     private var wash: some View {
