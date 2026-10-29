@@ -792,7 +792,9 @@ final class SmokeTestSuite: XCTestCase {
     }
     
     private func launchReviewWithSummarySimulation(_ argument: String) {
-        app.launchArguments.append(argument)
+        if !app.launchArguments.contains(argument) {
+            app.launchArguments.append(argument)
+        }
         app.launch()
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch to reach the batch summary")

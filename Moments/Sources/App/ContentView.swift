@@ -24,7 +24,8 @@ struct ContentView: View {
                         appState.isLibraryAuthorized = true
                         appState.hasCompletedOnboarding = true
                         // Start background processing (non-blocking)
-                        if !FixturePhotoSeeder.isRequested && !appState.isIndexing && !appState.isAnalyzing {
+                        if !MomentsTestRuntime.shouldSkipLiveScan
+                            && !FixturePhotoSeeder.isRequested && !appState.isIndexing && !appState.isAnalyzing {
                             appState.startBackgroundIndexingAndAnalysis()
                         }
                     }

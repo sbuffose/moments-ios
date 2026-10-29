@@ -155,6 +155,10 @@ final class ReviewTagTests: XCTestCase {
         XCTAssertEqual(data.trips.count, 1)
         XCTAssertEqual(data.trips.first?.title, "Viaje a Mar del Plata · mar 2025")
         XCTAssertTrue(data.trips.first?.isPreselected == true)
-        XCTAssertNil(AlbumService.userAlbumTitles().first { data.titles.contains($0) })
+        let photoKitAlbumTitles = ["WhatsApp", "Instagram", "DJI Album", "Recents", "Recently Deleted", "Moments"]
+        XCTAssertTrue(
+            Set(data.titles.map { $0.lowercased() }).isDisjoint(with: Set(photoKitAlbumTitles.map { $0.lowercased() })),
+            "Sheet titles must not be PhotoKit album names: \(data.titles)"
+        )
     }
 }

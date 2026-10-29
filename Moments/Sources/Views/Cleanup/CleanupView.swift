@@ -652,6 +652,9 @@ struct CleanupReviewView: View {
     var body: some View {
         VStack(spacing: 0) {
             if showingBatchSummary {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("review.batchSummary")
                 ReviewBatchSummaryView(
                     state: summaryState,
                     onMore: { handleMoreBatch() },
@@ -752,6 +755,11 @@ struct CleanupReviewView: View {
             }
         }
         .interactiveDismissDisabled(photosToDelete.count > 0 || showingBatchSummary)
+        .onAppear {
+            if ReviewBatchSummarySimulation.isActive {
+                showingSummary = true
+            }
+        }
         .sheet(isPresented: $showTagSheet) {
             TagPhotoSheet(photos: photosForCurrentItem) { identifiers in
                 for id in identifiers {
@@ -1405,8 +1413,6 @@ struct ReviewBatchSummaryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MomentsColors.bgPrimary.ignoresSafeArea())
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("review.batchSummary")
         .onAppear {
             MomentsMotion.animate(reduceMotion: reduceMotion) {
                 appeared = true
