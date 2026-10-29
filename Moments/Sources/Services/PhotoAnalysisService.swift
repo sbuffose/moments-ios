@@ -13,9 +13,9 @@ import Accelerate
 @MainActor
 class PhotoAnalysisService: ObservableObject {
     private let modelContext: ModelContext
-    private let imageAnalyzer = ImageAnalyzer()
-    private let faceAnalyzer = FaceAnalyzer()
-    private let geocodingService = GeocodingService.shared
+    private lazy var imageAnalyzer = ImageAnalyzer()
+    private lazy var faceAnalyzer = FaceAnalyzer()
+    private lazy var geocodingService = GeocodingService.shared
     private let metadataService = MetadataExtractionService.shared
     
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
