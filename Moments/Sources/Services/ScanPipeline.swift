@@ -729,6 +729,10 @@ actor ScanPipelineCoordinator {
         shouldStop: @escaping @Sendable () -> Bool,
         onProgress: @escaping @Sendable (ScanProgressSnapshot) async -> Void
     ) async -> Bool {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            await onProgress(store.snapshot())
+            return true
+        }
         if let running {
             return await running.value
         }

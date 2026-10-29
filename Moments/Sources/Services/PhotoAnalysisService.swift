@@ -38,6 +38,10 @@ class PhotoAnalysisService: ObservableObject {
     // MARK: - Background Analysis (Non-blocking)
     
     func analyzePhotosInBackground(progressHandler: @escaping @Sendable (Int, Int, Double) async -> Void) async {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            await progressHandler(0, 0, 1.0)
+            return
+        }
         let descriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate { !$0.analysisCompleted }
         )
@@ -97,6 +101,10 @@ class PhotoAnalysisService: ObservableObject {
     // MARK: - Background Analysis with Checkpointing
     
     func analyzeUnprocessedPhotosInBackground(progressHandler: @escaping @Sendable (Double) async -> Void) async -> Bool {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            await progressHandler(1.0)
+            return true
+        }
         do {
             let descriptor = FetchDescriptor<PersistedPhoto>(
                 predicate: #Predicate { !$0.analysisCompleted }
@@ -1390,7 +1398,7 @@ final class ImageAnalyzer: Sendable {
     func generateDHash(image: UIImage) -> UInt64? {
         guard let cgImage = image.cgImage else { return nil }
         
-        let context = CIContext()
+        let context = ImageAnalyzer.sharedCIContext
         let ciImage = CIImage(cgImage: cgImage)
         
         guard let resizedImage = resizeForDHash(ciImage, context: context),

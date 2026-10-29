@@ -8,6 +8,23 @@ import BackgroundTasks
 import Photos
 import UIKit
 
+/// The XCTest host app must never start PhotoKit / Vision / CIContext scans.
+/// Hardware CIContext and eligibilityd crash the unit-test process on CI.
+enum MomentsTestRuntime {
+    static var isXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.arguments.contains("-XCTest")
+    }
+    
+    static var isUITesting: Bool {
+        ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
+            || ProcessInfo.processInfo.environment["UITEST_MODE"] == "1"
+    }
+    
+    /// Unit-test host only. UI tests still exercise the real scan path.
+    static var shouldSkipLiveScan: Bool { isXCTest && !isUITesting }
+}
+
 @main
 struct MomentsApp: App {
     let container: ModelContainer
@@ -363,6 +380,10 @@ class AppState: ObservableObject {
         }
         
         Task {
+            if MomentsTestRuntime.shouldSkipLiveScan {
+                return
+            }
+            
             if FirstRunAnalyzingView.isSimulated {
                 await checkNotificationStatus()
                 return
@@ -440,6 +461,7 @@ class AppState: ObservableObject {
     
     func startBackgroundIndexingAndAnalysis() {
         guard modelContainer != nil || modelContext != nil else { return }
+        guard !MomentsTestRuntime.shouldSkipLiveScan else { return }
         guard !ActiveScanSimulation.isRequested else { return }
         
         indexingTask?.cancel()
@@ -462,6 +484,7 @@ class AppState: ObservableObject {
     /// continued-processing task on this foreground call stack.
     func startUserInitiatedScan() {
         guard modelContainer != nil || modelContext != nil else { return }
+        guard !MomentsTestRuntime.shouldSkipLiveScan else { return }
         guard !ActiveScanSimulation.isRequested else { return }
         
         indexingTask?.cancel()
@@ -485,6 +508,7 @@ class AppState: ObservableObject {
     }
     
     func resumeBackgroundProcessing() {
+        guard !MomentsTestRuntime.shouldSkipLiveScan else { return }
         startDetachedPipeline()
     }
     
@@ -493,6 +517,7 @@ class AppState: ObservableObject {
     }
     
     private func startDetachedPipeline() {
+        guard !MomentsTestRuntime.shouldSkipLiveScan else { return }
         guard let container = modelContainer ?? modelContext?.container else { return }
         if ActiveScanSimulation.isRequested { return }
         
@@ -545,6 +570,7 @@ class AppState: ObservableObject {
     }
     
     func startBackgroundAnalysis() {
+        guard !MomentsTestRuntime.shouldSkipLiveScan else { return }
         guard let analysisService = analysisService else { return }
         
         analysisTask?.cancel()
