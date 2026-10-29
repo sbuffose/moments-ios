@@ -162,13 +162,14 @@ enum DesignLayoutAssert {
     private static func visibleLabels(_ app: XCUIApplication) -> [String] {
         let window = app.windows.firstMatch.exists ? app.windows.firstMatch.frame : app.frame
         var labels: [String] = []
-        let texts = app.staticTexts.allElementsBoundByIndex
-        for index in 0..<min(texts.count, 80) {
+        let texts = app.staticTexts
+        let limit = min(texts.count, 80)
+        for index in 0..<limit {
             let element = texts.element(boundBy: index)
             guard element.exists else { continue }
             let frame = element.frame
             guard frame.height > 8, frame.width > 8, window.intersects(frame) else { continue }
-            let label = element.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = element.label.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
             guard label.count > 1 else { continue }
             if label == element.identifier { continue }
             if label.hasPrefix("review.") || label.hasPrefix("onboarding.") || label.hasPrefix("home.") { continue }
