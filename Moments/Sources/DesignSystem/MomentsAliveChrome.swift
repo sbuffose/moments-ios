@@ -206,8 +206,29 @@ struct HomeCardBreathing: ViewModifier {
     }
 }
 
+/// Tiny text the UI-test host can query. Color.clear overlays never enter the AX tree.
+struct AccessibilityProbe: View {
+    let id: String
+    
+    var body: some View {
+        Text(id)
+            .font(.system(size: 1))
+            .foregroundStyle(.clear)
+            .frame(width: 1, height: 1)
+            .accessibilityIdentifier(id)
+            .accessibilityLabel(id)
+            .allowsHitTesting(false)
+    }
+}
+
 extension View {
     func homeCardBreathing() -> some View {
         modifier(HomeCardBreathing())
+    }
+    
+    func accessibilityProbe(_ id: String) -> some View {
+        overlay(alignment: .topLeading) {
+            AccessibilityProbe(id: id)
+        }
     }
 }

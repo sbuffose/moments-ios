@@ -695,32 +695,35 @@ struct CleanupReviewView: View {
                 Spacer()
                 
                 // Show appropriate card based on item type
-                switch currentItem {
-                case .single(let photo):
-                    singlePhotoCard(photo: photo)
-                    
-                case .exactDuplicateGroup(let group, let photos):
-                    ExactDuplicateGroupCard(
-                        group: group,
-                        photos: photos,
-                        viewModel: viewModel,
-                        onSaveToAlbum: { showAlbumSheet = true },
-                        onComplete: {
-                            // Queue shrinks automatically - don't advance index
-                        }
-                    )
-                    
-                case .similarGroup(let group, let photos):
-                    SimilarGroupCard(
-                        group: group,
-                        photos: photos,
-                        viewModel: viewModel,
-                        onSaveToAlbum: { showAlbumSheet = true },
-                        onComplete: {
-                            // Queue shrinks automatically - don't advance index
-                        }
-                    )
+                Group {
+                    switch currentItem {
+                    case .single(let photo):
+                        singlePhotoCard(photo: photo)
+                        
+                    case .exactDuplicateGroup(let group, let photos):
+                        ExactDuplicateGroupCard(
+                            group: group,
+                            photos: photos,
+                            viewModel: viewModel,
+                            onSaveToAlbum: { showAlbumSheet = true },
+                            onComplete: {
+                                // Queue shrinks automatically - don't advance index
+                            }
+                        )
+                        
+                    case .similarGroup(let group, let photos):
+                        SimilarGroupCard(
+                            group: group,
+                            photos: photos,
+                            viewModel: viewModel,
+                            onSaveToAlbum: { showAlbumSheet = true },
+                            onComplete: {
+                                // Queue shrinks automatically - don't advance index
+                            }
+                        )
+                    }
                 }
+                .accessibilityIdentifier("review.photoCard")
                 
                 if showKeepDurationChip, let keptId = lastKeptPhotoId {
                     KeepDurationChipRow(
@@ -747,16 +750,17 @@ struct CleanupReviewView: View {
         }
         .navigationTitle(Text("Revisar fotos"))
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(photosToDelete.count > 0)
+        .navigationBarBackButtonHidden(true)
         .overlay(alignment: .bottom) {
-            if let decisionToast {
-                VStack(spacing: 8) {
-                    Text(lastDecision.rawValue)
-                        .font(.caption2)
-                        .foregroundStyle(.clear)
-                        .accessibilityIdentifier("review.lastDecision")
-                        .accessibilityLabel(lastDecision.rawValue)
-                        .accessibilityValue(lastDecision.rawValue)
+            VStack(spacing: 8) {
+                Text(lastDecision.rawValue)
+                    .font(.caption2)
+                    .foregroundStyle(.clear)
+                    .id(lastDecision)
+                    .accessibilityIdentifier("review.lastDecision")
+                    .accessibilityLabel(lastDecision.rawValue)
+                    .accessibilityValue(lastDecision.rawValue)
+                if let decisionToast {
                     Text(decisionToast)
                         .font(MomentsTypography.headlineSmall)
                         .multilineTextAlignment(.center)
@@ -774,22 +778,31 @@ struct CleanupReviewView: View {
                         .accessibilityIdentifier("review.undo")
                     }
                 }
-                .padding()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.bottom, 24)
             }
+            .padding()
+            .background {
+                if decisionToast != nil {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                }
+            }
+            .padding(.bottom, 24)
+            .allowsHitTesting(decisionToast != nil)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.root")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                if photosToDelete.count > 0 {
-                    Button {
+                Button {
+                    if photosToDelete.count > 0 {
                         showFinishSheet = true
-                    } label: {
-                        Image(systemName: "chevron.left")
+                    } else {
+                        dismiss()
                     }
+                } label: {
+                    Image(systemName: "chevron.left")
                 }
+                .accessibilityIdentifier("review.back")
             }
             
             ToolbarItem(placement: .topBarTrailing) {
@@ -799,7 +812,7 @@ struct CleanupReviewView: View {
                 .fontWeight(.medium)
             }
         }
-        .interactiveDismissDisabled(photosToDelete.count > 0)
+        .interactiveDismissDisabled(true)
         .sheet(isPresented: $showAlbumSheet) {
             SaveToAlbumSheet(item: currentItem) { identifiers in
                 for id in identifiers {
@@ -1036,10 +1049,7 @@ struct CleanupReviewView: View {
     private var reviewCompleteView: some View {
         ZStack {
             MomentsAliveBackground(intensity: 0.9)
-            Color.clear
-                .frame(width: 1, height: 1)
-                .accessibilityIdentifier("review.batchSummary")
-                .allowsHitTesting(false)
+            AccessibilityProbe(id: "review.batchSummary")
             
             VStack(spacing: 24) {
                 Spacer()
@@ -2402,6 +2412,12 @@ struct SwipeablePhotoCard: View {
         committed = direction
         MomentsHaptics.success()
         onDecisionToast?(direction, stampText)
+        switch direction {
+        case .keep: onKeep()
+        case .delete: onDelete()
+        case .snooze: (onSnooze ?? onKeep)()
+        case .none: break
+        }
         MomentsMotion.animate(reduceMotion: reduceMotion) {
             if reduceMotion {
                 offset = .zero
@@ -2412,13 +2428,7 @@ struct SwipeablePhotoCard: View {
             }
             nextCardPop = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.08 : 0.28)) {
-            switch direction {
-            case .keep: onKeep()
-            case .delete: onDelete()
-            case .snooze: (onSnooze ?? onKeep)()
-            case .none: break
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.05 : 0.22)) {
             offset = .zero
             rotation = 0
             committed = .none

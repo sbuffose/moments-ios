@@ -12,6 +12,7 @@ enum DesignTourSimulation {
     static let midSwipeKeepArgument = "-simulateMidSwipeKeep"
     static let midSwipeDeleteArgument = "-simulateMidSwipeDelete"
     static let midSwipeSnoozeArgument = "-simulateMidSwipeSnooze"
+    static let reviewSwipeSinglesArgument = "-reviewSwipeSingles"
     static let previewSavedBytes: Int64 = 48_000_000
     static let previewDeletedBytes: Int64 = 18_000_000
     
@@ -26,6 +27,8 @@ enum DesignTourSimulation {
     static var keptAllSummary: Bool { args.contains(keptAllSummaryArgument) }
     static var deletedSummary: Bool { args.contains(deletedSummaryArgument) }
     
+    static var reviewSwipeSingles: Bool { args.contains(reviewSwipeSinglesArgument) }
+    
     static var midSwipeDirection: ReviewSwipeDirection {
         if args.contains(midSwipeKeepArgument) { return .keep }
         if args.contains(midSwipeDeleteArgument) { return .delete }
@@ -38,6 +41,15 @@ enum DesignTourSimulation {
     static func applyUserDefaultsIfNeeded() {
         if spaceSaved {
             UserDefaults.standard.set(Int(previewSavedBytes), forKey: "totalSpaceSaved")
+        }
+        if showOnboarding {
+            UserDefaults.standard.set(false, forKey: "com.moments.hasCompletedOnboarding")
+        }
+        if reviewSwipeSingles {
+            UserDefaults.standard.removeObject(forKey: "com.moments.cleanup.selectedPhotos")
+            UserDefaults.standard.removeObject(forKey: "com.moments.cleanup.reviewedPhotos")
+            UserDefaults.standard.removeObject(forKey: "com.moments.cleanup.reviewedGroups")
+            UserDefaults.standard.removeObject(forKey: "com.moments.cleanup.keptPhotos")
         }
     }
 }

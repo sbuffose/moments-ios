@@ -30,20 +30,24 @@ final class DesignTourTests: XCTestCase {
         let device = resolvedDeviceSlug()
         
         launch(["-showOnboarding", appearance], seed: false, skipOnboarding: false)
-        XCTAssertTrue(
-            existsId("onboarding.root", timeout: 16)
-                || existsId("onboarding.page1", timeout: 4)
-                || app.buttons["onboarding.continue"].waitForExistence(timeout: 4),
-            "Onboarding page 1"
-        )
+        let onboardingVisible = existsId("onboarding.root", timeout: 16)
+            || existsId("onboarding.page1", timeout: 4)
+            || app.buttons["onboarding.continue"].waitForExistence(timeout: 4)
+            || app.buttons["Continuar"].waitForExistence(timeout: 4)
+            || app.staticTexts["Liberá espacio sin perder lo importante"].waitForExistence(timeout: 4)
+            || app.staticTexts["onboarding.root"].waitForExistence(timeout: 2)
         capture("onboarding_page1", scheme: scheme, device: device)
+        XCTAssertTrue(onboardingVisible, "Onboarding page 1")
         assertChrome([app.otherElements["onboarding.page1"], app.buttons["onboarding.continue"]])
-        if app.buttons["onboarding.continue"].exists {
-            app.buttons["onboarding.continue"].tap()
-            _ = app.otherElements["onboarding.page2"].waitForExistence(timeout: 4)
+        let continueButton = app.buttons["onboarding.continue"].exists
+            ? app.buttons["onboarding.continue"]
+            : app.buttons["Continuar"]
+        if continueButton.exists {
+            continueButton.tap()
+            _ = existsId("onboarding.page2", timeout: 4)
             capture("onboarding_page2", scheme: scheme, device: device)
-            app.buttons["onboarding.continue"].tap()
-            _ = app.otherElements["onboarding.page3"].waitForExistence(timeout: 4)
+            if continueButton.exists { continueButton.tap() }
+            _ = existsId("onboarding.page3", timeout: 4)
             capture("onboarding_page3", scheme: scheme, device: device)
         }
         
@@ -92,12 +96,12 @@ final class DesignTourTests: XCTestCase {
         
         launch(["-seedFixturePhotos", "-simulateKeptAllSummary", appearance])
         openReview()
-        XCTAssertTrue(app.otherElements["review.batchSummary"].waitForExistence(timeout: 12), "Kept-all summary")
+        XCTAssertTrue(existsId("review.batchSummary", timeout: 12), "Kept-all summary")
         capture("summary_kept_all", scheme: scheme, device: device)
         
         launch(["-seedFixturePhotos", "-simulateDeletedSummary", appearance])
         openReview()
-        XCTAssertTrue(app.otherElements["review.batchSummary"].waitForExistence(timeout: 12), "Deleted summary")
+        XCTAssertTrue(existsId("review.batchSummary", timeout: 12), "Deleted summary")
         capture("summary_deleted", scheme: scheme, device: device)
         
         launch(["-seedFixturePhotos", appearance])
@@ -151,7 +155,8 @@ final class DesignTourTests: XCTestCase {
         if app.otherElements[id].waitForExistence(timeout: timeout) { return true }
         if app.buttons[id].waitForExistence(timeout: 1) { return true }
         if app.staticTexts[id].waitForExistence(timeout: 1) { return true }
-        return false
+        if app.images[id].waitForExistence(timeout: 1) { return true }
+        return app.descendants(matching: .any)[id].waitForExistence(timeout: 1)
     }
     
     private func openHome() {

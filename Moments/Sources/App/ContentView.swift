@@ -686,7 +686,9 @@ struct OnboardingView: View {
                 .padding(.bottom, MomentsSpacing.xl)
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onboarding.root")
+        .accessibilityProbe("onboarding.root")
     }
     
     private func requestAccess() {
