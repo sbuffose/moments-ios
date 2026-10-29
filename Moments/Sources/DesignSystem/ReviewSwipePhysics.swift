@@ -11,6 +11,23 @@ enum ReviewSwipeDirection: String, Sendable, Equatable {
     case none
 }
 
+enum ReviewCardLayout {
+    static let horizontalPadding: CGFloat = 16
+    static let minWidth: CGFloat = 120
+    /// Width / height. Portrait card, fitted inside the available rectangle.
+    static let aspectRatio: CGFloat = 3 / 4
+    
+    /// Card size that never exceeds `screenWidth - 32` (16pt each side)
+    /// and keeps a 3:4 aspect inside `available`.
+    static func size(in available: CGSize, screenWidth: CGFloat) -> CGSize {
+        let maxWidth = max(minWidth, screenWidth - horizontalPadding * 2)
+        let width = min(maxWidth, max(0, available.width))
+        let height = min(width / aspectRatio, max(0, available.height))
+        let fittedWidth = height <= 0 ? 0 : min(width, height * aspectRatio)
+        return CGSize(width: fittedWidth, height: fittedWidth / aspectRatio)
+    }
+}
+
 enum ReviewSwipePhysics {
     static let commitThreshold: CGFloat = 100
     static let stampThreshold: CGFloat = 56

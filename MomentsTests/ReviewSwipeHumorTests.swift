@@ -61,6 +61,34 @@ final class ReviewSwipeHumorTests: XCTestCase {
         XCTAssertNotEqual(ReviewActionKind.keep.paletteName, ReviewActionKind.delete.paletteName)
     }
     
+    func testReviewCardFitsIPhone16ProAndSE() {
+        let proScreen = CGSize(width: 402, height: 874)
+        let seScreen = CGSize(width: 375, height: 667)
+        
+        let pro = ReviewCardLayout.size(in: CGSize(width: 402, height: 515), screenWidth: proScreen.width)
+        XCTAssertEqual(pro.width, 370, accuracy: 0.01)
+        XCTAssertEqual(pro.width / pro.height, ReviewCardLayout.aspectRatio, accuracy: 0.001)
+        XCTAssertLessThanOrEqual(pro.width, proScreen.width - ReviewCardLayout.horizontalPadding * 2)
+        XCTAssertGreaterThan(pro.width, 40)
+        
+        let se = ReviewCardLayout.size(in: CGSize(width: 375, height: 420), screenWidth: seScreen.width)
+        XCTAssertLessThanOrEqual(se.width, seScreen.width - ReviewCardLayout.horizontalPadding * 2)
+        XCTAssertEqual(se.width / se.height, ReviewCardLayout.aspectRatio, accuracy: 0.001)
+        XCTAssertGreaterThan(se.width, 40)
+        
+        let tall = ReviewCardLayout.size(in: CGSize(width: 402, height: 800), screenWidth: 402)
+        XCTAssertEqual(tall.width, 370, accuracy: 0.01)
+        XCTAssertEqual(tall.height, 370 / ReviewCardLayout.aspectRatio, accuracy: 0.01)
+        
+        let short = ReviewCardLayout.size(in: CGSize(width: 402, height: 400), screenWidth: 402)
+        XCTAssertEqual(short.height, 400, accuracy: 0.01)
+        XCTAssertEqual(short.width, 300, accuracy: 0.01)
+        
+        let overflowingImageProposal = ReviewCardLayout.size(in: CGSize(width: 515.33, height: 515.33), screenWidth: 402)
+        XCTAssertEqual(overflowingImageProposal.width, 370, accuracy: 0.01)
+        XCTAssertLessThanOrEqual(overflowingImageProposal.width, 402 - 32)
+    }
+    
     func testHumorKeysExistInBothLanguages() {
         for line in ReviewHumorLine.allCases {
             XCTAssertFalse(line.localized.isEmpty, line.localizationKey)

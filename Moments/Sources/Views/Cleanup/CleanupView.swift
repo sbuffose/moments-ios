@@ -909,9 +909,8 @@ struct CleanupReviewView: View {
                     presentDecision(direction, line: line, photoId: photo.id)
                 }
             )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, 8)
             
             TagReviewButton {
                 showTagSheet = true
@@ -2252,29 +2251,30 @@ struct SwipeablePhotoCard: View {
     }
     
     var body: some View {
+        let screenWidth = UIScreen.main.bounds.width
         Color.clear
-            .aspectRatio(3 / 4, contentMode: .fit)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay {
-                GeometryReader { geometry in
-                    let cardWidth = geometry.size.width
-                    let cardHeight = geometry.size.height
+                GeometryReader { geo in
+                    let cardSize = ReviewCardLayout.size(in: geo.size, screenWidth: screenWidth)
                     ZStack {
                         nextCard
-                            .frame(width: cardWidth * 0.94, height: cardHeight * 0.94)
+                            .frame(width: cardSize.width * 0.94, height: cardSize.height * 0.94)
                             .scaleEffect(nextCardPop ? 1.0 : 0.92)
+                            .accessibilityHidden(true)
                         
                         cardStack
-                            .frame(width: cardWidth, height: cardHeight)
+                            .frame(width: cardSize.width, height: cardSize.height)
+                            .clipped()
+                            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                             .offset(offset)
                             .rotationEffect(.degrees(rotation))
                             .gesture(drag)
                             .onTapGesture { onOpen?() }
-                            .accessibilityElement(children: .contain)
+                            .accessibilityElement(children: .ignore)
                             .accessibilityIdentifier("review.photoCard")
                     }
-                    .frame(width: cardWidth, height: cardHeight)
-                    .clipped()
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
             }
             .onAppear(perform: applyTourOffset)

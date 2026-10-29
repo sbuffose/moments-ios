@@ -83,10 +83,11 @@ final class ReviewSwipeUITests: XCTestCase {
         
         XCTAssertTrue(waitForDecision(expected), "Stamp or toast should appear after swipe \(expected)")
         
-        let toast = app.descendants(matching: .any)["review.decisionToast"].firstMatch
-        if toast.exists {
-            let text = toast.label + (toast.value as? String ?? "")
-            XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "Stamp/toast label must not be empty")
+        if let toast = elementTextIfPresent("review.decisionToast") {
+            XCTAssertFalse(
+                toast.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                "Stamp/toast label must not be empty"
+            )
         }
         
         let next = cardQuery
@@ -106,17 +107,26 @@ final class ReviewSwipeUITests: XCTestCase {
     }
     
     private func decisionSignal(contains expected: String) -> Bool {
-        let last = app.descendants(matching: .any)["review.lastDecision"].firstMatch
-        if last.exists {
-            let text = (last.label + (last.value as? String ?? "")).lowercased()
-            if text.contains(expected) { return true }
+        if let last = elementTextIfPresent("review.lastDecision")?.lowercased(),
+           last.contains(expected) {
+            return true
         }
-        let toast = app.descendants(matching: .any)["review.decisionToast"].firstMatch
-        if toast.exists {
-            let text = (toast.label + (toast.value as? String ?? "")).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { return true }
+        if let toast = elementTextIfPresent("review.decisionToast"),
+           !toast.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
         }
-        return app.descendants(matching: .any)["review.swipeStamp"].firstMatch.exists
+        return elementExists("review.swipeStamp")
+    }
+    
+    private func elementExists(_ identifier: String) -> Bool {
+        app.descendants(matching: .any).matching(identifier: identifier).count > 0
+    }
+    
+    private func elementTextIfPresent(_ identifier: String) -> String? {
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        guard matches.count > 0 else { return nil }
+        let element = matches.element(boundBy: 0)
+        return element.label + (element.value as? String ?? "")
     }
     
     private func drag(_ card: XCUIElement, direction: Swipe) {
