@@ -38,6 +38,8 @@ struct HomeView: View {
                         .allowsHitTesting(true)
                 }
             }
+            .animation(nil, value: appState.shouldShowFirstRunAnalyzing)
+            .animation(nil, value: appState.homeRevealGeneration)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.automatic, for: .navigationBar)
             .toolbar {
@@ -232,13 +234,14 @@ struct HomeView: View {
                 totalBytes: viewModel.inventory.totalReclaimableBytes,
                 itemCount: viewModel.inventory.todayBatchItems
             ))
-                .font(MomentsTypography.displaySmall)
-                .foregroundStyle(MomentsColors.textPrimary)
+                .font(MomentsTypography.displayMedium)
+                .foregroundStyle(MomentsColors.heroInk)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 4)
-                .background(MomentsColors.bgCard)
+                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 10)
+                .background(MomentsColors.heroPaper)
+                .compositingGroup()
                 .accessibilityIdentifier("home.heroHeadline")
             
             ForEach(viewModel.topHumanReasons.prefix(3), id: \.self) { reason in
@@ -266,7 +269,7 @@ struct HomeView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
-        .homeCardBreathing()
+        .compositingGroup()
         .matchedGeometryEffect(id: "spaceCounter", in: homeMotion)
     }
     

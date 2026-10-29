@@ -62,6 +62,23 @@ struct MomentsColors {
             : UIColor(red: 0.16, green: 0.20, blue: 0.17, alpha: 1.0)
     }
     
+    /// Near-black / near-white ink used on the Home hero so screenshot
+    /// samples cannot collapse to a washed mid-tone against the card.
+    static let heroInkUIColor = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.99, green: 0.99, blue: 0.96, alpha: 1.0)
+            : UIColor(red: 0.07, green: 0.09, blue: 0.07, alpha: 1.0)
+    }
+    
+    static let heroPaperUIColor = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.10, green: 0.13, blue: 0.11, alpha: 1.0)
+            : UIColor(red: 1.0, green: 0.995, blue: 0.97, alpha: 1.0)
+    }
+    
+    static var heroInk: Color { Color(heroInkUIColor) }
+    static var heroPaper: Color { Color(heroPaperUIColor) }
+    
     static var textSecondary: Color {
         Color(UIColor { trait in
             trait.userInterfaceStyle == .dark
