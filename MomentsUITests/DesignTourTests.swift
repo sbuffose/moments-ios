@@ -114,8 +114,11 @@ final class DesignTourTests: XCTestCase {
     }
     
     private func resolvedDeviceSlug() -> String {
-        if let env = ProcessInfo.processInfo.environment["UITEST_DEVICE_SLUG"], !env.isEmpty {
-            return env
+        let env = ProcessInfo.processInfo.environment
+        for key in ["UITEST_DEVICE_SLUG", "TEST_RUNNER_UITEST_DEVICE_SLUG"] {
+            if let value = env[key], !value.isEmpty {
+                return value
+            }
         }
         return "iphone16pro"
     }
@@ -193,7 +196,8 @@ final class DesignTourTests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
         
-        if let dir = ProcessInfo.processInfo.environment["UITEST_SCREENSHOT_DIR"], !dir.isEmpty {
+        let env = ProcessInfo.processInfo.environment
+        if let dir = env["UITEST_SCREENSHOT_DIR"] ?? env["TEST_RUNNER_UITEST_SCREENSHOT_DIR"], !dir.isEmpty {
             let folder = URL(fileURLWithPath: dir, isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try? shot.pngRepresentation.write(to: folder.appendingPathComponent("\(name).png"))

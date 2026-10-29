@@ -437,6 +437,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/design-tour"
+          brew install chargepoint/xcparse/xcparse 2>/dev/null || true
           RUNTIME=$(xcrun simctl list runtimes iOS | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
           echo "Using runtime $RUNTIME"
 
@@ -503,18 +504,22 @@ jobs:
               echo "xcodebuild test exited with $STATUS for $SLUG"
               exit "$STATUS"
             fi
+            mkdir -p "$RUNNER_TEMP/design-tour/$SLUG"
+            if command -v xcparse &> /dev/null; then
+              xcparse screenshots "$RUNNER_TEMP/test-results/DesignTour-$SLUG.xcresult" "$RUNNER_TEMP/design-tour/$SLUG" 2>/dev/null || true
+            fi
+            python3 scripts/ci/extract_xcresult_screenshots.py \
+              "$RUNNER_TEMP/test-results/DesignTour-$SLUG.xcresult" \
+              "$RUNNER_TEMP/design-tour/$SLUG" || true
             xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
           }
 
           run_tour "$PRO_ID" "iphone16pro"
           run_tour "$SE_ID" "iphonese"
 
-          COUNT=$(ls -1 "$RUNNER_TEMP/design-tour/"*.png 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$COUNT" -lt 8 ]; then
-            find "$RUNNER_TEMP/test-results" -name "*.png" -exec cp {} "$RUNNER_TEMP/design-tour/" \; || true
-            COUNT=$(ls -1 "$RUNNER_TEMP/design-tour/"*.png 2>/dev/null | wc -l | tr -d ' ')
-          fi
+          COUNT=$(find "$RUNNER_TEMP/design-tour" -type f \( -name '*.png' -o -name '*.jpg' \) | wc -l | tr -d ' ')
           echo "Design tour PNG count: $COUNT"
+          find "$RUNNER_TEMP/design-tour" -type f \( -name '*.png' -o -name '*.jpg' \) | head -40
           if [ "$COUNT" -lt 8 ]; then
             echo "FAIL: expected design-tour screenshots, got $COUNT"
             exit 1
