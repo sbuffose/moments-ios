@@ -7,6 +7,20 @@ import UserNotifications
 import BackgroundTasks
 import Photos
 
+enum MomentsTestRuntime {
+    static var isXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.arguments.contains("-XCTest")
+    }
+    
+    static var isUITesting: Bool {
+        ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
+            || ProcessInfo.processInfo.environment["UITEST_MODE"] == "1"
+    }
+    
+    static var shouldSkipLiveScan: Bool { isXCTest && !isUITesting }
+}
+
 @main
 struct MomentsApp: App {
     let container: ModelContainer
@@ -363,6 +377,7 @@ class AppState: ObservableObject {
     // MARK: - Background Processing (Non-blocking)
     
     func startBackgroundIndexingAndAnalysis() {
+        guard !MomentsTestRuntime.shouldSkipLiveScan else { return }
         guard let photoService = photoLibraryService else { return }
         
         // Cancel any existing tasks

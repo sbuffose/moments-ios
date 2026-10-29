@@ -561,11 +561,11 @@ enum ReviewBatchSummarySimulation {
     static let previewFreedBytes: Int64 = 4_200_000
     
     static var isKeptAll: Bool {
-        ProcessInfo.processInfo.arguments.contains(keptAllArgument)
+        ProcessInfo.processInfo.arguments.contains { $0.contains("simulateKeptAllSummary") }
     }
     
     static var isDeletedSome: Bool {
-        ProcessInfo.processInfo.arguments.contains(deletedArgument)
+        ProcessInfo.processInfo.arguments.contains { $0.contains("simulateDeletedSummary") }
     }
     
     static var isActive: Bool { isKeptAll || isDeletedSome }

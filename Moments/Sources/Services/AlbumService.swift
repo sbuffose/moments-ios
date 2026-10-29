@@ -16,6 +16,9 @@ enum AlbumService {
     }
     
     static func userAlbumTitles() -> [String] {
+        let inUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            && ProcessInfo.processInfo.environment["UI_TESTING"] != "1"
+        if inUnitTests { return [] }
         let result = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
         var titles: [String] = []
         result.enumerateObjects { collection, _, _ in
