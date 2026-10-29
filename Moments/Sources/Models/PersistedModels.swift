@@ -54,11 +54,74 @@ enum PhotoOrigin: String, Codable, CaseIterable, Sendable {
     static func fromFilename(_ filename: String?) -> PhotoOrigin? {
         guard let raw = filename?.lowercased(), !raw.isEmpty else { return nil }
         if raw.contains("-wa") || raw.contains("whatsapp") { return .whatsapp }
-        if raw.contains("screenshot") || raw.hasPrefix("captura") { return .screenshot }
+        if raw.contains("screenshot") || raw.contains("captura") { return .screenshot }
         if raw.contains("telegram") { return .telegram }
         if raw.contains("instagram") { return .instagram }
         if raw.hasPrefix("download") || raw.contains("file_from") { return .download }
         return nil
+    }
+    
+    /// PHAsset-free origin detection for review chips and unit tests.
+    static func detect(
+        filename: String? = nil,
+        software: String? = nil,
+        hasCameraExif: Bool = false,
+        isScreenshot: Bool = false
+    ) -> PhotoOrigin {
+        if isScreenshot { return .screenshot }
+        if let named = fromFilename(filename) { return named }
+        if let software = software?.lowercased() {
+            if software.contains("whatsapp") { return .whatsapp }
+            if software.contains("telegram") { return .telegram }
+            if software.contains("instagram") { return .instagram }
+            if software.contains("snapchat") { return .snapchat }
+        }
+        if hasCameraExif { return .camera }
+        return .unknown
+    }
+    
+    var displayName: String {
+        displayName(in: .main)
+    }
+    
+    func displayName(in bundle: Bundle) -> String {
+        let value = bundle.localizedString(forKey: localizedKey, value: localizedKey, table: nil)
+        if value == localizedKey || value.hasPrefix("origin_") {
+            return Self.fallbackDisplayName(for: self)
+        }
+        return value
+    }
+    
+    static func fallbackDisplayName(for origin: PhotoOrigin) -> String {
+        switch origin {
+        case .camera: return "Cámara"
+        case .screenshot: return "Captura de pantalla"
+        case .screenRecording: return "Grabación de pantalla"
+        case .whatsapp: return "WhatsApp"
+        case .telegram: return "Telegram"
+        case .instagram: return "Instagram"
+        case .messenger: return "Messenger"
+        case .snapchat: return "Snapchat"
+        case .twitter: return "Twitter"
+        case .tiktok: return "TikTok"
+        case .download: return "Descargada"
+        case .savedFromWeb: return "Guardado de web"
+        case .editedExport: return "Exportación editada"
+        case .airdrop: return "AirDrop"
+        case .email: return "Email"
+        case .cloudSync: return "Sincronizado"
+        case .unknown: return "Desconocido"
+        }
+    }
+    
+    static func reviewChip(for photo: PersistedPhoto) -> PhotoOrigin? {
+        if photo.origin != .unknown { return photo.origin }
+        switch photo.cleanupCategory {
+        case .screenshot: return .screenshot
+        case .screenRecording: return .screenRecording
+        case .downloadedMeme: return .download
+        default: return nil
+        }
     }
     
     var isMessagingApp: Bool {

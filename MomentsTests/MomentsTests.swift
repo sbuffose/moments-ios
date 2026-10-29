@@ -2524,10 +2524,14 @@ final class MomentsTests: XCTestCase {
     }
     
     func testHomeHeroHeadlineUsesNextBatch() throws {
-        let headline = HomeView.heroHeadline(todayBytes: 33_800_000, totalBytes: 24_300_000_000)
-        XCTAssertTrue(headline.contains("En el lote de hoy"), headline)
+        let headline = HomeView.heroHeadline(todayBytes: 33_800_000, totalBytes: 24_300_000_000, itemCount: 20)
+        XCTAssertTrue(headline.contains("20 fotos para hoy"), headline)
         XCTAssertTrue(headline.contains("en total podés liberar"), headline)
         XCTAssertFalse(headline.contains("Analizando"))
+        
+        let same = HomeView.heroHeadline(todayBytes: 70_900_000, totalBytes: 70_900_000, itemCount: 20)
+        XCTAssertTrue(same.contains("20 fotos para hoy"), same)
+        XCTAssertFalse(same.contains("en total"), same)
     }
     
     func testAppDoesNotForceDarkColorScheme() throws {
@@ -2817,8 +2821,50 @@ final class MomentsTests: XCTestCase {
     func testSourceDetectionFromFilename() {
         XCTAssertEqual(PhotoOrigin.fromFilename("IMG-20260312-WA0004.jpg"), .whatsapp)
         XCTAssertEqual(PhotoOrigin.fromFilename("Screenshot 2026-03-12.png"), .screenshot)
+        XCTAssertEqual(PhotoOrigin.fromFilename("Captura de pantalla 2026-03-12.png"), .screenshot)
         XCTAssertEqual(PhotoOrigin.fromFilename("download_file.png"), .download)
         XCTAssertNil(PhotoOrigin.fromFilename("IMG_1001.HEIC"))
+        
+        XCTAssertEqual(PhotoOrigin.detect(filename: "IMG-20260312-WA0004.jpg"), .whatsapp)
+        XCTAssertEqual(PhotoOrigin.detect(filename: "Screenshot 2026-03-12.png"), .screenshot)
+        XCTAssertEqual(PhotoOrigin.detect(filename: "Captura de pantalla.png"), .screenshot)
+        XCTAssertEqual(PhotoOrigin.detect(hasCameraExif: true), .camera)
+        XCTAssertEqual(PhotoOrigin.detect(filename: "download_file.png"), .download)
+        XCTAssertEqual(PhotoOrigin.detect(software: "WhatsApp"), .whatsapp)
+        XCTAssertEqual(PhotoOrigin.detect(isScreenshot: true), .screenshot)
+        XCTAssertEqual(PhotoOrigin.detect(filename: "IMG_1001.HEIC", hasCameraExif: true), .camera)
+        
+        XCTAssertEqual(PhotoOrigin.fallbackDisplayName(for: .whatsapp), "WhatsApp")
+        XCTAssertEqual(PhotoOrigin.fallbackDisplayName(for: .screenshot), "Captura de pantalla")
+        XCTAssertEqual(PhotoOrigin.fallbackDisplayName(for: .camera), "Cámara")
+        XCTAssertEqual(PhotoOrigin.fallbackDisplayName(for: .download), "Descargada")
+    }
+    
+    @MainActor
+    func testReviewSourceChipUsesDetectedOrigin() throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let whatsapp = PersistedPhoto(localIdentifier: "chip-wa")
+        whatsapp.origin = .whatsapp
+        context.insert(whatsapp)
+        let screenshot = PersistedPhoto(localIdentifier: "chip-shot")
+        screenshot.cleanupCategory = .screenshot
+        context.insert(screenshot)
+        let camera = PersistedPhoto(localIdentifier: "chip-cam")
+        camera.origin = .camera
+        context.insert(camera)
+        let downloaded = PersistedPhoto(localIdentifier: "chip-dl")
+        downloaded.origin = .download
+        context.insert(downloaded)
+        
+        XCTAssertEqual(PhotoOrigin.reviewChip(for: whatsapp), .whatsapp)
+        XCTAssertEqual(PhotoOrigin.reviewChip(for: screenshot), .screenshot)
+        XCTAssertEqual(PhotoOrigin.reviewChip(for: camera), .camera)
+        XCTAssertEqual(PhotoOrigin.reviewChip(for: downloaded), .download)
+        XCTAssertEqual(PhotoOrigin.fallbackDisplayName(for: PhotoOrigin.reviewChip(for: whatsapp)!), "WhatsApp")
     }
     
     func testWhatsAppFilenameIsDetectedAsMessagingOrigin() {
@@ -2916,6 +2962,17 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(DailyReviewService.notificationIdentifier, "daily-review")
         XCTAssertTrue(DailyReviewService.legacyNotificationIdentifiers.contains("daily-review"))
         XCTAssertTrue(DailyReviewService.legacyNotificationIdentifiers.contains("daily-review-21-0"))
+    }
+    
+    @MainActor
+    func testGetSettingsSurvivesSchemaWithoutDailyReviewSettings() async throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        DailyReviewService.shared.initialize(modelContext: container.mainContext)
+        let settings = await DailyReviewService.shared.getSettings()
+        XCTAssertTrue(settings.isEnabled)
+        XCTAssertEqual(settings.reviewHour, 21)
     }
     
     @MainActor

@@ -38,6 +38,7 @@ final class DesignTourTests: XCTestCase {
             || app.staticTexts["onboarding.root"].waitForExistence(timeout: 2)
         capture("onboarding_page1", scheme: scheme, device: device)
         XCTAssertTrue(onboardingVisible, "Onboarding page 1")
+        assertScreen(.onboarding)
         assertChrome([app.otherElements["onboarding.page1"], app.buttons["onboarding.continue"]])
         let continueButton = app.buttons["onboarding.continue"].exists
             ? app.buttons["onboarding.continue"]
@@ -64,6 +65,7 @@ final class DesignTourTests: XCTestCase {
         XCTAssertTrue(app.otherElements["home.scrollView"].waitForExistence(timeout: 12)
                       || app.otherElements["home.root"].waitForExistence(timeout: 4), "Ready home")
         capture("home_ready", scheme: scheme, device: device)
+        assertScreen(.home)
         assertChrome([app.buttons["home.reviewButton"]])
         
         launch(["-simulateEmptyHome", appearance], seed: false)
@@ -78,31 +80,38 @@ final class DesignTourTests: XCTestCase {
         launch(["-seedFixturePhotos", appearance])
         openReview()
         capture("review_card", scheme: scheme, device: device)
+        assertScreen(.review)
+        DesignLayoutAssert.assertReviewCardAtRest(app)
         
         launch(["-seedFixturePhotos", "-simulateMidSwipeKeep", appearance])
         openReview()
         _ = app.staticTexts["review.swipeStamp"].waitForExistence(timeout: 4)
         capture("review_midswipe_keep", scheme: scheme, device: device)
+        assertScreen(.review)
         
         launch(["-seedFixturePhotos", "-simulateMidSwipeDelete", appearance])
         openReview()
         _ = app.staticTexts["review.swipeStamp"].waitForExistence(timeout: 4)
         capture("review_midswipe_delete", scheme: scheme, device: device)
+        assertScreen(.review)
         
         launch(["-seedFixturePhotos", "-simulateMidSwipeSnooze", appearance])
         openReview()
         _ = app.staticTexts["review.swipeStamp"].waitForExistence(timeout: 4)
         capture("review_midswipe_snooze", scheme: scheme, device: device)
+        assertScreen(.review)
         
         launch(["-seedFixturePhotos", "-simulateKeptAllSummary", appearance])
         openReview()
         XCTAssertTrue(existsId("review.batchSummary", timeout: 12), "Kept-all summary")
         capture("summary_kept_all", scheme: scheme, device: device)
+        assertScreen(.summaryKept)
         
         launch(["-seedFixturePhotos", "-simulateDeletedSummary", appearance])
         openReview()
         XCTAssertTrue(existsId("review.batchSummary", timeout: 12), "Deleted summary")
         capture("summary_deleted", scheme: scheme, device: device)
+        assertScreen(.summaryDeleted)
         
         launch(["-seedFixturePhotos", appearance])
         openTab(2)
@@ -207,5 +216,9 @@ final class DesignTourTests: XCTestCase {
     
     private func assertChrome(_ elements: [XCUIElement]) {
         DesignLayoutAssert.assertVisibleChrome(app, elements: elements.filter(\.exists))
+    }
+    
+    private func assertScreen(_ screen: DesignTourScreen) {
+        DesignLayoutAssert.assertScreen(app, screen)
     }
 }

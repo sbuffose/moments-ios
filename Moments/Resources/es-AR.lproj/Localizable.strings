@@ -260,7 +260,7 @@
 "origin_snapchat" = "Snapchat";
 "origin_twitter" = "Twitter";
 "origin_tiktok" = "TikTok";
-"origin_download" = "Descarga";
+"origin_download" = "Descargada";
 "origin_savedFromWeb" = "Guardado de web";
 "origin_editedExport" = "Exportación editada";
 "origin_airdrop" = "AirDrop";
@@ -623,6 +623,9 @@
 "humor_batch_done" = "¡Listo! Tu galería te lo agradece";
 "humor_batch_kept_all" = "Sos de los que guardan todo, ¿no? 😄";
 "humor_liberaste %1$@" = "Liberaste %1$@";
+"humor_kept_count %1$lld" = "Conservaste las %1$lld";
+"humor_liberados" = "liberados";
+"summary_deleted_hint" = "Se libera del todo al vaciar Eliminados recientemente";
 "humor_undo" = "Deshacer";
 "humor_mascot" = "Sol de Moments";
 "humor_stamp_keep" = "Conservar";

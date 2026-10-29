@@ -30,9 +30,9 @@ struct MomentsAliveBackground: View {
     private func blob(color: Color, x: CGFloat, y: CGFloat, size: CGFloat, drift: CGFloat) -> some View {
         GeometryReader { geo in
             Circle()
-                .fill(color.opacity((colorScheme == .dark ? 0.22 : 0.28) * intensity))
+                .fill(color.opacity((colorScheme == .dark ? 0.40 : 0.48) * intensity))
                 .frame(width: size, height: size)
-                .blur(radius: 36)
+                .blur(radius: 28)
                 .position(
                     x: geo.size.width * x + (reduceMotion ? 0 : drift * phase),
                     y: geo.size.height * y + (reduceMotion ? 0 : -drift * phase)
@@ -209,14 +209,16 @@ struct HomeCardBreathing: ViewModifier {
 /// Tiny text the UI-test host can query. Color.clear overlays never enter the AX tree.
 struct AccessibilityProbe: View {
     let id: String
+    var label: String? = nil
     
     var body: some View {
-        Text(id)
+        Text(label ?? id)
             .font(.system(size: 1))
-            .foregroundStyle(.clear)
+            .foregroundStyle(.white.opacity(0.012))
             .frame(width: 1, height: 1)
             .accessibilityIdentifier(id)
-            .accessibilityLabel(id)
+            .accessibilityLabel(label ?? id)
+            .accessibilityValue(label ?? id)
             .allowsHitTesting(false)
     }
 }

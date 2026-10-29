@@ -406,7 +406,11 @@ class AssistantViewModel: ObservableObject {
         let items = inventory.totalReclaimableItems
         
         return AssistantMessage(
-            text: "En el lote de hoy: \(cleanupViewModel.formattedSize(inventory.todayBatchBytes)) · en total podés liberar \(canFree)",
+            text: HomeView.heroHeadline(
+                todayBytes: inventory.todayBatchBytes,
+                totalBytes: inventory.totalReclaimableBytes,
+                itemCount: inventory.todayBatchItems
+            ),
             isUser: false,
             card: .spaceInfo(canFree: canFree, saved: saved, items: items)
         )

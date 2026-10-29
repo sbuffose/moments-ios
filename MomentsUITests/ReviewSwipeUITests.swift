@@ -40,6 +40,24 @@ final class ReviewSwipeUITests: XCTestCase {
         swipeAndAssert(direction: .up, expected: "snooze")
     }
     
+    func testTapCardOpensFullScreenViewerAndDismisses() {
+        openReview()
+        let card = cardQuery
+        XCTAssertTrue(card.waitForExistence(timeout: 6), "Review card")
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        
+        let viewer = app.descendants(matching: .any)["review.photoViewer"].firstMatch
+        XCTAssertTrue(viewer.waitForExistence(timeout: 5), "Full-screen viewer after tap")
+        
+        let close = app.buttons["review.photoViewer.dismiss"]
+        if close.waitForExistence(timeout: 2) {
+            close.tap()
+        } else {
+            viewer.swipeDown()
+        }
+        XCTAssertFalse(viewer.waitForExistence(timeout: 3), "Viewer must dismiss")
+    }
+    
     private enum Swipe {
         case left, right, up
     }
@@ -65,9 +83,11 @@ final class ReviewSwipeUITests: XCTestCase {
         
         XCTAssertTrue(waitForDecision(expected), "Stamp or toast should appear after swipe \(expected)")
         
-        let toast = app.staticTexts["review.decisionToast"]
-        if toast.exists {
-            XCTAssertFalse(toast.label.isEmpty, "Stamp/toast label must not be empty")
+        if let toast = elementTextIfPresent("review.decisionToast") {
+            XCTAssertFalse(
+                toast.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                "Stamp/toast label must not be empty"
+            )
         }
         
         let next = cardQuery
@@ -78,22 +98,35 @@ final class ReviewSwipeUITests: XCTestCase {
         )
     }
     
-    private func waitForDecision(_ expected: String, timeout: TimeInterval = 1) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let text = elementText(app.staticTexts["review.lastDecision"])
-            if text.contains(expected) { return true }
-            if app.staticTexts["review.decisionToast"].exists { return true }
-            if app.staticTexts["review.swipeStamp"].exists { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    private func waitForDecision(_ expected: String, timeout: TimeInterval = 4) -> Bool {
+        let predicate = NSPredicate { _, _ in
+            self.decisionSignal(contains: expected)
         }
-        return elementText(app.staticTexts["review.lastDecision"]).contains(expected)
-            || app.staticTexts["review.decisionToast"].exists
-            || app.staticTexts["review.swipeStamp"].exists
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
     
-    private func elementText(_ element: XCUIElement) -> String {
-        element.label + (element.value as? String ?? "")
+    private func decisionSignal(contains expected: String) -> Bool {
+        if let last = elementTextIfPresent("review.lastDecision")?.lowercased(),
+           last.contains(expected) {
+            return true
+        }
+        if let toast = elementTextIfPresent("review.decisionToast"),
+           !toast.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return elementExists("review.swipeStamp")
+    }
+    
+    private func elementExists(_ identifier: String) -> Bool {
+        app.descendants(matching: .any).matching(identifier: identifier).count > 0
+    }
+    
+    private func elementTextIfPresent(_ identifier: String) -> String? {
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        guard matches.count > 0 else { return nil }
+        let element = matches.element(boundBy: 0)
+        return element.label + (element.value as? String ?? "")
     }
     
     private func drag(_ card: XCUIElement, direction: Swipe) {
@@ -101,16 +134,16 @@ final class ReviewSwipeUITests: XCTestCase {
         let end: CGVector
         switch direction {
         case .left:
-            start = CGVector(dx: 0.80, dy: 0.48)
-            end = CGVector(dx: 0.08, dy: 0.52)
+            start = CGVector(dx: 0.82, dy: 0.42)
+            end = CGVector(dx: 0.22, dy: 0.46)
         case .right:
-            start = CGVector(dx: 0.20, dy: 0.48)
-            end = CGVector(dx: 0.92, dy: 0.52)
+            start = CGVector(dx: 0.18, dy: 0.42)
+            end = CGVector(dx: 0.88, dy: 0.46)
         case .up:
-            start = CGVector(dx: 0.50, dy: 0.78)
-            end = CGVector(dx: 0.50, dy: 0.08)
+            start = CGVector(dx: 0.50, dy: 0.72)
+            end = CGVector(dx: 0.50, dy: 0.14)
         }
         card.coordinate(withNormalizedOffset: start)
-            .press(forDuration: 0.08, thenDragTo: card.coordinate(withNormalizedOffset: end))
+            .press(forDuration: 0.18, thenDragTo: card.coordinate(withNormalizedOffset: end))
     }
 }

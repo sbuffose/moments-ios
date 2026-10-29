@@ -27,6 +27,10 @@ final class DailyReviewService: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        // Unit-test hosts use partial in-memory schemas. A delayed fetch of
+        // DailyReviewSettings traps (EXC_BREAKPOINT) when that model is absent
+        // or the test container has already been released.
+        guard !MomentsTestRuntime.shouldSkipLiveScan else { return }
         Task {
             await checkNotificationPermission()
             await scheduleNotificationIfEnabled()
@@ -85,22 +89,30 @@ final class DailyReviewService: ObservableObject {
     // MARK: - Settings
     
     func getSettings() async -> DailyReviewSettings {
-        guard let context = modelContext else {
+        guard let context = modelContext, contextSupportsSettings(context) else {
             return DailyReviewSettings()
         }
         
-        let descriptor = FetchDescriptor<DailyReviewSettings>(
-            predicate: #Predicate<DailyReviewSettings> { $0.id == "main" }
-        )
-        
-        if let existing = try? context.fetch(descriptor).first {
-            return existing
+        do {
+            let descriptor = FetchDescriptor<DailyReviewSettings>(
+                predicate: #Predicate<DailyReviewSettings> { $0.id == "main" }
+            )
+            if let existing = try context.fetch(descriptor).first {
+                return existing
+            }
+            let newSettings = DailyReviewSettings()
+            context.insert(newSettings)
+            try context.save()
+            return newSettings
+        } catch {
+            return DailyReviewSettings()
         }
-        
-        let newSettings = DailyReviewSettings()
-        context.insert(newSettings)
-        try? context.save()
-        return newSettings
+    }
+    
+    private func contextSupportsSettings(_ context: ModelContext) -> Bool {
+        context.container.schema.entities.contains { entity in
+            entity.name == "DailyReviewSettings"
+        }
     }
     
     func updateSettings(

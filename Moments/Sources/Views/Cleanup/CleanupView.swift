@@ -5,6 +5,7 @@ import SwiftUI
 import SwiftData
 import Photos
 import AVFoundation
+import UIKit
 
 struct CleanupView: View {
     @Environment(\.modelContext) private var modelContext
@@ -564,7 +565,7 @@ struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
     @StateObject private var shareService = ShareLoadingService()
     @State private var showFinishSheet = false
-    @State private var showAlbumSheet = false
+    @State private var showTagSheet = false
     @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
     @State private var sharedPhotoId: String?
@@ -574,6 +575,7 @@ struct CleanupReviewView: View {
     @State private var decisionToast: String?
     @State private var lastDecision: ReviewSwipeDirection = .none
     @State private var undoPhotoId: String?
+    @State private var viewingPhoto: PersistedPhoto?
     @Namespace private var reviewMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -607,6 +609,22 @@ struct CleanupReviewView: View {
         min(viewModel.reviewedItemCount() + 1, max(totalItems, 1))
     }
     
+    private var isShowingSummary: Bool {
+        DesignTourSimulation.forcesReviewSummary || currentItem == nil
+    }
+    
+    private var nextReviewPhoto: PersistedPhoto? {
+        unreviewedItems.dropFirst().first?.bestPhoto
+    }
+    
+    private var photosToTag: [PersistedPhoto] {
+        switch currentItem {
+        case .single(let photo): return [photo]
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos): return photos
+        case nil: return []
+        }
+    }
+    
     private var currentItem: ReviewItem? {
         unreviewedItems.first
     }
@@ -620,19 +638,6 @@ struct CleanupReviewView: View {
             return CleanupCategoryType.duplicate
         case .similarGroup(_, _):
             return CleanupCategoryType.nearDuplicate
-        }
-    }
-    
-    private var showsBlackFrameLabel: Bool {
-        switch currentItem {
-        case .single(let photo):
-            return PhotoLuminanceClass.classify(meanLuminance: photo.exposureScore ?? 0.5) == .blackFrame
-        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
-            return photos.contains {
-                PhotoLuminanceClass.classify(meanLuminance: $0.exposureScore ?? 0.5) == .blackFrame
-            }
-        case nil:
-            return false
         }
     }
     
@@ -678,20 +683,6 @@ struct CleanupReviewView: View {
                         .animation(.easeInOut(duration: 0.2), value: category)
                 }
                 
-                if showsBlackFrameLabel {
-                    Text(PhotoLuminanceClass.blackFrameTitle)
-                        .font(MomentsTypography.headlineMedium)
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.72), in: Capsule())
-                        .padding(.top, 6)
-                        .accessibilityIdentifier("review.blackFrameLabel")
-                        .accessibilityLabel(PhotoLuminanceClass.blackFrameTitle)
-                        .allowsHitTesting(false)
-                }
-                
                 Spacer()
                 
                 // Show appropriate card based on item type
@@ -705,7 +696,7 @@ struct CleanupReviewView: View {
                             group: group,
                             photos: photos,
                             viewModel: viewModel,
-                            onSaveToAlbum: { showAlbumSheet = true },
+                            onSaveToAlbum: { showTagSheet = true },
                             onComplete: {
                                 // Queue shrinks automatically - don't advance index
                             }
@@ -716,14 +707,13 @@ struct CleanupReviewView: View {
                             group: group,
                             photos: photos,
                             viewModel: viewModel,
-                            onSaveToAlbum: { showAlbumSheet = true },
+                            onSaveToAlbum: { showTagSheet = true },
                             onComplete: {
                                 // Queue shrinks automatically - don't advance index
                             }
                         )
                     }
                 }
-                .accessibilityIdentifier("review.photoCard")
                 
                 if showKeepDurationChip, let keptId = lastKeptPhotoId {
                     KeepDurationChipRow(
@@ -748,24 +738,21 @@ struct CleanupReviewView: View {
                 reviewCompleteView
             }
         }
-        .navigationTitle(Text("Revisar fotos"))
+        .navigationTitle(isShowingSummary ? Text("") : Text("Revisar fotos"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .background(DisableInteractivePop())
         .overlay(alignment: .bottom) {
             VStack(spacing: 8) {
-                Text(lastDecision.rawValue)
-                    .font(.caption2)
-                    .foregroundStyle(.clear)
+                AccessibilityProbe(id: "review.lastDecision", label: lastDecision.rawValue)
                     .id(lastDecision)
-                    .accessibilityIdentifier("review.lastDecision")
-                    .accessibilityLabel(lastDecision.rawValue)
-                    .accessibilityValue(lastDecision.rawValue)
                 if let decisionToast {
                     Text(decisionToast)
                         .font(MomentsTypography.headlineSmall)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                         .accessibilityIdentifier("review.decisionToast")
+                        .accessibilityLabel(decisionToast)
                     if let undoPhotoId {
                         Button(String(localized: "humor_undo")) {
                             MomentsMotion.animate(reduceMotion: reduceMotion) {
@@ -791,34 +778,43 @@ struct CleanupReviewView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.root")
+        .navigationBarHidden(isShowingSummary)
+        .toolbar(isShowingSummary ? .hidden : .automatic, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    if photosToDelete.count > 0 {
-                        showFinishSheet = true
-                    } else {
-                        dismiss()
+            if !isShowingSummary {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        if photosToDelete.count > 0 {
+                            showFinishSheet = true
+                        } else {
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
                     }
-                } label: {
-                    Image(systemName: "chevron.left")
+                    .accessibilityIdentifier("review.back")
                 }
-                .accessibilityIdentifier("review.back")
-            }
-            
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Terminar") {
-                    showFinishSheet = true
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Terminar") {
+                        showFinishSheet = true
+                    }
+                    .fontWeight(.medium)
                 }
-                .fontWeight(.medium)
             }
         }
         .interactiveDismissDisabled(true)
-        .sheet(isPresented: $showAlbumSheet) {
-            SaveToAlbumSheet(item: currentItem) { identifiers in
-                for id in identifiers {
-                    viewModel.keepPhoto(id, duration: .forever)
-                }
+        .fullScreenCover(isPresented: Binding(
+            get: { viewingPhoto != nil },
+            set: { if !$0 { viewingPhoto = nil } }
+        )) {
+            ReviewPhotoViewer(localIdentifier: viewingPhoto?.localIdentifier ?? "") {
+                viewingPhoto = nil
             }
+        }
+        .sheet(isPresented: $showTagSheet) {
+            TagPhotoSheet(photos: photosToTag) { _ in }
         }
         .sheet(isPresented: $showFinishSheet) {
             ReviewSummarySheet(
@@ -888,107 +884,74 @@ struct CleanupReviewView: View {
     @ViewBuilder
     private func singlePhotoCard(photo: PersistedPhoto) -> some View {
         VStack(spacing: 0) {
-            Spacer()
-            
-            // Photo card with consistent sizing
-            GeometryReader { geometry in
-                let cardWidth = geometry.size.width - 32
-                let cardHeight = min(geometry.size.height, cardWidth * 1.3)
-                
-                SwipeablePhotoCard(
-                    photo: photo,
-                    category: categoryFor(photo: photo),
-                    onKeep: {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(photo.id, delete: false)
-                            showChipRowAfterKeep(photoId: photo.id)
-                        }
-                    },
-                    onDelete: {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.markAsReviewed(photo.id, delete: true)
-                        }
-                    },
-                    onSnooze: {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.keepPhoto(photo.id, duration: .oneWeek)
-                        }
-                    },
-                    onDecisionToast: { direction, line in
-                        presentDecision(direction, line: line, photoId: photo.id)
+            SwipeablePhotoCard(
+                photo: photo,
+                nextPhoto: nextReviewPhoto,
+                category: categoryFor(photo: photo),
+                onKeep: {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photo.id, delete: false)
+                        showChipRowAfterKeep(photoId: photo.id)
                     }
-                )
-                .frame(width: cardWidth, height: cardHeight)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .bottomTrailing) {
-                    if let size = photo.estimatedFileSize, size > 0 {
-                        Text(SpaceFormatting.string(from: size))
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .padding(10)
-                            .accessibilityIdentifier("review.itemSize")
+                },
+                onDelete: {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.markAsReviewed(photo.id, delete: true)
                     }
+                },
+                onSnooze: {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.keepPhoto(photo.id, duration: .oneWeek)
+                    }
+                },
+                onOpen: { viewingPhoto = photo },
+                onDecisionToast: { direction, line in
+                    presentDecision(direction, line: line, photoId: photo.id)
                 }
-            }
-            .padding(.horizontal, 16)
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, 8)
             
-            Spacer()
-            
-            SaveToAlbumReviewButton {
-                showAlbumSheet = true
+            TagReviewButton {
+                showTagSheet = true
             }
             .padding(.bottom, 8)
             
-            // Action buttons - fixed width, equal spacing, centered labels
             HStack(spacing: 0) {
-                // Keep button with menu for options (long-press discoverable)
-                Menu {
+                Button {
+                    viewModel.keepPhoto(photo.id, duration: .forever)
+                    showChipRowAfterKeep(photoId: photo.id)
+                } label: {
+                    ReviewActionButton(kind: .keep, isLoading: false)
+                }
+                .buttonStyle(MomentsBouncyButtonStyle())
+                .contextMenu {
                     Button {
                         viewModel.keepPhoto(photo.id, duration: .forever)
-                        // Queue shrinks automatically
                     } label: {
                         Label("Conservar siempre", systemImage: "checkmark.circle.fill")
                     }
-                    
                     Button {
                         viewModel.keepPhoto(photo.id, duration: .oneWeek)
-                        // Queue shrinks automatically
                     } label: {
                         Label("Preguntar en 1 semana", systemImage: "clock")
                     }
-                    
                     Button {
                         viewModel.keepPhoto(photo.id, duration: .oneMonth)
-                        // Queue shrinks automatically
                     } label: {
                         Label("Preguntar en 1 mes", systemImage: "calendar")
                     }
-                    
                     Button {
                         viewModel.keepPhoto(photo.id, duration: .threeMonths)
-                        // Queue shrinks automatically
                     } label: {
                         Label("Preguntar en 3 meses", systemImage: "calendar.badge.clock")
                     }
-                } label: {
-                    ReviewActionButton(
-                        iconName: "checkmark.circle.fill",
-                        label: "Conservar",
-                        color: .green,
-                        isLoading: false
-                    )
-                } primaryAction: {
-                    viewModel.keepPhoto(photo.id, duration: .forever)
-                    showChipRowAfterKeep(photoId: photo.id)
-                    // Queue shrinks automatically
                 }
                 .disabled(shareService.isLoading)
                 .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("review.keepButton")
+                .accessibilityLabel(ReviewActionKind.keep.label)
                 
-                // Share button
                 Button {
                     Task {
                         sharedPhotoId = photo.id
@@ -1000,34 +963,29 @@ struct CleanupReviewView: View {
                     }
                 } label: {
                     ReviewActionButton(
-                        iconName: "square.and.arrow.up.circle.fill",
-                        label: "Compartir",
-                        color: .blue,
+                        kind: .share,
                         isLoading: shareService.isLoading && shareService.loadingPhotoId == photo.id
                     )
                 }
+                .buttonStyle(MomentsBouncyButtonStyle())
                 .disabled(shareService.isLoading)
                 .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("review.shareButton")
+                .accessibilityLabel(ReviewActionKind.share.label)
                 
-                // Delete button
                 Button {
                     viewModel.markAsReviewed(photo.id, delete: true)
-                    // Queue shrinks automatically
                 } label: {
-                    ReviewActionButton(
-                        iconName: "trash.circle.fill",
-                        label: "Eliminar",
-                        color: .red,
-                        isLoading: false
-                    )
+                    ReviewActionButton(kind: .delete, isLoading: false)
                 }
+                .buttonStyle(MomentsBouncyButtonStyle())
                 .disabled(shareService.isLoading)
                 .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("review.deleteButton")
+                .accessibilityLabel(ReviewActionKind.delete.label)
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 40)
+            .padding(.bottom, 28)
         }
     }
     
@@ -1065,29 +1023,37 @@ struct CleanupReviewView: View {
                     .font(MomentsTypography.displaySmall)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
+                    .accessibilityIdentifier("review.summaryTitle")
                 
-                if summaryDeletedBytes > 0 {
-                    VStack(spacing: 6) {
-                        Text(ReviewHumorCopy.liberatedLine(formattedBytes: SpaceFormatting.string(from: summaryDeletedBytes)))
-                            .font(MomentsTypography.headlineMedium)
+                if summaryDeletedCount == 0 {
+                    Text(ReviewHumorCopy.keptCountLine(count: totalItems))
+                        .font(MomentsTypography.headlineMedium)
+                        .foregroundStyle(MomentsColors.textSecondary)
+                        .accessibilityIdentifier("review.keptSubtitle")
+                } else {
+                    VStack(spacing: 8) {
                         AnimatedByteCounter(bytes: summaryDeletedBytes)
-                    }
-                }
-                
-                RecentlyDeletedHintView(bytes: summaryDeletedBytes)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                
-                VStack(spacing: 8) {
-                    if summaryDeletedCount == 0 {
-                        Text(ReviewHumorLine.batchKeptAll.localized)
+                        Text(String(localized: "humor_liberados"))
+                            .font(MomentsTypography.labelMedium)
                             .foregroundStyle(MomentsColors.textSecondary)
-                    } else {
-                        Text("En este lote de \(totalItems)")
+                            .accessibilityIdentifier("review.liberatedCaption")
+                        Text(String(localized: "summary_deleted_hint"))
+                            .font(MomentsTypography.bodySmall)
                             .foregroundStyle(MomentsColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                            .accessibilityIdentifier("review.deletedHint")
+                        if let url = SpaceFormatting.photosAppURL {
+                            Button {
+                                UIApplication.shared.open(url)
+                            } label: {
+                                Label("Abrir Fotos", systemImage: "photo.on.rectangle")
+                            }
+                            .accessibilityIdentifier("space.openPhotos")
+                        }
                     }
+                    .accessibilityIdentifier("review.sessionSummary")
                 }
-                .accessibilityIdentifier("review.sessionSummary")
                 
                 Spacer()
                 
@@ -1130,6 +1096,7 @@ struct CleanupReviewView: View {
                 .accessibilityIdentifier("review.doneForToday")
             }
         }
+        .ignoresSafeArea()
         .momentsEntrance()
     }
     
@@ -1285,7 +1252,7 @@ struct ExactDuplicateGroupCard: View {
                     onComplete()
                 }
                 
-                SaveToAlbumReviewButton(action: onSaveToAlbum)
+                TagReviewButton(action: onSaveToAlbum)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -1494,7 +1461,7 @@ struct SimilarGroupCard: View {
                     }
                 }
                 
-                SaveToAlbumReviewButton(action: onSaveToAlbum)
+                TagReviewButton(action: onSaveToAlbum)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -2256,10 +2223,12 @@ struct CleanupPhotoCell: View {
 
 struct SwipeablePhotoCard: View {
     let photo: PersistedPhoto
+    var nextPhoto: PersistedPhoto? = nil
     var category: CleanupCategoryType? = nil
     let onKeep: () -> Void
     let onDelete: () -> Void
     var onSnooze: (() -> Void)? = nil
+    var onOpen: (() -> Void)? = nil
     var onDecisionToast: ((ReviewSwipeDirection, String) -> Void)? = nil
     
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -2282,22 +2251,33 @@ struct SwipeablePhotoCard: View {
     }
     
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                nextCard
-                    .frame(width: geometry.size.width * 0.94, height: geometry.size.height * 0.94)
-                    .scaleEffect(nextCardPop ? 1.0 : 0.92)
-                
-                cardStack
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(offset)
-                    .rotationEffect(.degrees(rotation))
-                    .gesture(drag)
+        let screenWidth = UIScreen.main.bounds.width
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                GeometryReader { geo in
+                    let cardSize = ReviewCardLayout.size(in: geo.size, screenWidth: screenWidth)
+                    ZStack {
+                        nextCard
+                            .frame(width: cardSize.width * 0.94, height: cardSize.height * 0.94)
+                            .scaleEffect(nextCardPop ? 1.0 : 0.92)
+                            .accessibilityHidden(true)
+                        
+                        cardStack
+                            .frame(width: cardSize.width, height: cardSize.height)
+                            .clipped()
+                            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .offset(offset)
+                            .rotationEffect(.degrees(rotation))
+                            .gesture(drag)
+                            .onTapGesture { onOpen?() }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityIdentifier("review.photoCard")
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-        }
-        .accessibilityIdentifier("review.photoCard")
-        .onAppear(perform: applyTourOffset)
+            .onAppear(perform: applyTourOffset)
     }
     
     private var cardStack: some View {
@@ -2305,6 +2285,10 @@ struct SwipeablePhotoCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(MomentsColors.bgCard)
             thumbnail
+                .accessibilityHidden(true)
+            darknessOverlay
+            sourceChip
+            sizeChip
             wash
             trail
             if ReviewSwipePhysics.pastStampThreshold(offset) || committed != .none {
@@ -2317,17 +2301,65 @@ struct SwipeablePhotoCard: View {
     
     private var thumbnail: some View {
         AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 600, height: 600))
-            .aspectRatio(contentMode: .fit)
+            .aspectRatio(contentMode: .fill)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay {
-                if !ThumbnailLoadFailureSimulation.isRequested {
-                    PhotoDarknessOverlay(
-                        classification: PhotoLuminanceClass.classify(
-                            meanLuminance: photo.exposureScore ?? 0.5
-                        )
-                    )
+            .clipped()
+    }
+    
+    @ViewBuilder
+    private var darknessOverlay: some View {
+        if !ThumbnailLoadFailureSimulation.isRequested {
+            PhotoDarknessOverlay(
+                classification: PhotoLuminanceClass.classify(
+                    meanLuminance: photo.exposureScore ?? 0.5
+                )
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private var sourceChip: some View {
+        if let origin = PhotoOrigin.reviewChip(for: photo) {
+            VStack {
+                HStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: origin.iconName)
+                        Text(origin.displayName)
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(10)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("review.sourceChip")
+                    .accessibilityLabel(origin.displayName)
+                    Spacer()
+                }
+                Spacer()
+            }
+            .allowsHitTesting(false)
+        }
+    }
+    
+    @ViewBuilder
+    private var sizeChip: some View {
+        if let size = photo.estimatedFileSize, size > 0 {
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Text(SpaceFormatting.string(from: size))
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(10)
+                        .accessibilityIdentifier("review.itemSize")
                 }
             }
+            .allowsHitTesting(false)
+        }
     }
     
     private var wash: some View {
@@ -2351,20 +2383,28 @@ struct SwipeablePhotoCard: View {
     }
     
     private var stamp: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Image(systemName: stampIcon)
-                .font(.system(size: 36, weight: .bold))
+                .font(.system(size: 22, weight: .bold))
             Text(stampText)
-                .font(MomentsTypography.headlineMedium)
+                .font(MomentsTypography.headlineSmall)
                 .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.65)
                 .accessibilityIdentifier("review.swipeStamp")
                 .accessibilityLabel(stampText)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .background(MomentsColors.swipeWash(preview.direction == .none ? committed : preview.direction), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .scaleEffect(preview.progress >= 1 || committed != .none ? 1.08 : 0.86)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 220)
+        .background(
+            MomentsColors.swipeWash(preview.direction == .none ? committed : preview.direction),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .allowsHitTesting(false)
     }
     
@@ -2378,11 +2418,21 @@ struct SwipeablePhotoCard: View {
     }
     
     private var nextCard: some View {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(MomentsColors.bgSecondary)
-            .overlay(MomentsShimmer().opacity(0.55))
-            .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
-            .accessibilityHidden(true)
+        ZStack {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(MomentsColors.bgSecondary)
+            if let nextPhoto {
+                AsyncPhotoThumbnail(localIdentifier: nextPhoto.localIdentifier, targetSize: CGSize(width: 400, height: 400))
+                    .aspectRatio(contentMode: .fill)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            } else {
+                MomentsShimmer().opacity(0.55)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
+        .accessibilityHidden(true)
     }
     
     private var drag: some Gesture {
@@ -2659,52 +2709,99 @@ struct SimilarPhotoCell: View {
     }
 }
 
-// MARK: - Save to album (under the photo, not in the nav bar)
-
-struct SaveToAlbumReviewButton: View {
-    let action: () -> Void
+private struct DisableInteractivePop: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
     
-    var body: some View {
-        Button(action: action) {
-            Label("Guardar en álbum", systemImage: "rectangle.stack.badge.plus")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(MomentsColors.accent)
+    final class Controller: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            disableInteractivePop()
         }
-        .accessibilityIdentifier("review.saveToAlbum")
-        .accessibilityLabel("Guardar en álbum")
+        
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            disableInteractivePop()
+        }
+        
+        private func disableInteractivePop() {
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+            navigationController?.interactivePopGestureRecognizer?.delegate = nil
+        }
     }
 }
 
 // MARK: - Review Action Button
 
+enum ReviewActionKind: String, CaseIterable, Sendable {
+    case keep
+    case share
+    case delete
+    
+    var label: String {
+        switch self {
+        case .keep: return "Conservar"
+        case .share: return "Compartir"
+        case .delete: return "Eliminar"
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .keep: return "checkmark"
+        case .share: return "square.and.arrow.up"
+        case .delete: return "trash"
+        }
+    }
+    
+    var paletteName: String {
+        switch self {
+        case .keep: return "freshGreen"
+        case .share: return "skyBlue"
+        case .delete: return "coral"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .keep: return MomentsColors.freshGreen
+        case .share: return MomentsColors.skyBlue
+        case .delete: return MomentsColors.coral
+        }
+    }
+}
+
 struct ReviewActionButton: View {
-    let iconName: String
-    let label: String
-    let color: Color
+    let kind: ReviewActionKind
     let isLoading: Bool
     
     var body: some View {
-        VStack(spacing: 6) {
-            if isLoading {
-                ProgressView()
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(kind.color.opacity(0.16))
                     .frame(width: 56, height: 56)
-            } else {
-                Image(systemName: iconName)
-                    .font(.system(size: 56))
-                    .foregroundStyle(color)
+                if isLoading {
+                    ProgressView()
+                } else {
+                    Image(systemName: kind.iconName)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(kind.color)
+                }
             }
             
-            Text(label)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
+            Text(kind.label)
+                .font(MomentsTypography.labelMedium)
+                .fontWeight(.semibold)
+                .foregroundStyle(kind.color)
                 .lineLimit(1)
+                .accessibilityHidden(true)
         }
         .frame(width: 96)
         .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(label)
-        .accessibilityIdentifier("review.actionButton.\(label)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(kind.label)
+        .accessibilityIdentifier("review.actionButton.\(kind.label)")
     }
 }
 

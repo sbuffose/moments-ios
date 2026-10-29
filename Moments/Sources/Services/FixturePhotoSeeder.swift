@@ -39,6 +39,7 @@ enum FixturePhotoSeeder {
                     seedBlackFramePhotos(into: context)
                 }
                 reconcileReviewableBlackFrame(into: context)
+                seedReviewTagFixtures(into: context)
                 try context.save()
                 let refreshed = try context.fetch(FetchDescriptor<PersistedPhoto>()).filter {
                     $0.localIdentifier.hasPrefix("fixture-")
@@ -174,6 +175,7 @@ enum FixturePhotoSeeder {
                 extra: { photo in
                     photo.sharpnessScore = 0.08
                     photo.visionAestheticsScore = 0.2
+                    if index == 1 { photo.origin = .download }
                 }
             )
         }
@@ -184,12 +186,13 @@ enum FixturePhotoSeeder {
             category: .underexposed,
             score: 0.99,
             size: 180_000,
-            extra: { photo in
-                photo.exposureScore = 0.01
-                photo.sharpnessScore = 0.02
-                photo.visionAestheticsScore = 0.05
-                photo.visionIsUtility = true
-            }
+                extra: { photo in
+                    photo.exposureScore = 0.01
+                    photo.sharpnessScore = 0.02
+                    photo.visionAestheticsScore = 0.05
+                    photo.visionIsUtility = true
+                    photo.origin = .camera
+                }
         )
         
         // Underexposed but visible
@@ -292,6 +295,7 @@ enum FixturePhotoSeeder {
         // (threshold 50) runs on the launch path. Low score / .none so they
         // do not flood the daily review queue.
         photos.append(contentsOf: seedMessagingPhotos(into: context, existing: photos))
+        photos.append(contentsOf: seedReviewTagFixtures(into: context))
         
         let oct26 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct26-") }
         let oct20 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct20-") }
@@ -363,6 +367,7 @@ enum FixturePhotoSeeder {
             photo.pixelHeight = 900
             photo.mediaTypeRaw = "image"
             photo.exposureScore = exposure
+            photo.origin = .camera
             context.insert(photo)
             return photo
         }
@@ -392,6 +397,49 @@ enum FixturePhotoSeeder {
             photo.origin = .whatsapp
             context.insert(photo)
             created.append(photo)
+        }
+        return created
+    }
+    
+    @discardableResult
+    private static func seedReviewTagFixtures(into context: ModelContext) -> [PersistedPhoto] {
+        let calendar = Calendar(identifier: .gregorian)
+        let mdqDate = calendar.date(from: DateComponents(year: 2025, month: 3, day: 12, hour: 15)) ?? Date()
+        var created: [PersistedPhoto] = []
+        let existing = (try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? []
+        
+        if existing.contains(where: { $0.localIdentifier == "fixture-tag-mdq-1" }) == false {
+            let photo = PersistedPhoto(localIdentifier: "fixture-tag-mdq-1", creationDate: mdqDate)
+            photo.analysisCompleted = true
+            photo.lastAnalyzedAt = Date()
+            photo.cleanupCategory = .screenshot
+            photo.deletionLikelihoodScore = 0.99
+            photo.estimatedFileSize = 210_000
+            photo.pixelWidth = 1200
+            photo.pixelHeight = 900
+            photo.mediaTypeRaw = "image"
+            photo.mediaSubtypesRaw = "screenshot"
+            photo.origin = .screenshot
+            photo.latitude = -38.0055
+            photo.longitude = -57.5426
+            photo.placeCity = "Mar del Plata"
+            photo.exposureScore = 0.5
+            context.insert(photo)
+            created.append(photo)
+        }
+        
+        let people = (try? context.fetch(FetchDescriptor<PersistedPerson>())) ?? []
+        if people.contains(where: { $0.id == "fixture-person-sofia" }) == false {
+            let cover = (created + existing).first { $0.localIdentifier == "fixture-tag-mdq-1" }
+            let sofia = PersistedPerson(
+                id: "fixture-person-sofia",
+                name: "Sofía",
+                faceClusterId: "fixture-cluster-sofia",
+                representativeFacePhotoId: cover?.id,
+                photoIds: cover.map { [$0.id] } ?? [],
+                faceCount: 3
+            )
+            context.insert(sofia)
         }
         return created
     }

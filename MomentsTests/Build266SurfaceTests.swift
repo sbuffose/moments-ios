@@ -78,7 +78,7 @@ final class Build266SurfaceTests: XCTestCase {
         XCTAssertFalse(AssistantLibraryCopy.offersDeleteAll(from: inventory))
         
         let homeHeadline = HomeLibraryCopy.heroHeadline(from: inventory)
-        XCTAssertTrue(homeHeadline.contains("En el lote de hoy"), homeHeadline)
+        XCTAssertTrue(homeHeadline.contains("para hoy"), homeHeadline)
         XCTAssertTrue(homeHeadline.contains("en total podés liberar"), homeHeadline)
         
         let settings = SettingsLibraryCopy.statusText(
