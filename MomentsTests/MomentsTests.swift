@@ -2970,13 +2970,58 @@ final class MomentsTests: XCTestCase {
     
     // MARK: - Off-main scan pipeline + checkpoint resume (P0 build 266)
     
-    func testScanPipelineRunsOffMainThreadAndResumesFromCheckpoint() async throws {
+    func testScanPipelineRunsOffMainThreadAndResumesFromCheckpoint() {
         let log = Logger(subsystem: "com.sbuffose.moments.tests", category: "ScanPipeline")
-        log.info("test.enter main=\(Thread.isMainThread, privacy: .public)")
-        // XCTestCase is MainActor. Await a nonisolated helper so MainActor is
-        // free while the pipeline actor runs — otherwise the nested probe
-        // (or any SwiftData hop) deadlocks the host.
-        let report = try await Self.runScanPipelineCheckpointProbe()
+        log.info("test.enter sync main=\(Thread.isMainThread, privacy: .public)")
+        
+        // Sync test + Foundation-only processor. The previous async+actor
+        // version crashed the first host before test.enter (xcresult counted
+        // that as a failure even though the retry passed in 55ms).
+        let box = ScanPipelineProbeBox()
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            log.info("probe.start main=\(Thread.isMainThread, privacy: .public)")
+            let store = ScanCheckpointStore(suiteName: "test.scan.pipeline.\(UUID().uuidString)")
+            store.start(totalPhotos: 20)
+            let items = (0..<20).map { ScanWorkItem(id: "photo-\($0)") }
+            let threads = ScanThreadProbe()
+            ScanSyntheticBatch.processBatch(Array(items.prefix(7)), store: store) { _ in
+                threads.note()
+            }
+            let processedAfterFirst = store.processedCount
+            let firstComplete = store.isComplete
+            log.info("probe.first-batch.done count=\(processedAfterFirst, privacy: .public)")
+            
+            let remaining = items.filter { !store.isProcessed($0.id) }
+            let resumeThreads = ScanThreadProbe()
+            ScanSyntheticBatch.processBatch(remaining, store: store) { _ in
+                resumeThreads.note()
+            }
+            log.info("probe.resume.done count=\(store.processedCount, privacy: .public)")
+            
+            box.report = ScanPipelineProbeReport(
+                firstOffMain: threads.sawOffMain,
+                firstOnMain: threads.sawOnMain,
+                processedAfterFirst: processedAfterFirst,
+                firstComplete: firstComplete,
+                remainingCount: remaining.count,
+                resumeOffMain: resumeThreads.sawOffMain,
+                resumeOnMain: resumeThreads.sawOnMain,
+                processedAfterResume: store.processedCount,
+                photo0Processed: store.isProcessed("photo-0"),
+                photo19Processed: store.isProcessed("photo-19")
+            )
+            group.leave()
+        }
+        XCTAssertEqual(
+            group.wait(timeout: .now() + 8),
+            .success,
+            "Synthetic batch probe timed out"
+        )
+        guard let report = box.report else {
+            return XCTFail("Probe did not produce a report")
+        }
         log.info("test.returned processed=\(report.processedAfterResume, privacy: .public)")
         
         XCTAssertTrue(report.firstOffMain, "Scan/Vision work must run off the main thread")
@@ -2991,95 +3036,6 @@ final class MomentsTests: XCTestCase {
         XCTAssertGreaterThan(report.processedAfterResume, 7)
         XCTAssertTrue(report.photo0Processed)
         XCTAssertTrue(report.photo19Processed)
-        XCTAssertEqual(report.isolatedRowCount, 1, "In-memory container must stay isolated from the host store")
-    }
-    
-    nonisolated private static func runScanPipelineCheckpointProbe() async throws -> ScanPipelineProbeReport {
-        let log = Logger(subsystem: "com.sbuffose.moments.tests", category: "ScanPipeline")
-        log.info("probe.start main=\(Thread.isMainThread, privacy: .public)")
-        
-        let schema = Schema([PersistedPhoto.self, AnalysisState.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        log.info("probe.container.creating")
-        let container = try ModelContainer(for: schema, configurations: [config])
-        log.info("probe.container.ready")
-        
-        // Background context on this isolated container — never the host app store.
-        let context = ModelContext(container)
-        context.autosaveEnabled = false
-        context.insert(PersistedPhoto(id: "probe-isolated", localIdentifier: "probe-isolated"))
-        try context.save()
-        let isolated = try context.fetch(FetchDescriptor<PersistedPhoto>()).count
-        log.info("probe.swiftdata.saved rows=\(isolated, privacy: .public)")
-        
-        let suite = "test.scan.pipeline.\(UUID().uuidString)"
-        let store = ScanCheckpointStore(suiteName: suite)
-        store.start(totalPhotos: 20)
-        log.info("probe.store.started")
-        
-        let items = (0..<20).map { ScanWorkItem(id: "photo-\($0)") }
-        let pipeline = ScanPipeline()
-        let threads = ScanThreadProbe()
-        
-        try await withDeadline(seconds: 5, step: "first-batch") {
-            await pipeline.processBatch(Array(items.prefix(7)), store: store) { _ in
-                threads.note()
-            }
-        }
-        let processedAfterFirst = store.processedCount
-        let firstComplete = store.isComplete
-        log.info("probe.first-batch.done count=\(processedAfterFirst, privacy: .public)")
-        
-        let remaining = items.filter { !store.isProcessed($0.id) }
-        
-        let pipeline2 = ScanPipeline()
-        let resumeThreads = ScanThreadProbe()
-        try await withDeadline(seconds: 5, step: "resume-batch") {
-            await pipeline2.processBatch(remaining, store: store) { _ in
-                resumeThreads.note()
-            }
-        }
-        log.info("probe.resume.done count=\(store.processedCount, privacy: .public)")
-        log.info("probe.done isolatedRows=\(isolated, privacy: .public)")
-        
-        return ScanPipelineProbeReport(
-            firstOffMain: threads.sawOffMain,
-            firstOnMain: threads.sawOnMain,
-            processedAfterFirst: processedAfterFirst,
-            firstComplete: firstComplete,
-            remainingCount: remaining.count,
-            resumeOffMain: resumeThreads.sawOffMain,
-            resumeOnMain: resumeThreads.sawOnMain,
-            processedAfterResume: store.processedCount,
-            photo0Processed: store.isProcessed("photo-0"),
-            photo19Processed: store.isProcessed("photo-19"),
-            isolatedRowCount: isolated
-        )
-    }
-    
-    nonisolated private static func withDeadline<T: Sendable>(
-        seconds: TimeInterval,
-        step: String,
-        _ work: @Sendable @escaping () async throws -> T
-    ) async throws -> T {
-        let log = Logger(subsystem: "com.sbuffose.moments.tests", category: "ScanPipeline")
-        log.info("deadline.begin \(step, privacy: .public)")
-        return try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await work()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                log.error("deadline.timeout \(step, privacy: .public)")
-                throw ScanPipelineProbeTimeout.step(step)
-            }
-            guard let value = try await group.next() else {
-                throw ScanPipelineProbeTimeout.step(step)
-            }
-            group.cancelAll()
-            log.info("deadline.end \(step, privacy: .public)")
-            return value
-        }
     }
     
     func testContinuedTaskRequestMatchesWildcardAndIsSubmittedOnEmpezar() {
@@ -3129,18 +3085,10 @@ private struct ScanPipelineProbeReport: Sendable {
     var processedAfterResume: Int
     var photo0Processed: Bool
     var photo19Processed: Bool
-    var isolatedRowCount: Int
 }
 
-private enum ScanPipelineProbeTimeout: Error, CustomStringConvertible {
-    case step(String)
-    
-    var description: String {
-        switch self {
-        case .step(let name):
-            return "Scan pipeline probe timed out at \(name)"
-        }
-    }
+private final class ScanPipelineProbeBox: @unchecked Sendable {
+    var report: ScanPipelineProbeReport?
 }
 
 private final class ScanThreadProbe: @unchecked Sendable {

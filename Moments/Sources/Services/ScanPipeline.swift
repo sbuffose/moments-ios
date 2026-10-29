@@ -3,13 +3,10 @@
 // batched SwiftData writes on a background ModelContext, resumable checkpoints.
 
 import Foundation
-import os
 import Photos
 import SwiftData
 import UIKit
 import Vision
-
-private let scanPipelineLog = Logger(subsystem: "com.sbuffose.moments", category: "ScanPipeline")
 
 // MARK: - Checkpoint (thread-safe, process-kill durable)
 
@@ -315,41 +312,18 @@ actor ScanPipeline {
     /// Vision / CIContext live only on the library path. `processBatch` is
     /// synthetic so unit tests never construct those types.
     
-    /// One synthetic item. Isolated on this actor (never MainActor).
+    /// Forwards to the Foundation-only processor. Library scans stay on this actor.
     @discardableResult
     func processNext(item: ScanWorkItem, store: ScanCheckpointStore) -> Bool {
-        scanPipelineLog.info("processNext id=\(item.id, privacy: .public) main=\(Thread.isMainThread, privacy: .public)")
-        if store.isProcessed(item.id) { return false }
-        var hash: UInt64 = 14695981039346656037
-        for byte in item.id.utf8 {
-            hash = hash &* 1099511628211 ^ UInt64(byte)
-        }
-        for i in 0..<64 {
-            hash ^= hash << 13
-            hash ^= hash >> 7
-            hash &+= UInt64(i)
-        }
-        _ = hash
-        store.markProcessed(item.id)
-        return true
+        ScanSyntheticBatch.processNext(item: item, store: store)
     }
     
-    /// Synchronous on the actor so a single hop finishes the batch. No
-    /// per-item `await` that could re-enter MainActor while a test holds it.
     func processBatch(
         _ items: [ScanWorkItem],
         store: ScanCheckpointStore,
         onItem: @escaping @Sendable (String) -> Void
     ) {
-        scanPipelineLog.info("processBatch start count=\(items.count, privacy: .public) main=\(Thread.isMainThread, privacy: .public)")
-        for item in items {
-            if Task.isCancelled { break }
-            if store.isProcessed(item.id) { continue }
-            _ = processNext(item: item, store: store)
-            onItem(item.id)
-        }
-        store.persist()
-        scanPipelineLog.info("processBatch done processed=\(store.processedCount, privacy: .public)")
+        ScanSyntheticBatch.processBatch(items, store: store, onItem: onItem)
     }
     
     func runLibrary(
