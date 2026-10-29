@@ -234,14 +234,12 @@ struct HomeView: View {
                 totalBytes: viewModel.inventory.totalReclaimableBytes,
                 itemCount: viewModel.inventory.todayBatchItems
             ))
-                .font(MomentsTypography.displayMedium)
-                .foregroundStyle(MomentsColors.heroInk)
+                .font(MomentsTypography.headlineLarge)
+                .foregroundStyle(MomentsColors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 10)
-                .background(MomentsColors.heroPaper)
-                .compositingGroup()
+                .padding(.vertical, 4)
+                .background(MomentsColors.bgCard)
+                .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("home.heroHeadline")
             
             ForEach(viewModel.topHumanReasons.prefix(3), id: \.self) { reason in
@@ -266,10 +264,9 @@ struct HomeView: View {
             .accessibilityAddTraits(.isButton)
         }
         .frame(minWidth: Self.heroMinWidth, maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
-        .compositingGroup()
+        .homeCardBreathing()
         .matchedGeometryEffect(id: "spaceCounter", in: homeMotion)
     }
     

@@ -1462,11 +1462,16 @@ final class SmokeTestSuite: XCTestCase {
         
         let hero = app.staticTexts["home.heroHeadline"]
         if hero.waitForExistence(timeout: 6) {
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "first_run_complete_opaque_home"
+            shot.lifetime = .keepAlways
+            add(shot)
+            
             let contrast = Self.sampledContrast(of: hero, fallback: scroll)
             XCTAssertGreaterThan(
                 contrast,
                 2.4,
-                "Hero title vs background must not look washed out (contrast \(contrast))"
+                "Hero title vs background must not look washed out (contrast \(contrast) frame \(hero.frame))"
             )
         }
         
@@ -1475,11 +1480,6 @@ final class SmokeTestSuite: XCTestCase {
             app.otherElements["review.root"].waitForExistence(timeout: 10),
             "Tapping Empezar after first-run must open review"
         )
-        
-        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        shot.name = "first_run_complete_opaque_home"
-        shot.lifetime = .keepAlways
-        add(shot)
     }
     
     func testBlackFrameShowsFriendlyLabelInReview() throws {
@@ -1554,6 +1554,10 @@ final class SmokeTestSuite: XCTestCase {
     
     /// Samples luminance inside `element` and reports (max+0.05)/(min+0.05).
     /// A Home stuck at 15–20% opacity collapses this toward 1.
+    ///
+    /// Uses a dense grid. The old 5×3 lattice sat on the reasons/CTA of the
+    /// space card when `home.heroHeadline`'s AX frame was the whole card,
+    /// so it never hit the title ink (measured 1.0 / 1.98 on a ~4.4 title).
     private static func sampledContrast(of element: XCUIElement, fallback: XCUIElement) -> Double {
         let screenshot = XCUIScreen.main.screenshot()
         let image = screenshot.image
@@ -1561,15 +1565,13 @@ final class SmokeTestSuite: XCTestCase {
         guard frame.width > 2, frame.height > 2 else { return 1 }
         
         var luminances: [Double] = []
-        let xs = [0.15, 0.35, 0.50, 0.65, 0.85]
-        let ys = [0.25, 0.50, 0.75]
-        for x in xs {
-            for y in ys {
-                let point = CGPoint(
-                    x: frame.minX + frame.width * x,
-                    y: frame.minY + frame.height * y
-                )
-                if let lum = luminance(of: image, at: point) {
+        let columns = 16
+        let rows = 12
+        for column in 0..<columns {
+            for row in 0..<rows {
+                let x = frame.minX + frame.width * (0.04 + 0.92 * CGFloat(column) / CGFloat(columns - 1))
+                let y = frame.minY + frame.height * (0.04 + 0.92 * CGFloat(row) / CGFloat(rows - 1))
+                if let lum = luminance(of: image, at: CGPoint(x: x, y: y)) {
                     luminances.append(lum)
                 }
             }

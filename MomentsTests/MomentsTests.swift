@@ -2647,19 +2647,6 @@ final class MomentsTests: XCTestCase {
         XCTAssertGreaterThan(darkRatio, 2.4, "Dark hero vs card contrast \(darkRatio)")
         XCTAssertGreaterThan(lightRatio, 7, "Light hero must stay well above washed-out")
         XCTAssertGreaterThan(darkRatio, 7, "Dark hero must stay well above washed-out")
-        
-        let heroLight = MomentsColors.contrastRatio(
-            foreground: MomentsColors.heroInkUIColor.resolvedColor(with: light),
-            background: MomentsColors.heroPaperUIColor.resolvedColor(with: light)
-        )
-        let heroDark = MomentsColors.contrastRatio(
-            foreground: MomentsColors.heroInkUIColor.resolvedColor(with: dark),
-            background: MomentsColors.heroPaperUIColor.resolvedColor(with: dark)
-        )
-        XCTAssertGreaterThan(heroLight, 2.4, "Hero plate light contrast \(heroLight)")
-        XCTAssertGreaterThan(heroDark, 2.4, "Hero plate dark contrast \(heroDark)")
-        XCTAssertGreaterThan(heroLight, 12, "Hero plate must stay far above the 2.4 screenshot floor")
-        XCTAssertGreaterThan(heroDark, 12, "Hero plate must stay far above the 2.4 screenshot floor")
     }
     
     func testFirstRunCopyHasNoRawLibraryCount() {
