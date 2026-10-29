@@ -301,6 +301,9 @@ class AppState: ObservableObject {
         installDailyReviewDeepLink()
         
         Task {
+            if MomentsTestRuntime.shouldSkipLiveScan {
+                return
+            }
             if FirstRunAnalyzingView.isSimulated {
                 await checkNotificationStatus()
                 return
