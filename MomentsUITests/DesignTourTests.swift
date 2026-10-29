@@ -150,9 +150,9 @@ final class DesignTourTests: XCTestCase {
     }
     
     private func launch(_ extras: [String], seed: Bool = true, skipOnboarding: Bool = true) {
-        if app.state != .notRunning {
-            app.terminate()
-        }
+        // Do not call terminate() here. SpringBoard often times out after a
+        // long tour and XCTest records that as a failure. launch() replaces
+        // the running instance.
         app = XCUIApplication()
         var args = ["-AppleLanguages", "(es-AR)", "-AppleLocale", "es_AR"]
         if skipOnboarding {
@@ -203,14 +203,30 @@ final class DesignTourTests: XCTestCase {
     }
     
     private func scrollMainContent() {
-        let scroll = app.scrollViews.firstMatch
-        if scroll.exists {
-            scroll.swipeUp()
-            scroll.swipeUp()
+        // Never swipe scrollViews.firstMatch — on Momentos that is the 62pt
+        // chip strip, and XCTest times out evaluating the query.
+        let identified = [
+            app.scrollViews["home.scrollView"],
+            app.scrollViews["timeline.content"]
+        ]
+        for scroller in identified {
+            if scroller.exists, scroller.frame.height > 150 {
+                scroller.swipeUp()
+                scroller.swipeUp()
+                return
+            }
+        }
+        let table = app.tables.firstMatch
+        if table.exists, table.frame.height > 150 {
+            table.swipeUp()
+            table.swipeUp()
             return
         }
-        app.swipeUp()
-        app.swipeUp()
+        let window = app.windows.firstMatch.exists ? app.windows.firstMatch : app
+        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.70))
+        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32))
+        start.press(forDuration: 0.08, thenDragTo: end)
+        start.press(forDuration: 0.08, thenDragTo: end)
     }
     
     private func openReview() {
