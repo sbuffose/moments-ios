@@ -2524,10 +2524,14 @@ final class MomentsTests: XCTestCase {
     }
     
     func testHomeHeroHeadlineUsesNextBatch() throws {
-        let headline = HomeView.heroHeadline(todayBytes: 33_800_000, totalBytes: 24_300_000_000)
-        XCTAssertTrue(headline.contains("En el lote de hoy"), headline)
+        let headline = HomeView.heroHeadline(todayBytes: 33_800_000, totalBytes: 24_300_000_000, itemCount: 20)
+        XCTAssertTrue(headline.contains("20 fotos para hoy"), headline)
         XCTAssertTrue(headline.contains("en total podés liberar"), headline)
         XCTAssertFalse(headline.contains("Analizando"))
+        
+        let same = HomeView.heroHeadline(todayBytes: 70_900_000, totalBytes: 70_900_000, itemCount: 20)
+        XCTAssertTrue(same.contains("20 fotos para hoy"), same)
+        XCTAssertFalse(same.contains("en total"), same)
     }
     
     func testAppDoesNotForceDarkColorScheme() throws {

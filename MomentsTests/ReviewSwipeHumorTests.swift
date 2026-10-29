@@ -44,6 +44,9 @@ final class ReviewSwipeHumorTests: XCTestCase {
         XCTAssertEqual(ReviewHumorCopy.batchDoneLine(deletedCount: 3), ReviewHumorLine.batchDone.localized)
         let freed = ReviewHumorCopy.liberatedLine(formattedBytes: "12 MB")
         XCTAssertTrue(freed.contains("12 MB"), freed)
+        let kept = ReviewHumorCopy.keptCountLine(count: 16)
+        XCTAssertTrue(kept.contains("16"), kept)
+        XCTAssertNotEqual(kept, ReviewHumorLine.batchKeptAll.localized)
     }
     
     func testHumorKeysExistInBothLanguages() {

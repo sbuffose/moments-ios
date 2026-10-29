@@ -1247,7 +1247,7 @@ final class SmokeTestSuite: XCTestCase {
         )
     }
     
-    func testSaveToAlbumButtonInReview() throws {
+    func testReviewEtiquetarSheetShowsPeopleAndCategories() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
@@ -1258,17 +1258,31 @@ final class SmokeTestSuite: XCTestCase {
         )
         if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
         XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Guardar en álbum"].exists)
         
-        let save = app.buttons["review.saveToAlbum"]
+        let tag = app.buttons["review.tagButton"]
         XCTAssertTrue(
-            save.waitForExistence(timeout: 8) || app.buttons["Guardar en álbum"].waitForExistence(timeout: 4),
-            "Review must offer Guardar en álbum"
+            tag.waitForExistence(timeout: 8) || app.buttons["Etiquetar"].waitForExistence(timeout: 4),
+            "Review must offer Etiquetar"
         )
-        if save.exists { save.tap() } else { app.buttons["Guardar en álbum"].tap() }
+        if tag.exists { tag.tap() } else { app.buttons["Etiquetar"].tap() }
         XCTAssertTrue(
-            app.otherElements["review.albumSheet"].waitForExistence(timeout: 8)
-            || app.navigationBars["Guardar en álbum"].waitForExistence(timeout: 4)
-            || app.staticTexts["Guardar en álbum"].waitForExistence(timeout: 4)
+            app.otherElements["review.tagSheet"].waitForExistence(timeout: 8)
+                || app.navigationBars["Etiquetar"].waitForExistence(timeout: 4)
+                || app.staticTexts["Etiquetar"].waitForExistence(timeout: 4)
+        )
+        XCTAssertTrue(
+            app.buttons["review.tag.familia"].waitForExistence(timeout: 6)
+                || app.staticTexts["Familia"].waitForExistence(timeout: 4),
+            "Sheet must show Familia"
+        )
+        XCTAssertTrue(
+            app.buttons["review.tag.amigos"].waitForExistence(timeout: 4)
+                || app.staticTexts["Amigos"].waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(
+            app.buttons["review.tag.viajes"].waitForExistence(timeout: 4)
+                || app.staticTexts["Viajes"].waitForExistence(timeout: 3)
         )
     }
     

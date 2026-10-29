@@ -623,6 +623,9 @@
 "humor_batch_done" = "¡Listo! Tu galería te lo agradece";
 "humor_batch_kept_all" = "Sos de los que guardan todo, ¿no? 😄";
 "humor_liberaste %1$@" = "Liberaste %1$@";
+"humor_kept_count %1$lld" = "Conservaste las %1$lld";
+"humor_liberados" = "liberados";
+"summary_deleted_hint" = "Se libera del todo al vaciar Eliminados recientemente";
 "humor_undo" = "Deshacer";
 "humor_mascot" = "Sol de Moments";
 "humor_stamp_keep" = "Conservar";

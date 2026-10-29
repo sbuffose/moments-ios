@@ -121,6 +121,10 @@ enum ReviewHumorCopy {
         String(format: String(localized: String.LocalizationValue("humor_liberaste %1$@")), formattedBytes)
     }
     
+    static func keptCountLine(count: Int) -> String {
+        String(format: String(localized: String.LocalizationValue("humor_kept_count %1$lld")), Int64(count))
+    }
+    
     static func seed(from identifier: String) -> Int {
         identifier.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
     }

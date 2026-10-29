@@ -145,9 +145,9 @@ struct MomentsColors {
     
     static var accentGradient: LinearGradient {
         LinearGradient(
-            colors: [accent, accentSecondary],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            colors: [freshGreen, Color(red: 1.0, green: 0.74, blue: 0.28), accentSecondary],
+            startPoint: .leading,
+            endPoint: .trailing
         )
     }
     

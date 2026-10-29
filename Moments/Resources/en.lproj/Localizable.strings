@@ -623,6 +623,9 @@
 "humor_batch_done" = "Done! Your library says thanks";
 "humor_batch_kept_all" = "You're a keeper of everything, huh? 😄";
 "humor_liberaste %1$@" = "You freed %1$@";
+"humor_kept_count %1$lld" = "You kept the %1$lld";
+"humor_liberados" = "freed";
+"summary_deleted_hint" = "It is fully freed after you empty Recently Deleted";
 "humor_undo" = "Undo";
 "humor_mascot" = "Moments sunshine";
 "humor_stamp_keep" = "Keep";

@@ -757,7 +757,7 @@ struct OnboardingPageView: View {
             
             VStack(alignment: .leading, spacing: MomentsSpacing.md) {
                 ForEach(highlights, id: \.icon) { highlight in
-                    HStack(spacing: MomentsSpacing.md) {
+                    HStack(alignment: .top, spacing: MomentsSpacing.md) {
                         Image(systemName: highlight.icon)
                             .font(.title3)
                             .foregroundStyle(
@@ -772,6 +772,9 @@ struct OnboardingPageView: View {
                         Text(String(localized: String.LocalizationValue(highlight.text)))
                             .font(MomentsTypography.bodyMedium)
                             .foregroundStyle(MomentsColors.textPrimary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

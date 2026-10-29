@@ -56,7 +56,8 @@ enum HomeLibraryCopy {
     static func heroHeadline(from inventory: LibraryInventory) -> String {
         HomeView.heroHeadline(
             todayBytes: inventory.todayBatchBytes,
-            totalBytes: inventory.totalReclaimableBytes
+            totalBytes: inventory.totalReclaimableBytes,
+            itemCount: inventory.todayBatchItems
         )
     }
     

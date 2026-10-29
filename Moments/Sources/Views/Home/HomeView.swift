@@ -169,8 +169,14 @@ struct HomeView: View {
         return "\(today) de \(DailyReviewBatch.size) para hoy"
     }
     
-    static func heroHeadline(todayBytes: Int64, totalBytes: Int64) -> String {
-        "En el lote de hoy: \(SpaceFormatting.string(from: todayBytes)) · en total podés liberar \(SpaceFormatting.string(from: totalBytes))"
+    static func heroHeadline(todayBytes: Int64, totalBytes: Int64, itemCount: Int = DailyReviewBatch.size) -> String {
+        let today = min(max(itemCount, 0), DailyReviewBatch.size)
+        let photos = MomentsPluralization.photos(today)
+        let todaySize = SpaceFormatting.string(from: todayBytes)
+        if todayBytes == totalBytes {
+            return "\(photos) para hoy · \(todaySize)"
+        }
+        return "\(photos) para hoy · \(todaySize) · en total podés liberar \(SpaceFormatting.string(from: totalBytes))"
     }
     
     static func heroHeadline(bytes: Int64, minutes: Int = 2) -> String {
@@ -184,7 +190,7 @@ struct HomeView: View {
             HStack(spacing: MomentsSpacing.sm) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(MomentsColors.textSecondary)
-                Text("Buscá en tus fotos…")
+                Text("Buscá en tus fotos")
                     .font(MomentsTypography.bodyMedium)
                     .foregroundStyle(MomentsColors.textSecondary)
                 Spacer()
@@ -223,7 +229,8 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: MomentsSpacing.md) {
             Text(Self.heroHeadline(
                 todayBytes: viewModel.inventory.todayBatchBytes,
-                totalBytes: viewModel.inventory.totalReclaimableBytes
+                totalBytes: viewModel.inventory.totalReclaimableBytes,
+                itemCount: viewModel.inventory.todayBatchItems
             ))
                 .font(MomentsTypography.headlineLarge)
                 .foregroundStyle(MomentsColors.textPrimary)
@@ -283,6 +290,16 @@ struct HomeView: View {
                     .accessibilityLabel(category.title)
                 }
             }
+            .padding(.trailing, 36)
+        }
+        .overlay(alignment: .trailing) {
+            LinearGradient(
+                colors: [MomentsColors.bgPrimary.opacity(0), MomentsColors.bgPrimary],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 28)
+            .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("home.categoryChips")

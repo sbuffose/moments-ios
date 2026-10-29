@@ -30,9 +30,9 @@ struct MomentsAliveBackground: View {
     private func blob(color: Color, x: CGFloat, y: CGFloat, size: CGFloat, drift: CGFloat) -> some View {
         GeometryReader { geo in
             Circle()
-                .fill(color.opacity((colorScheme == .dark ? 0.22 : 0.28) * intensity))
+                .fill(color.opacity((colorScheme == .dark ? 0.40 : 0.48) * intensity))
                 .frame(width: size, height: size)
-                .blur(radius: 36)
+                .blur(radius: 28)
                 .position(
                     x: geo.size.width * x + (reduceMotion ? 0 : drift * phase),
                     y: geo.size.height * y + (reduceMotion ? 0 : -drift * phase)
