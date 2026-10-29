@@ -190,6 +190,11 @@ class AppState: ObservableObject {
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingCompletedKey)
         self.hasCompletedInitialAnalysis = UserDefaults.standard.bool(forKey: initialAnalysisCompletedKey)
         
+        DesignTourSimulation.applyUserDefaultsIfNeeded()
+        if DesignTourSimulation.showOnboarding {
+            resetOnboarding()
+        }
+        
         if FirstRunAnalyzingView.isSimulated {
             hasCompletedOnboarding = true
             isLibraryAuthorized = true

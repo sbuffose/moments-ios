@@ -61,6 +61,7 @@ struct HomeView: View {
             }
         }
         .onAppear {
+            DesignTourSimulation.applyUserDefaultsIfNeeded()
             viewModel.initialize(modelContext: modelContext)
         }
         .sheet(isPresented: $showRecentlyDeletedInfo) {
@@ -85,29 +86,33 @@ struct HomeView: View {
             VStack(spacing: MomentsSpacing.lg) {
                 searchBar
                 
-                ZStack {
-                    if !heroReady {
-                        heroSkeleton
-                    }
-                    heroCard
-                        .opacity(heroReady ? 1 : 0)
-                }
-                
-                freedAndStorageCard
-                
-                memoryHero
-                
-                if !viewModel.metadataCategories.isEmpty {
-                    categoryChips
-                    detailLink
-                }
-                
-                ForEach(viewModel.feedCards.filter { !$0.isOnThisDay }) { card in
-                    FeedCardView(card: card, viewModel: viewModel)
-                }
-                
-                if viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty && viewModel.metadataCategories.isEmpty {
+                if DesignTourSimulation.emptyHome {
                     emptyStateView
+                } else {
+                    ZStack {
+                        if !heroReady {
+                            heroSkeleton
+                        }
+                        heroCard
+                            .opacity(heroReady ? 1 : 0)
+                    }
+                    
+                    freedAndStorageCard
+                    
+                    memoryHero
+                    
+                    if !viewModel.metadataCategories.isEmpty {
+                        categoryChips
+                        detailLink
+                    }
+                    
+                    ForEach(viewModel.feedCards.filter { !$0.isOnThisDay }) { card in
+                        FeedCardView(card: card, viewModel: viewModel)
+                    }
+                    
+                    if viewModel.canFreeSpace == 0 && viewModel.feedCards.isEmpty && viewModel.metadataCategories.isEmpty {
+                        emptyStateView
+                    }
                 }
             }
             .frame(maxWidth: .infinity)

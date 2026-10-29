@@ -330,8 +330,8 @@ struct MomentDetailView: View {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
                     Text(moment.title)
-                        .font(.title)
-                        .fontWeight(.bold)
+                        .font(MomentsTypography.displaySmall)
+                        .foregroundStyle(MomentsColors.textPrimary)
                     
                     if let subtitle = moment.subtitle {
                         Text(subtitle)
@@ -364,6 +364,8 @@ struct MomentDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .background(MomentsColors.bgPrimary.ignoresSafeArea())
+        .accessibilityIdentifier("moments.detail")
         .task {
             await loadPhotos()
         }

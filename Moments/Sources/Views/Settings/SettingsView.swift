@@ -107,6 +107,7 @@ struct SettingsView: View {
                     } label: {
                         Label("Notificaciones", systemImage: "bell")
                     }
+                    .accessibilityIdentifier("settings.notifications")
                 } header: {
                     Text("Recordatorios")
                 }
@@ -164,6 +165,7 @@ struct SettingsView: View {
                 #endif
             }
             .navigationTitle(Text("settings_title"))
+            .accessibilityIdentifier("settings.root")
         }
         .onAppear {
             calculateCacheSize()
@@ -853,14 +855,34 @@ struct TodayReviewView: View {
 // MARK: - General Notification Settings View
 
 struct GeneralNotificationSettingsView: View {
+    private var isDenied: Bool { DesignTourSimulation.notificationsDenied }
+    
     var body: some View {
         List {
-            Section {
-                Text("Configuración de notificaciones general")
-                    .foregroundStyle(.secondary)
+            if isDenied {
+                Section {
+                    VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
+                        Text("Las notificaciones están apagadas")
+                            .font(MomentsTypography.titleSmall)
+                            .foregroundStyle(MomentsColors.textPrimary)
+                        Text("Activalas en Ajustes del iPhone para el repaso del día y cuando termine el análisis.")
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityIdentifier("settings.notificationsDenied")
+                }
+            } else {
+                Section {
+                    Text("Moments puede avisarte cuando termina de conocer tus fotos y para el repaso del día.")
+                        .font(MomentsTypography.bodyMedium)
+                        .foregroundStyle(MomentsColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .navigationTitle("Notificaciones")
+        .accessibilityIdentifier("settings.notificationsScreen")
     }
 }
 

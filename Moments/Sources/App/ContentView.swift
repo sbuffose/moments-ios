@@ -9,7 +9,8 @@ struct ContentView: View {
     @ObservedObject private var newPhotoCheck = NewPhotoCheckService.shared
     
     private var isTestingMode: Bool {
-        ProcessInfo.processInfo.arguments.contains("-skipOnboarding") ||
+        if DesignTourSimulation.showOnboarding { return false }
+        return ProcessInfo.processInfo.arguments.contains("-skipOnboarding") ||
         ProcessInfo.processInfo.arguments.contains("--uitesting") ||
         ProcessInfo.processInfo.environment["UI_TESTING"] == "1" ||
         ProcessInfo.processInfo.environment["UITEST_MODE"] == "1"
@@ -17,7 +18,9 @@ struct ContentView: View {
     
     var body: some View {
         Group {
-            if isTestingMode {
+            if DesignTourSimulation.showOnboarding {
+                OnboardingView()
+            } else if isTestingMode {
                 // Testing mode: skip onboarding, go directly to home
                 MainTabView()
                     .onAppear {
@@ -502,6 +505,7 @@ struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
     @State private var currentPage = 0
     @State private var isRequesting = false
+    @State private var accessDenied = DesignTourSimulation.photosDenied
     
     var body: some View {
         ZStack {
@@ -525,7 +529,7 @@ struct OnboardingView: View {
                     
                     OnboardingPageView(
                         iconName: "heart.text.square",
-                        iconGradient: [Color.pink, Color.orange],
+                        iconGradient: [MomentsColors.accentSecondary, MomentsColors.accent],
                         titleKey: "onboarding_page2_title",
                         subtitleKey: "onboarding_page2_subtitle",
                         highlights: [
@@ -539,7 +543,7 @@ struct OnboardingView: View {
                     
                     OnboardingPageView(
                         iconName: "lock.iphone",
-                        iconGradient: [Color.green, Color.teal],
+                        iconGradient: [MomentsColors.accent, MomentsColors.accentSecondary],
                         titleKey: "onboarding_page3_title",
                         subtitleKey: "onboarding_page3_subtitle",
                         highlights: [
@@ -588,6 +592,22 @@ struct OnboardingView: View {
                         }
                         .accessibilityIdentifier("onboarding.skip")
                     } else {
+                        if accessDenied {
+                            VStack(spacing: MomentsSpacing.sm) {
+                                Text("Sin acceso a Fotos")
+                                    .font(MomentsTypography.titleSmall)
+                                    .foregroundStyle(MomentsColors.textPrimary)
+                                    .multilineTextAlignment(.center)
+                                    .accessibilityIdentifier("onboarding.photosDeniedTitle")
+                                Text("Moments necesita tu biblioteca para ordenar en el iPhone. Podés activar el acceso en Ajustes.")
+                                    .font(MomentsTypography.bodyMedium)
+                                    .foregroundStyle(MomentsColors.textSecondary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.bottom, MomentsSpacing.xs)
+                            .accessibilityIdentifier("onboarding.photosDenied")
+                        }
                         Button {
                             requestAccess()
                         } label: {
@@ -630,6 +650,12 @@ struct OnboardingView: View {
             }
         }
         .accessibilityIdentifier("onboarding.root")
+        .onAppear {
+            if DesignTourSimulation.photosDenied {
+                currentPage = 2
+                accessDenied = true
+            }
+        }
     }
     
     private func requestAccess() {
@@ -644,6 +670,8 @@ struct OnboardingView: View {
                 // Complete onboarding and go directly to home
                 // Background processing starts automatically in completeOnboarding()
                 appState.completeOnboarding()
+            } else {
+                accessDenied = true
             }
             isRequesting = false
         }

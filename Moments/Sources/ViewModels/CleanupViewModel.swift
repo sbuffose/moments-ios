@@ -354,7 +354,32 @@ class CleanupViewModel: ObservableObject {
         
         let capped = DailyReviewBatch.cap(queue, preferences: preferences)
         remainingAfterBatch = capped.remaining
-        reviewQueue = capped.batch
+        reviewQueue = Self.pinDesignTourItem(capped.batch)
+    }
+    
+    private static func pinDesignTourItem(_ batch: [ReviewItem]) -> [ReviewItem] {
+        if DesignTourSimulation.reviewSimilar {
+            return batch.sorted { lhs, rhs in
+                if case .similarGroup = lhs { return true }
+                if case .similarGroup = rhs { return false }
+                return false
+            }
+        }
+        if DesignTourSimulation.reviewVideo {
+            return batch.sorted { lhs, rhs in
+                isVideoItem(lhs) && !isVideoItem(rhs)
+            }
+        }
+        return batch
+    }
+    
+    private static func isVideoItem(_ item: ReviewItem) -> Bool {
+        switch item {
+        case .single(let photo):
+            return photo.mediaTypeRaw == "video"
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos.contains { $0.mediaTypeRaw == "video" }
+        }
     }
     
     static func makeQueue(photos: [PersistedPhoto], groups: [SimilarGroup], preferences: LearnedPreferences? = nil) -> [ReviewItem] {

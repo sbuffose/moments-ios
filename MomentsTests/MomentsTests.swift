@@ -2694,6 +2694,17 @@ final class MomentsTests: XCTestCase {
         )
     }
     
+    func testDesignTourSimulationFlagsAreStable() {
+        XCTAssertEqual(DesignTourSimulation.showOnboardingArgument, "-showOnboarding")
+        XCTAssertEqual(DesignTourSimulation.emptyHomeArgument, "-simulateEmptyHome")
+        XCTAssertEqual(DesignTourSimulation.spaceSavedArgument, "-simulateSpaceSaved")
+        XCTAssertEqual(DesignTourSimulation.photosDeniedArgument, "-simulatePhotosDenied")
+        XCTAssertEqual(DesignTourSimulation.notificationsDeniedArgument, "-simulateNotificationsDenied")
+        XCTAssertEqual(DesignTourSimulation.reviewSimilarArgument, "-simulateReviewSimilar")
+        XCTAssertEqual(DesignTourSimulation.reviewVideoArgument, "-simulateReviewVideo")
+        XCTAssertGreaterThan(DesignTourSimulation.previewSavedBytes, 0)
+    }
+    
     func testReviewBatchSummaryStatesNeverShowZeroKBOrStackedTitles() {
         XCTAssertEqual(SpaceFormatting.keptAllSubtitle(count: 20), "Conservaste las 20 fotos")
         XCTAssertEqual(SpaceFormatting.keptAllSubtitle(count: 1), "Conservaste la foto")
