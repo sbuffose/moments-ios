@@ -564,7 +564,7 @@ struct OnThisDayView: View {
 struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
     @StateObject private var shareService = ShareLoadingService()
-    @State private var showFinishSheet = false
+    @State private var forceSummary = false
     @State private var showTagSheet = false
     @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
@@ -589,11 +589,17 @@ struct CleanupReviewView: View {
     }
     
     private var photosToDelete: [PersistedPhoto] {
-        viewModel.photosMarkedForDeletion(from: allPhotos)
+        viewModel.sessionPhotosMarkedForDeletion()
     }
     
     private var deletionSize: Int64 {
-        viewModel.deletionSizeForReview(from: allPhotos)
+        photosToDelete.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+    }
+    
+    private var sessionDeleteLabel: String {
+        let videos = photosToDelete.filter(\.isVideo).count
+        let photos = photosToDelete.count - videos
+        return MomentsPluralization.deleteMedia(photos: photos, videos: videos)
     }
     
     private var totalItems: Int {
@@ -610,7 +616,7 @@ struct CleanupReviewView: View {
     }
     
     private var isShowingSummary: Bool {
-        DesignTourSimulation.forcesReviewSummary || currentItem == nil
+        forceSummary || DesignTourSimulation.forcesReviewSummary || currentItem == nil
     }
     
     private var nextReviewPhoto: PersistedPhoto? {
@@ -643,7 +649,7 @@ struct CleanupReviewView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            if DesignTourSimulation.forcesReviewSummary {
+            if isShowingSummary {
                 reviewCompleteView
             } else if let currentItem {
                 ProgressView(value: currentProgress)
@@ -690,6 +696,7 @@ struct CleanupReviewView: View {
                     switch currentItem {
                     case .single(let photo):
                         singlePhotoCard(photo: photo)
+                            .id(photo.id)
                         
                     case .exactDuplicateGroup(let group, let photos):
                         ExactDuplicateGroupCard(
@@ -701,6 +708,7 @@ struct CleanupReviewView: View {
                                 // Queue shrinks automatically - don't advance index
                             }
                         )
+                        .id(group.id)
                         
                     case .similarGroup(let group, let photos):
                         SimilarGroupCard(
@@ -712,6 +720,7 @@ struct CleanupReviewView: View {
                                 // Queue shrinks automatically - don't advance index
                             }
                         )
+                        .id(group.id)
                     }
                 }
                 
@@ -786,7 +795,7 @@ struct CleanupReviewView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         if photosToDelete.count > 0 {
-                            showFinishSheet = true
+                            forceSummary = true
                         } else {
                             dismiss()
                         }
@@ -798,9 +807,10 @@ struct CleanupReviewView: View {
                 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Terminar") {
-                        showFinishSheet = true
+                        forceSummary = true
                     }
                     .fontWeight(.medium)
+                    .accessibilityIdentifier("review.finish")
                 }
             }
         }
@@ -815,27 +825,6 @@ struct CleanupReviewView: View {
         }
         .sheet(isPresented: $showTagSheet) {
             TagPhotoSheet(photos: photosToTag) { _ in }
-        }
-        .sheet(isPresented: $showFinishSheet) {
-            ReviewSummarySheet(
-                photosToDelete: photosToDelete,
-                deletionSize: deletionSize,
-                viewModel: viewModel,
-                onConfirmDelete: {
-                    Task {
-                        await viewModel.deleteSelectedPhotos()
-                        viewModel.clearPersistedProgress()
-                        dismiss()
-                    }
-                },
-                onKeepAll: {
-                    viewModel.clearPersistedProgress()
-                    dismiss()
-                },
-                onContinue: {
-                    showFinishSheet = false
-                }
-            )
         }
         .sheet(item: $shareItem) { item in
             ShareActivityController(shareItem: item) { didShare in
@@ -909,8 +898,10 @@ struct CleanupReviewView: View {
                     presentDecision(direction, line: line, photoId: photo.id)
                 }
             )
+            .id(photo.id)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 8)
+            AccessibilityProbe(id: "review.currentAsset", label: photo.id)
             
             TagReviewButton {
                 showTagSheet = true
@@ -919,7 +910,7 @@ struct CleanupReviewView: View {
             
             HStack(spacing: 0) {
                 Button {
-                    viewModel.keepPhoto(photo.id, duration: .forever)
+                    viewModel.markAsReviewed(photo.id, delete: false)
                     showChipRowAfterKeep(photoId: photo.id)
                 } label: {
                     ReviewActionButton(kind: .keep, isLoading: false)
@@ -1074,13 +1065,31 @@ struct CleanupReviewView: View {
                     .accessibilityIdentifier("review.moreBatch")
                 }
                 
-                Button {
-                    if photosToDelete.isEmpty && !DesignTourSimulation.deletedSummary {
-                        viewModel.clearPersistedProgress()
-                        dismiss()
-                    } else {
-                        showFinishSheet = true
+                if summaryDeletedCount > 0 {
+                    Button {
+                        Task {
+                            await viewModel.deletePhotos(photosToDelete)
+                            viewModel.clearPersistedProgress()
+                            dismiss()
+                        }
+                    } label: {
+                        Text(sessionDeleteLabel)
+                            .font(MomentsTypography.headlineMedium)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(MomentsColors.coral)
+                            .cornerRadius(14)
                     }
+                    .buttonStyle(MomentsBouncyButtonStyle())
+                    .padding(.horizontal)
+                    .accessibilityIdentifier("review.confirmDelete")
+                    .accessibilityLabel(sessionDeleteLabel)
+                }
+                
+                Button {
+                    viewModel.clearPersistedProgress()
+                    dismiss()
                 } label: {
                     Text("Listo por hoy")
                         .font(MomentsTypography.headlineMedium)
@@ -1993,6 +2002,7 @@ struct CleanupCategoryDetailView: View {
                             viewModel.keepPhoto(photo.id, duration: .forever)
                             lastKeptPhotoId = photo.id
                             showKeepDurationChip = true
+                            currentIndex += 1
                             
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                                 withAnimation {
@@ -2004,14 +2014,17 @@ struct CleanupCategoryDetailView: View {
                     onDelete: {
                         withAnimation {
                             viewModel.markAsReviewed(photo.id, delete: true)
+                            currentIndex += 1
                         }
                     },
                     onSnooze: {
                         withAnimation {
                             viewModel.keepPhoto(photo.id, duration: .oneWeek)
+                            currentIndex += 1
                         }
                     }
                 )
+                .id(photo.id)
                 .padding()
                 
                 // Inline duration chip row - shows for 2.5s after keep
@@ -2104,79 +2117,44 @@ struct KeepDurationChipRow: View {
     let onDismiss: () -> Void
     
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Text("Conservar:")
-                    .font(.caption)
+        HStack(spacing: 8) {
+            chip("Siempre", duration: .forever, emphasized: true)
+            chip("1 sem", duration: .oneWeek, emphasized: false)
+            chip("1 mes", duration: .oneMonth, emphasized: false)
+            chip("3 mes", duration: .threeMonths, emphasized: false)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
-                
-                Button {
-                    MomentsHaptics.selection()
-                    onSelect(.forever)
-                } label: {
-                    Text("Siempre")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.green.opacity(0.15))
-                        .foregroundStyle(.green)
-                        .cornerRadius(12)
-                }
-                
-                Button {
-                    MomentsHaptics.selection()
-                    onSelect(.oneWeek)
-                } label: {
-                    Text("1 semana")
-                        .font(.caption)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(.systemGray5))
-                        .foregroundStyle(.primary)
-                        .cornerRadius(12)
-                }
-                
-                Button {
-                    MomentsHaptics.selection()
-                    onSelect(.oneMonth)
-                } label: {
-                    Text("1 mes")
-                        .font(.caption)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(.systemGray5))
-                        .foregroundStyle(.primary)
-                        .cornerRadius(12)
-                }
-                
-                Button {
-                    MomentsHaptics.selection()
-                    onSelect(.threeMonths)
-                } label: {
-                    Text("3 meses")
-                        .font(.caption)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(.systemGray5))
-                        .foregroundStyle(.primary)
-                        .cornerRadius(12)
-                }
-                
-                Button {
-                    onDismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
             }
+            .accessibilityLabel("Cerrar")
         }
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(.ultraThinMaterial)
         .cornerRadius(16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.keepChips")
+    }
+    
+    private func chip(_ title: String, duration: CleanupViewModel.KeepDuration, emphasized: Bool) -> some View {
+        Button {
+            MomentsHaptics.selection()
+            onSelect(duration)
+        } label: {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .background(emphasized ? Color.green.opacity(0.15) : Color(.systemGray5))
+                .foregroundStyle(emphasized ? Color.green : Color.primary)
+                .cornerRadius(12)
+        }
+        .accessibilityIdentifier("review.keepChip.\(duration.testId)")
+        .accessibilityLabel(title)
     }
 }
 
@@ -2304,6 +2282,7 @@ struct SwipeablePhotoCard: View {
             .aspectRatio(contentMode: .fill)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
+            .id(photo.id)
     }
     
     @ViewBuilder

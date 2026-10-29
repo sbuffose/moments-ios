@@ -27,13 +27,17 @@ enum ReviewItem: Identifiable {
         }
     }
     
-    var photoIds: [String] {
+    var photos: [PersistedPhoto] {
         switch self {
         case .single(let photo):
-            return [photo.id]
+            return [photo]
         case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
-            return photos.map { $0.id }
+            return photos
         }
+    }
+    
+    var photoIds: [String] {
+        photos.map(\.id)
     }
     
     var maxDeletionScore: Double {
@@ -273,7 +277,7 @@ class CleanupViewModel: ObservableObject {
             keptPhotos.remove(photoId)
             
             // Ensure keep decision is cleared when marking for deletion
-            if let photo = allPhotos.first(where: { $0.id == photoId }) {
+            if let photo = photo(identifiedBy: photoId) {
                 photo.keepDecision = .none
                 photo.keepUntil = nil
                 photo.keepDecisionDate = nil
@@ -358,6 +362,14 @@ class CleanupViewModel: ObservableObject {
         var queue = Self.makeQueue(photos: allPhotos, groups: similarGroups, preferences: preferences)
         if ProcessInfo.processInfo.arguments.contains("-reviewSwipeSingles") {
             queue = queue.filter { !$0.isGroup }
+        }
+        if ProcessInfo.processInfo.arguments.contains(DesignTourSimulation.reviewVideoFirstArgument) {
+            queue = queue.sorted { lhs, rhs in
+                let leftVideo = lhs.photos.contains(where: \.isVideo)
+                let rightVideo = rhs.photos.contains(where: \.isVideo)
+                if leftVideo != rightVideo { return leftVideo && !rightVideo }
+                return false
+            }
         }
         
         let capped = DailyReviewBatch.cap(queue, preferences: preferences)
@@ -453,6 +465,15 @@ class CleanupViewModel: ObservableObject {
         case oneMonth
         case threeMonths
         
+        var testId: String {
+            switch self {
+            case .forever: return "forever"
+            case .oneWeek: return "week"
+            case .oneMonth: return "month"
+            case .threeMonths: return "threeMonths"
+            }
+        }
+        
         var keepUntilDate: Date? {
             switch self {
             case .forever: return nil
@@ -483,12 +504,27 @@ class CleanupViewModel: ObservableObject {
         persistProgress()
     }
     
-    func keepPhoto(_ photoId: String, duration: KeepDuration) {
-        var photo = allPhotos.first(where: { $0.id == photoId })
-        if photo == nil, let context = modelContext {
-            photo = (try? context.fetch(FetchDescriptor<PersistedPhoto>()))?.first { $0.id == photoId }
+    func photo(identifiedBy photoId: String) -> PersistedPhoto? {
+        if let photo = allPhotos.first(where: { $0.id == photoId }) { return photo }
+        for item in reviewQueue {
+            if let photo = item.photos.first(where: { $0.id == photoId }) { return photo }
         }
-        guard let photo else { return }
+        if let context = modelContext {
+            return (try? context.fetch(FetchDescriptor<PersistedPhoto>()))?.first { $0.id == photoId }
+        }
+        return nil
+    }
+    
+    var reviewSessionPhotos: [PersistedPhoto] {
+        reviewQueue.flatMap(\.photos)
+    }
+    
+    func sessionPhotosMarkedForDeletion() -> [PersistedPhoto] {
+        photosMarkedForDeletion(from: reviewSessionPhotos)
+    }
+    
+    func keepPhoto(_ photoId: String, duration: KeepDuration) {
+        guard let photo = photo(identifiedBy: photoId) else { return }
         
         photo.keepDecision = duration.decision
         photo.keepUntil = duration.keepUntilDate
@@ -513,7 +549,7 @@ class CleanupViewModel: ObservableObject {
         let decisionType: ReviewDecisionType = duration == .forever ? .keepForever : .keepSnoozed
         
         for photoId in photoIds {
-            guard let photo = allPhotos.first(where: { $0.id == photoId }) else { continue }
+            guard let photo = photo(identifiedBy: photoId) else { continue }
             
             photo.keepDecision = duration.decision
             photo.keepUntil = duration.keepUntilDate
@@ -539,7 +575,7 @@ class CleanupViewModel: ObservableObject {
     }
     
     func undoKeepDecision(_ photoId: String) {
-        guard let photo = allPhotos.first(where: { $0.id == photoId }) else { return }
+        guard let photo = photo(identifiedBy: photoId) else { return }
         
         photo.keepDecision = .none
         photo.keepUntil = nil
@@ -832,22 +868,33 @@ class CleanupViewModel: ObservableObject {
     }
     
     var selectedSize: Int64 {
-        allPhotos
-            .filter { selectedPhotos.contains($0.id) }
-            .reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+        photosReadyForDeletion().reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+    }
+    
+    func photosReadyForDeletion() -> [PersistedPhoto] {
+        var seen = Set<String>()
+        var result: [PersistedPhoto] = []
+        for id in selectedPhotos {
+            guard seen.insert(id).inserted, let photo = photo(identifiedBy: id) else { continue }
+            result.append(photo)
+        }
+        return result
     }
     
     // MARK: - Deletion
     
     func deleteSelectedPhotos() async {
-        guard !selectedPhotos.isEmpty else { return }
+        await deletePhotos(photosReadyForDeletion())
+    }
+    
+    func deletePhotos(_ photosToDelete: [PersistedPhoto]) async {
+        guard !photosToDelete.isEmpty else { return }
         guard let context = modelContext else { return }
         
         isDeleting = true
         
-        let photosToDelete = allPhotos.filter { selectedPhotos.contains($0.id) }
         let identifiers = photosToDelete.map { $0.localIdentifier }
-        let sizeFreed = selectedSize
+        let sizeFreed = photosToDelete.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
         
         let assets = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
         

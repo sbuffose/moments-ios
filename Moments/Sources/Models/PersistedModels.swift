@@ -643,6 +643,8 @@ final class PersistedPhoto {
     }
     
     // Computed properties
+    var isVideo: Bool { mediaTypeRaw == "video" }
+    
     var cleanupCategory: CleanupCategoryType {
         get { CleanupCategoryType(rawValue: cleanupCategoryRaw ?? "none") ?? .none }
         set { cleanupCategoryRaw = newValue.rawValue }

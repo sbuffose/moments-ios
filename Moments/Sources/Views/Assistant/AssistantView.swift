@@ -176,6 +176,7 @@ struct MessageView: View {
             if let text = message.text, !text.isEmpty {
                 AssistantMessageBubble(message: text, isUser: message.isUser)
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                    .accessibilityIdentifier(text == AssistantViewModel.welcomeText ? "assistant.welcome" : "assistant.message")
             }
             
             // Rich card
@@ -312,25 +313,50 @@ class AssistantViewModel: ObservableObject {
     private let cleanupViewModel = CleanupViewModel()
     private let importantDatesService = ImportantDatesService.shared
     
-    private let defaultSuggestions = [
+    static let welcomeText = "¡Hola! Soy tu asistente de Moments. Preguntame sobre tus fotos, fechas importantes, o decime qué querés limpiar."
+    
+    static let defaultSuggestionCopy = [
         "¿Cuánto espacio puedo liberar?",
-        "Borrá las capturas de más de 3 meses",
-        "Mostrame las fotos del último viaje",
-        "¿Cuándo es el cumple de Sofía?",
-        "Armame un recuerdo de las vacaciones"
+        "Borrá capturas",
+        "Fotos del último viaje",
+        "Cumple de Sofía",
+        "Armame un recuerdo"
     ]
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
-        suggestions = defaultSuggestions
+        suggestions = Self.defaultSuggestionCopy
         intentParser.initialize(modelContext: modelContext)
         cleanupViewModel.initialize(modelContext: modelContext)
         importantDatesService.initialize(modelContext: modelContext)
+        presentWelcomeIfNeeded()
         
         Task {
             await loadProactiveCards()
         }
     }
+    
+    func presentWelcomeIfNeeded() {
+        if !messages.contains(where: { $0.text == Self.welcomeText }) {
+            messages.append(AssistantMessage(text: Self.welcomeText, isUser: false))
+        }
+        if !messages.contains(where: { if case .catalogQuestion = $0.card { return true }; return false }) {
+            messages.append(Self.fallbackCatalogPrompt)
+        }
+    }
+    
+    static let fallbackCatalogPrompt = AssistantMessage(
+        text: "Cuando encuentre personas o lugares que se repiten, te voy a pedir que les pongas nombre.",
+        isUser: false,
+        card: .catalogQuestion(
+            question: "¿Quiénes y dónde?",
+            subtitle: "Personas y lugares",
+            photos: [],
+            options: [
+                .init(id: "catalog:later", title: "Después")
+            ]
+        )
+    )
     
     // MARK: - Process Message
     
@@ -663,12 +689,7 @@ class AssistantViewModel: ObservableObject {
     // MARK: - Proactive Cards
     
     private func loadProactiveCards() async {
-        // Add welcome message
-        let welcomeMessage = AssistantMessage(
-            text: "¡Hola! Soy tu asistente de Moments. Preguntame sobre tus fotos, fechas importantes, o decime qué querés limpiar.",
-            isUser: false
-        )
-        messages.append(welcomeMessage)
+        presentWelcomeIfNeeded()
         
         // Check for cleanup suggestions
         if let context = modelContext {
@@ -711,8 +732,15 @@ class AssistantViewModel: ObservableObject {
         
         if let context = modelContext {
             CatalogingService.shared.initialize(modelContext: context)
-            for prompt in CatalogingService.shared.frequentUnnamedPrompts() {
-                messages.append(prompt)
+            let prompts = CatalogingService.shared.frequentUnnamedPrompts()
+            if !prompts.isEmpty {
+                messages.removeAll { message in
+                    if case .catalogQuestion(let question, _, _, _) = message.card {
+                        return question == "¿Quiénes y dónde?"
+                    }
+                    return false
+                }
+                messages.append(contentsOf: prompts)
             }
         }
     }

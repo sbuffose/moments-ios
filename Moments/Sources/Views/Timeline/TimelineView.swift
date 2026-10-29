@@ -29,6 +29,7 @@ struct TimelineView: View {
             Text("timeline_loading")
                 .foregroundStyle(.secondary)
         }
+        .accessibilityIdentifier("timeline.loading")
     }
     
     private var emptyStateView: some View {
@@ -37,6 +38,7 @@ struct TimelineView: View {
         } description: {
             Text("timeline_empty_description")
         }
+        .accessibilityIdentifier("timeline.empty")
     }
     
     private var timelineContent: some View {
@@ -59,6 +61,7 @@ struct TimelineView: View {
             }
             .padding()
         }
+        .accessibilityIdentifier("timeline.content")
     }
     
     // MARK: - On This Day

@@ -41,7 +41,7 @@ struct HomeView: View {
             .animation(nil, value: appState.shouldShowFirstRunAnalyzing)
             .animation(nil, value: appState.homeRevealGeneration)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.automatic, for: .navigationBar)
+            .momentsOpaqueNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Moments")
@@ -72,6 +72,7 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
+            viewModel.refreshSpaceSaved()
         }
         .sheet(isPresented: $showRecentlyDeletedInfo) {
             NavigationStack {
@@ -145,9 +146,14 @@ struct HomeView: View {
                 HStack(spacing: MomentsSpacing.xs) {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(.green)
-                    Text("Ya liberaste \(viewModel.formattedSpaceSaved)")
+                    Text("Ya liberaste")
                         .font(MomentsTypography.bodyMedium)
                         .foregroundStyle(.green)
+                    AnimatedByteCounter(
+                        bytes: viewModel.totalSpaceSaved,
+                        identifier: "home.headerFreedBytes",
+                        font: MomentsTypography.bodyMedium
+                    )
                 }
             }
         }
@@ -312,10 +318,20 @@ struct HomeView: View {
     private var freedAndStorageCard: some View {
         VStack(alignment: .leading, spacing: MomentsSpacing.sm) {
             HStack(alignment: .top) {
-                Text(SpaceFormatting.homeCumulativeSpaceHeadline(bytes: viewModel.totalSpaceSaved))
-                    .font(MomentsTypography.headlineMedium)
-                    .foregroundStyle(MomentsColors.textPrimary)
-                    .accessibilityIdentifier("home.freedTotal")
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("Ya liberaste")
+                    AnimatedByteCounter(
+                        bytes: viewModel.totalSpaceSaved,
+                        identifier: "home.freedBytes",
+                        font: MomentsTypography.headlineMedium
+                    )
+                    Text("con Moments")
+                }
+                .font(MomentsTypography.headlineMedium)
+                .foregroundStyle(MomentsColors.textPrimary)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("home.freedTotal")
+                .accessibilityLabel(SpaceFormatting.homeCumulativeSpaceHeadline(bytes: viewModel.totalSpaceSaved))
                 Spacer()
                 Button {
                     showRecentlyDeletedInfo = true
@@ -577,6 +593,8 @@ struct MetadataCategory: Identifiable {
 
 @MainActor
 class HomeViewModel: ObservableObject {
+    static let largeVideosChipTitle = "Videos +100 MB"
+    
     @Published var feedCards: [HomeFeedCard] = []
     @Published var canFreeSpace: Int64 = 0
     @Published var totalSpaceSaved: Int64 = 0
@@ -679,6 +697,10 @@ class HomeViewModel: ObservableObject {
         )
     }
     
+    func refreshSpaceSaved() {
+        loadSpaceSaved()
+    }
+    
     private func loadSpaceSaved() {
         totalSpaceSaved = Int64(UserDefaults.standard.integer(forKey: "totalSpaceSaved"))
     }
@@ -771,7 +793,7 @@ class HomeViewModel: ObservableObject {
             let size = largeVideos.reduce(0) { $0 + ($1.estimatedFileSize ?? 100_000_000) }
             categories.append(MetadataCategory(
                 id: "largeVideos",
-                title: "Videos grandes (+100 MB)",
+                title: HomeViewModel.largeVideosChipTitle,
                 icon: "film",
                 count: largeVideos.count,
                 estimatedSize: size,

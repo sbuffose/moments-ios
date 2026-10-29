@@ -98,9 +98,10 @@ class PeopleViewModel: ObservableObject {
     // MARK: - Loading
     
     func loadPeople() async {
-        guard let context = modelContext else { return }
-        
-        isLoading = true
+        guard let context = modelContext else {
+            isLoading = false
+            return
+        }
         
         do {
             let descriptor = FetchDescriptor<PersistedPerson>()
@@ -115,9 +116,7 @@ class PeopleViewModel: ObservableObject {
                 return p1.faceCount > p2.faceCount
             }
             
-            if persistedPeople.isEmpty {
-                await generatePeople()
-            } else {
+            if !persistedPeople.isEmpty {
                 people = persistedPeople.map { person in
                     PersonItem(
                         id: person.id,
@@ -131,9 +130,12 @@ class PeopleViewModel: ObservableObject {
                         isFavorite: person.isFavorite
                     )
                 }
+                isLoading = false
+                return
             }
             
             isLoading = false
+            await generatePeople()
             
         } catch {
             errorMessage = "Error al cargar personas: \(error.localizedDescription)"
@@ -196,7 +198,19 @@ class PeopleViewModel: ObservableObject {
             }
             
             try context.save()
-            await loadPeople()
+            people = generatedPeople.map { person in
+                PersonItem(
+                    id: person.id,
+                    name: person.name,
+                    faceClusterId: person.faceClusterId,
+                    representativePhotoId: person.representativeFacePhotoId,
+                    photoIds: person.photoIds,
+                    faceCount: person.faceCount,
+                    birthdayMonth: nil,
+                    birthdayDay: nil,
+                    isFavorite: false
+                )
+            }
             
         } catch {
             errorMessage = "Error generando personas: \(error.localizedDescription)"

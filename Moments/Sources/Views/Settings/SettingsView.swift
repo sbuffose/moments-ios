@@ -166,6 +166,7 @@ struct SettingsView: View {
                 #endif
             }
             .navigationTitle(Text("settings_title"))
+            .momentsOpaqueNavigationBar()
         }
         .onAppear {
             calculateCacheSize()

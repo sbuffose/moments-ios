@@ -765,13 +765,19 @@ final class SmokeTestSuite: XCTestCase {
             "Summary must state that space returns after emptying Recently Deleted"
         )
         let howTo = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+            NSPredicate(format: "label CONTAINS[c] 'Se libera al vaciar Eliminados recientemente'")
         ).firstMatch
         XCTAssertTrue(
             howTo.waitForExistence(timeout: 6)
             || app.buttons["space.openPhotos"].waitForExistence(timeout: 3)
             || app.buttons["Abrir Fotos"].waitForExistence(timeout: 2),
             "Summary must include the how-to or the Open Photos button"
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+            ).firstMatch.exists,
+            "Old album path copy must be gone"
         )
     }
     
@@ -1037,7 +1043,7 @@ final class SmokeTestSuite: XCTestCase {
         XCTAssertTrue(
             app.otherElements["space.recentlyDeletedHint"].waitForExistence(timeout: 6)
             || app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+                NSPredicate(format: "label CONTAINS[c] 'Se libera al vaciar Eliminados recientemente'")
             ).firstMatch.waitForExistence(timeout: 4)
         )
         let openPhotos = app.buttons["space.openPhotos"]

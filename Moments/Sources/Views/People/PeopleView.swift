@@ -32,6 +32,7 @@ struct PeopleView: View {
             Text("people_loading")
                 .foregroundStyle(.secondary)
         }
+        .accessibilityIdentifier("people.loading")
     }
     
     private var emptyStateView: some View {
@@ -40,6 +41,7 @@ struct PeopleView: View {
         } description: {
             Text("people_empty_description")
         }
+        .accessibilityIdentifier("people.empty")
     }
     
     private var filteredPeople: [PeopleViewModel.PersonItem] {
