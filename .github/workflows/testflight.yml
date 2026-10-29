@@ -10,10 +10,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # PRs share one group and cancel leftovers to save macOS minutes.
+  # One group per ref so two open PRs do not cancel each other's tests.
+  # A new push on the same PR still cancels that PR's leftover run.
   # Main pushes keep cancel-in-progress false so a later merge cannot
   # kill a TestFlight upload that already passed unit + UI.
-  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || 'pull-requests' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
