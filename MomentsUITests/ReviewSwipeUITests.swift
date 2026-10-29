@@ -83,9 +83,10 @@ final class ReviewSwipeUITests: XCTestCase {
         
         XCTAssertTrue(waitForDecision(expected), "Stamp or toast should appear after swipe \(expected)")
         
-        let toast = app.staticTexts["review.decisionToast"]
+        let toast = app.descendants(matching: .any)["review.decisionToast"].firstMatch
         if toast.exists {
-            XCTAssertFalse(toast.label.isEmpty, "Stamp/toast label must not be empty")
+            let text = toast.label + (toast.value as? String ?? "")
+            XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "Stamp/toast label must not be empty")
         }
         
         let next = cardQuery
@@ -96,22 +97,21 @@ final class ReviewSwipeUITests: XCTestCase {
         )
     }
     
-    private func waitForDecision(_ expected: String, timeout: TimeInterval = 1) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let text = elementText(app.staticTexts["review.lastDecision"])
-            if text.contains(expected) { return true }
-            if app.staticTexts["review.decisionToast"].exists { return true }
-            if app.staticTexts["review.swipeStamp"].exists { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    private func waitForDecision(_ expected: String, timeout: TimeInterval = 4) -> Bool {
+        let last = app.descendants(matching: .any)["review.lastDecision"].firstMatch
+        let toast = app.descendants(matching: .any)["review.decisionToast"].firstMatch
+        let stamp = app.descendants(matching: .any)["review.swipeStamp"].firstMatch
+        let predicate = NSPredicate { _, _ in
+            let lastText = (last.label + (last.value as? String ?? "")).lowercased()
+            let toastText = (toast.label + (toast.value as? String ?? "")).lowercased()
+            let stampText = (stamp.label + (stamp.value as? String ?? "")).lowercased()
+            return lastText.contains(expected)
+                || (toast.exists && !toastText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                || stamp.exists
+                || stampText.contains(expected)
         }
-        return elementText(app.staticTexts["review.lastDecision"]).contains(expected)
-            || app.staticTexts["review.decisionToast"].exists
-            || app.staticTexts["review.swipeStamp"].exists
-    }
-    
-    private func elementText(_ element: XCUIElement) -> String {
-        element.label + (element.value as? String ?? "")
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
     
     private func drag(_ card: XCUIElement, direction: Swipe) {

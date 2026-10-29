@@ -744,19 +744,15 @@ struct CleanupReviewView: View {
         .background(DisableInteractivePop())
         .overlay(alignment: .bottom) {
             VStack(spacing: 8) {
-                Text(lastDecision.rawValue)
-                    .font(.caption2)
-                    .foregroundStyle(.clear)
+                AccessibilityProbe(id: "review.lastDecision", label: lastDecision.rawValue)
                     .id(lastDecision)
-                    .accessibilityIdentifier("review.lastDecision")
-                    .accessibilityLabel(lastDecision.rawValue)
-                    .accessibilityValue(lastDecision.rawValue)
                 if let decisionToast {
                     Text(decisionToast)
                         .font(MomentsTypography.headlineSmall)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                         .accessibilityIdentifier("review.decisionToast")
+                        .accessibilityLabel(decisionToast)
                     if let undoPhotoId {
                         Button(String(localized: "humor_undo")) {
                             MomentsMotion.animate(reduceMotion: reduceMotion) {
@@ -2687,7 +2683,17 @@ private struct DisableInteractivePop: UIViewControllerRepresentable {
     final class Controller: UIViewController {
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
+            disableInteractivePop()
+        }
+        
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            disableInteractivePop()
+        }
+        
+        private func disableInteractivePop() {
             navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+            navigationController?.interactivePopGestureRecognizer?.delegate = nil
         }
     }
 }
