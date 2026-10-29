@@ -15,7 +15,7 @@ class PhotoAnalysisService: ObservableObject {
     private let modelContext: ModelContext
     private lazy var imageAnalyzer = ImageAnalyzer()
     private lazy var faceAnalyzer = FaceAnalyzer()
-    private let geocodingService = GeocodingService.shared
+    private lazy var geocodingService = GeocodingService.shared
     private let metadataService = MetadataExtractionService.shared
     
     /// Hardware CIContext crashes the XCTest host (eligibilityd / no GPU).

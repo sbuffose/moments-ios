@@ -7,7 +7,7 @@ import CoreLocation
 actor GeocodingService {
     static let shared = GeocodingService()
     
-    private let geocoder = CLGeocoder()
+    private lazy var geocoder = CLGeocoder()
     private var cache: [String: CachedLocation] = [:]
     private let cacheExpiration: TimeInterval = 60 * 60 * 24 * 30 // 30 días
     
@@ -25,6 +25,7 @@ actor GeocodingService {
     // MARK: - Public Methods
     
     func getLocationName(latitude: Double, longitude: Double) async -> (name: String, city: String?, country: String?)? {
+        if MomentsTestRuntime.shouldSkipLiveScan { return nil }
         let cacheKey = "\(latitude.rounded(to: 4)),\(longitude.rounded(to: 4))"
         
         // Verificar cache

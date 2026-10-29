@@ -20,6 +20,10 @@ class PhotoLibraryService: ObservableObject {
     // MARK: - Authorization
     
     func checkAuthorizationStatus() async -> PHAuthorizationStatus {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            authorizationStatus = .authorized
+            return .authorized
+        }
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         self.authorizationStatus = status
         self.isLimitedAccess = (status == .limited)

@@ -45,6 +45,7 @@ final class NewPhotoCheckService: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        if MomentsTestRuntime.shouldSkipLiveScan { return }
         if Self.isSimulated {
             pending = NewPhotoCandidate(
                 id: "fixture-sim-new-photo",
