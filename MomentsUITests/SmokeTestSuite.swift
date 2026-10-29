@@ -3,6 +3,7 @@
 // These tests gate the CI pipeline - failures block deployment
 
 import XCTest
+import UIKit
 
 final class SmokeTestSuite: XCTestCase {
     
@@ -1269,5 +1270,315 @@ final class SmokeTestSuite: XCTestCase {
             || app.navigationBars["Guardar en álbum"].waitForExistence(timeout: 4)
             || app.staticTexts["Guardar en álbum"].waitForExistence(timeout: 4)
         )
+    }
+    
+    func testActiveScanStaysResponsiveAndResumesAfterBackground() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-simulateActiveScan",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch during an active fixture scan")
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let progressEl = app.descendants(matching: .any)["scan.progress"]
+        XCTAssertTrue(
+            progressEl.waitForExistence(timeout: 12) || app.otherElements["scan.progress"].waitForExistence(timeout: 4),
+            "scan.progress must be visible during analysis"
+        )
+        let before = Self.scanProgressValue(progressEl)
+        XCTAssertGreaterThan(before, 0, "Active scan should already have progress")
+        
+        let reviewButton = app.buttons["home.reviewButton"]
+        XCTAssertTrue(
+            reviewButton.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4),
+            "Review must stay reachable while analysis runs"
+        )
+        if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
+        XCTAssertTrue(
+            app.otherElements["review.root"].waitForExistence(timeout: 10),
+            "Opening review during an active scan must not stall the UI"
+        )
+        let keep = app.buttons["review.keepButton"]
+        if keep.waitForExistence(timeout: 6) {
+            XCTAssertTrue(keep.isHittable, "Review Conservar must be tappable during analysis")
+            keep.tap()
+        } else if app.buttons["Conservar"].waitForExistence(timeout: 3) {
+            app.buttons["Conservar"].tap()
+        }
+        
+        if app.navigationBars.buttons.count > 0 {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 8))
+        tabBar.buttons.element(boundBy: 1).tap()
+        XCTAssertTrue(app.waitForAssistant(), "Asistente must open while analysis is running")
+        let suggestion = app.buttons["assistant.suggestion"]
+        if suggestion.waitForExistence(timeout: 6) {
+            XCTAssertTrue(suggestion.isHittable || suggestion.exists, "Asistente chips must stay tappable")
+            suggestion.tap()
+        } else {
+            let input = app.textFields["assistant.input"]
+            XCTAssertTrue(input.waitForExistence(timeout: 6), "Asistente input must be tappable during analysis")
+            input.tap()
+        }
+        
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(progressEl.waitForExistence(timeout: 8))
+        
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 3)
+        app.activate()
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 20), "App must come back after home + activate")
+        XCTAssertTrue(progressEl.waitForExistence(timeout: 12))
+        let after = Self.scanProgressValue(progressEl)
+        XCTAssertGreaterThan(after, 0, "Progress must not reset to 0 after backgrounding")
+        XCTAssertGreaterThan(after, before, "Background work must advance the checkpoint, not restart")
+    }
+    
+    /// P0 266: "abre pero no puedo tocar". Large fixture library + live scan
+    /// must leave Home Empezar, every tab, and Asistente input hittable in ≤2s.
+    func testLaunchDuringActiveScanStaysTappableWithinTwoSeconds() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-simulateActiveScan",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch during an active fixture scan")
+        
+        tabBar.buttons.element(boundBy: 0).tap()
+        let start = app.buttons["home.reviewButton"]
+        let startByLabel = app.buttons["Empezar"]
+        XCTAssertTrue(
+            start.waitForExistence(timeout: 2) || startByLabel.waitForExistence(timeout: 2),
+            "Empezar must appear within 2s after launch during analysis"
+        )
+        let startButton = start.exists ? start : startByLabel
+        XCTAssertTrue(startButton.isHittable, "Empezar must be hittable — frozen/dim Home is the 266 bug")
+        startButton.tap()
+        XCTAssertTrue(
+            app.otherElements["review.root"].waitForExistence(timeout: 2),
+            "Opening review during analysis must happen within 2s"
+        )
+        
+        if app.navigationBars.buttons.count > 0 {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 2), "Tab bar must return within 2s")
+        let tabCount = min(tabBar.buttons.count, 4)
+        XCTAssertGreaterThanOrEqual(tabCount, 4, "Home, Asistente, Momentos and Ajustes must exist")
+        for index in 0..<tabCount {
+            let tab = tabBar.buttons.element(boundBy: index)
+            XCTAssertTrue(tab.waitForExistence(timeout: 2), "Tab \(index) must exist during analysis")
+            XCTAssertTrue(tab.isHittable, "Tab \(index) must be hittable during analysis")
+            tab.tap()
+        }
+        
+        tabBar.buttons.element(boundBy: 1).tap()
+        let input = app.textFields["assistant.input"]
+        let inputByPlaceholder = app.textFields["Preguntame algo..."]
+        XCTAssertTrue(
+            input.waitForExistence(timeout: 2) || inputByPlaceholder.waitForExistence(timeout: 2),
+            "Asistente input must appear within 2s during analysis"
+        )
+        let assistantInput = input.exists ? input : inputByPlaceholder
+        XCTAssertTrue(assistantInput.isHittable, "Asistente input must be tappable during analysis")
+        assistantInput.tap()
+        
+        let suggestion = app.buttons["assistant.suggestion"]
+        if suggestion.waitForExistence(timeout: 2) {
+            XCTAssertTrue(suggestion.isHittable, "Asistente chips must stay tappable during analysis")
+        }
+    }
+    
+    func testFirstRunCompletionRevealsOpaqueHittableHome() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-simulateFirstScanThenComplete",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(
+            app.otherElements["firstRun.root"].waitForExistence(timeout: 12)
+                || app.otherElements["firstRun.screen"].waitForExistence(timeout: 4)
+                || app.staticTexts["firstRun.title"].waitForExistence(timeout: 4),
+            "First-run analyzing must show before completion"
+        )
+        
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 2)
+        app.activate()
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 20))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let scroll = app.scrollViews["home.scrollView"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 15), "Ready home must appear after first-run completes")
+        XCTAssertTrue(scroll.isHittable, "readyHomeScroll must be hit-testable, not stuck faded")
+        
+        let start = app.buttons["home.reviewButton"]
+        XCTAssertTrue(
+            start.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4),
+            "Empezar must exist after first-run"
+        )
+        let startButton = start.exists ? start : app.buttons["Empezar"]
+        XCTAssertTrue(startButton.isHittable, "Empezar must be hittable — faded Home is the 266 bug")
+        
+        let hero = app.staticTexts["home.heroHeadline"]
+        if hero.waitForExistence(timeout: 6) {
+            let contrast = Self.sampledContrast(of: hero, fallback: scroll)
+            XCTAssertGreaterThan(
+                contrast,
+                2.4,
+                "Hero title vs background must not look washed out (contrast \(contrast))"
+            )
+        }
+        
+        startButton.tap()
+        XCTAssertTrue(
+            app.otherElements["review.root"].waitForExistence(timeout: 10),
+            "Tapping Empezar after first-run must open review"
+        )
+        
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "first_run_complete_opaque_home"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+    
+    func testBlackFrameShowsFriendlyLabelInReview() throws {
+        app.launch()
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let reviewButton = app.buttons["home.reviewButton"]
+        XCTAssertTrue(
+            reviewButton.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4)
+        )
+        if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
+        XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
+        
+        let label = app.staticTexts["review.blackFrameLabel"]
+        let labelByTitle = app.staticTexts["Foto casi toda negra"]
+        let combined = app.otherElements["review.blackFrameLabel"]
+        XCTAssertTrue(
+            label.waitForExistence(timeout: 8)
+                || combined.waitForExistence(timeout: 4)
+                || labelByTitle.waitForExistence(timeout: 4),
+            "Black-frame fixture must show 'Foto casi toda negra' in review"
+        )
+    }
+    
+    func testThumbnailLoadFailureShowsRetry() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-simulateThumbnailLoadFailure",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        tabBar.buttons.element(boundBy: 0).tap()
+        
+        let reviewButton = app.buttons["home.reviewButton"]
+        XCTAssertTrue(
+            reviewButton.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4)
+        )
+        if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
+        XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
+        
+        let failed = app.staticTexts["photo.thumb.failed"]
+        let failedByLabel = app.staticTexts["No pudimos cargar esta foto"]
+        let retry = app.buttons["photo.thumb.retry"]
+        let retryByLabel = app.buttons["Reintentar"]
+        XCTAssertTrue(
+            failed.waitForExistence(timeout: 8)
+                || failedByLabel.waitForExistence(timeout: 4)
+                || app.otherElements["photo.thumb.failed"].waitForExistence(timeout: 4),
+            "Load failure must show 'No pudimos cargar esta foto', never a silent black box"
+        )
+        XCTAssertTrue(
+            retry.waitForExistence(timeout: 6) || retryByLabel.waitForExistence(timeout: 4),
+            "Load failure must offer Reintentar"
+        )
+    }
+    
+    private static func scanProgressValue(_ element: XCUIElement) -> Double {
+        if let number = element.value as? NSNumber {
+            return number.doubleValue
+        }
+        let raw = (element.value as? String) ?? "0"
+        return Double(raw) ?? 0
+    }
+    
+    /// Samples luminance inside `element` and reports (max+0.05)/(min+0.05).
+    /// A Home stuck at 15–20% opacity collapses this toward 1.
+    private static func sampledContrast(of element: XCUIElement, fallback: XCUIElement) -> Double {
+        let screenshot = XCUIScreen.main.screenshot()
+        let image = screenshot.image
+        let frame = element.exists ? element.frame : fallback.frame
+        guard frame.width > 2, frame.height > 2 else { return 1 }
+        
+        var luminances: [Double] = []
+        let xs = [0.15, 0.35, 0.50, 0.65, 0.85]
+        let ys = [0.25, 0.50, 0.75]
+        for x in xs {
+            for y in ys {
+                let point = CGPoint(
+                    x: frame.minX + frame.width * x,
+                    y: frame.minY + frame.height * y
+                )
+                if let lum = luminance(of: image, at: point) {
+                    luminances.append(lum)
+                }
+            }
+        }
+        guard let minL = luminances.min(), let maxL = luminances.max(), maxL > 0 else { return 1 }
+        return (maxL + 0.05) / (minL + 0.05)
+    }
+    
+    private static func luminance(of image: UIImage, at point: CGPoint) -> Double? {
+        guard let cgImage = image.cgImage else { return nil }
+        let scale = image.scale
+        let x = Int(point.x * scale)
+        let y = Int(point.y * scale)
+        guard x >= 0, y >= 0, x < cgImage.width, y < cgImage.height else { return nil }
+        guard let data = cgImage.dataProvider?.data,
+              let ptr = CFDataGetBytePtr(data) else { return nil }
+        let bytesPerPixel = max(cgImage.bitsPerPixel / 8, 1)
+        let index = y * cgImage.bytesPerRow + x * bytesPerPixel
+        let length = CFDataGetLength(data)
+        guard index + 2 < length else { return nil }
+        let r = Double(ptr[index]) / 255.0
+        let g = Double(ptr[index + 1]) / 255.0
+        let b = Double(ptr[index + 2]) / 255.0
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 }

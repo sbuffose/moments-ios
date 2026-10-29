@@ -20,6 +20,7 @@ struct AssistantView: View {
             Color.clear
                 .frame(width: 1, height: 1)
                 .accessibilityIdentifier("assistant.root")
+                .allowsHitTesting(false)
             
             VStack(spacing: 0) {
                 // Messages/Cards feed
@@ -50,8 +51,9 @@ struct AssistantView: View {
                     }
                 }
                 
-                // Suggestions when empty or focused
-                if viewModel.messages.isEmpty || isInputFocused {
+                // Keep chips on-screen so Asistente stays tappable during analysis
+                // even after the welcome message arrives.
+                if viewModel.messages.count <= 2 || isInputFocused {
                     suggestionsView
                 }
                 
@@ -59,6 +61,8 @@ struct AssistantView: View {
                 inputBar
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant.root")
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
@@ -117,7 +121,7 @@ struct AssistantView: View {
     private var suggestionsView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: MomentsSpacing.xs) {
-                ForEach(viewModel.suggestions, id: \.self) { suggestion in
+                ForEach(Array(viewModel.suggestions.enumerated()), id: \.element) { index, suggestion in
                     Button {
                         MomentsHaptics.selection()
                         inputText = suggestion
@@ -131,11 +135,17 @@ struct AssistantView: View {
                             .background(MomentsColors.bgTertiary)
                             .cornerRadius(16)
                     }
+                    .contentShape(Rectangle())
+                    // Only the first chip uses the shared id so XCTest can tap
+                    // a single match. Extra chips keep a unique suffix.
+                    .accessibilityIdentifier(index == 0 ? "assistant.suggestion" : "assistant.suggestion.\(index)")
                 }
             }
             .padding(.horizontal, MomentsSpacing.screenHorizontal)
             .padding(.vertical, MomentsSpacing.xs)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant.suggestions")
     }
     
     // MARK: - Actions
@@ -188,13 +198,17 @@ struct MessageView: View {
             )
             
         case .cleanup(let title, let count, let size, let photos, let category):
+            let batchPhotos = Array(photos.prefix(DailyReviewBatch.size))
+            let batchBytes = batchPhotos.reduce(Int64(0)) { $0 + ($1.estimatedFileSize ?? 0) }
             CleanupBatchCard(
                 title: title,
-                itemCount: count,
-                estimatedSize: size,
-                photos: photos,
+                itemCount: min(count, DailyReviewBatch.size),
+                estimatedSize: SpaceFormatting.string(from: batchBytes),
+                photos: batchPhotos,
                 onReview: { viewModel.reviewCleanup(category: category) },
-                onQuickDelete: { viewModel.quickDelete(photos: photos) }
+                onQuickDelete: { viewModel.quickDelete(photos: batchPhotos) },
+                totalCount: count,
+                totalSize: size
             )
             
         case .dateReminder(let date, let photos):
@@ -308,10 +322,10 @@ class AssistantViewModel: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        suggestions = defaultSuggestions
         intentParser.initialize(modelContext: modelContext)
         cleanupViewModel.initialize(modelContext: modelContext)
         importantDatesService.initialize(modelContext: modelContext)
-        suggestions = defaultSuggestions
         
         Task {
             await loadProactiveCards()
@@ -386,12 +400,13 @@ class AssistantViewModel: ObservableObject {
     }
     
     private func handleCheckSpace() -> AssistantMessage {
-        let canFree = cleanupViewModel.formattedSize(cleanupViewModel.estimatedSpaceFreed)
+        let inventory = modelContext.map { LibraryInventoryService.snapshot(from: $0) } ?? .empty
+        let canFree = cleanupViewModel.formattedSize(inventory.totalReclaimableBytes)
         let saved = cleanupViewModel.formattedSize(Int64(UserDefaults.standard.integer(forKey: "totalSpaceSaved")))
-        let items = cleanupViewModel.totalCleanupItems
+        let items = inventory.totalReclaimableItems
         
         return AssistantMessage(
-            text: "Esto es lo que encontré:",
+            text: "En el lote de hoy: \(cleanupViewModel.formattedSize(inventory.todayBatchBytes)) · en total podés liberar \(canFree)",
             isUser: false,
             card: .spaceInfo(canFree: canFree, saved: saved, items: items)
         )
@@ -408,7 +423,7 @@ class AssistantViewModel: ObservableObject {
         if let cat = category {
             let matchingCategory = cleanupViewModel.categories.first { $0.category == cat }
             photos = matchingCategory?.photos ?? []
-            title = NSLocalizedString(cat.localizedKey, comment: "")
+            title = cat.displayName
         } else {
             photos = cleanupViewModel.categories.flatMap { $0.photos }
         }
@@ -425,16 +440,18 @@ class AssistantViewModel: ObservableObject {
             )
         }
         
-        let size = cleanupViewModel.formattedSize(photos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) })
+        let totalSizeBytes = photos.reduce(0) { $0 + ($1.estimatedFileSize ?? 0) }
+        let size = cleanupViewModel.formattedSize(totalSizeBytes)
+        let batch = Array(photos.prefix(DailyReviewBatch.size))
         
         return AssistantMessage(
-            text: "Encontré \(photos.count) elementos que podrías eliminar:",
+            text: "Encontré \(photos.count) elementos. Te muestro el lote de hoy (\(batch.count)):",
             isUser: false,
             card: .cleanup(
                 title: title,
                 count: photos.count,
                 size: size,
-                photos: Array(photos.prefix(8)),
+                photos: batch,
                 category: category
             )
         )
@@ -650,20 +667,25 @@ class AssistantViewModel: ObservableObject {
         messages.append(welcomeMessage)
         
         // Check for cleanup suggestions
-        if cleanupViewModel.totalCleanupItems > 10 {
-            let topCategory = cleanupViewModel.categories.first
-            if let cat = topCategory, cat.count >= 10 {
-                let size = cleanupViewModel.formattedSize(cat.estimatedSize)
+        if let context = modelContext {
+            await cleanupViewModel.loadCleanupSuggestions()
+            let inventory = LibraryInventoryService.snapshot(from: context)
+            if inventory.totalReclaimableItems > 0 {
+                let topCategory = cleanupViewModel.categories.first
+                let title = topCategory?.category.displayName ?? "Fotos para limpiar"
+                let size = cleanupViewModel.formattedSize(inventory.totalReclaimableBytes)
+                let preview = topCategory.map { Array($0.photos.prefix(DailyReviewBatch.size)) }
+                    ?? []
                 
                 let cleanupMessage = AssistantMessage(
-                    text: "Encontré algunas fotos que podrías limpiar:",
+                    text: "Encontré algunas fotos que podrías limpiar. El lote de hoy son \(inventory.todayBatchItems):",
                     isUser: false,
                     card: .cleanup(
-                        title: NSLocalizedString(cat.localizedKey, comment: ""),
-                        count: cat.count,
+                        title: title,
+                        count: inventory.totalReclaimableItems,
                         size: size,
-                        photos: Array(cat.photos.prefix(8)),
-                        category: cat.category
+                        photos: preview,
+                        category: topCategory?.category
                     )
                 )
                 messages.append(cleanupMessage)
@@ -705,14 +727,15 @@ class AssistantViewModel: ObservableObject {
     
     func quickDelete(photos: [PersistedPhoto]) {
         MomentsHaptics.success()
+        let batch = Array(photos.prefix(DailyReviewBatch.size))
         Task {
-            for photo in photos {
+            for photo in batch {
                 cleanupViewModel.selectedPhotos.insert(photo.id)
             }
             await cleanupViewModel.deleteSelectedPhotos()
             
             let response = AssistantMessage(
-                text: "¡Listo! Eliminé \(photos.count) elementos y liberé espacio.",
+                text: "¡Listo! Eliminé \(batch.count) elementos del lote de hoy y liberé espacio.",
                 isUser: false
             )
             messages.append(response)

@@ -617,6 +617,19 @@ struct CleanupReviewView: View {
         }
     }
     
+    private var showsBlackFrameLabel: Bool {
+        switch currentItem {
+        case .single(let photo):
+            return PhotoLuminanceClass.classify(meanLuminance: photo.exposureScore ?? 0.5) == .blackFrame
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos.contains {
+                PhotoLuminanceClass.classify(meanLuminance: $0.exposureScore ?? 0.5) == .blackFrame
+            }
+        case nil:
+            return false
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             if let currentItem {
@@ -645,7 +658,7 @@ struct CleanupReviewView: View {
                 
                 // Category label for current photo
                 if let category = currentCategory {
-                    Label(LocalizedStringKey(category.localizedKey), systemImage: category.iconName)
+                    Label(category.displayName, systemImage: category.iconName)
                         .font(.caption)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -654,6 +667,20 @@ struct CleanupReviewView: View {
                         .id(category)
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.2), value: category)
+                }
+                
+                if showsBlackFrameLabel {
+                    Text(PhotoLuminanceClass.blackFrameTitle)
+                        .font(MomentsTypography.headlineMedium)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.72), in: Capsule())
+                        .padding(.top, 6)
+                        .accessibilityIdentifier("review.blackFrameLabel")
+                        .accessibilityLabel(PhotoLuminanceClass.blackFrameTitle)
+                        .allowsHitTesting(false)
                 }
                 
                 Spacer()
@@ -684,6 +711,25 @@ struct CleanupReviewView: View {
                             // Queue shrinks automatically - don't advance index
                         }
                     )
+                }
+                
+                if showKeepDurationChip, let keptId = lastKeptPhotoId {
+                    KeepDurationChipRow(
+                        onSelect: { duration in
+                            viewModel.keepPhoto(keptId, duration: duration)
+                            withAnimation {
+                                showKeepDurationChip = false
+                            }
+                        },
+                        onDismiss: {
+                            withAnimation {
+                                showKeepDurationChip = false
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                 }
                 
             } else {
@@ -830,26 +876,6 @@ struct CleanupReviewView: View {
             .padding(.horizontal, 16)
             
             Spacer()
-            
-            // Inline duration chip row - shows for 2.5s after keep
-            if showKeepDurationChip, let keptId = lastKeptPhotoId {
-                KeepDurationChipRow(
-                    onSelect: { duration in
-                        viewModel.keepPhoto(keptId, duration: duration)
-                        withAnimation {
-                            showKeepDurationChip = false
-                        }
-                    },
-                    onDismiss: {
-                        withAnimation {
-                            showKeepDurationChip = false
-                        }
-                    }
-                )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-            }
             
             SaveToAlbumReviewButton {
                 showAlbumSheet = true
@@ -1758,7 +1784,7 @@ struct CleanupCategoryRow: View {
             }
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(LocalizedStringKey(category.localizedKey))
+                Text(category.displayName)
                     .font(.body)
                     .foregroundStyle(.primary)
                 
@@ -1810,7 +1836,7 @@ struct CleanupCategoryDetailView: View {
                 swipeReviewView
             }
         }
-        .navigationTitle(Text(LocalizedStringKey(category.localizedKey)))
+        .navigationTitle(category.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .bottomBar) {
@@ -2078,6 +2104,7 @@ struct KeepDurationChipRow: View {
         .padding(.horizontal, 12)
         .background(.ultraThinMaterial)
         .cornerRadius(16)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.keepChips")
     }
 }
@@ -2142,6 +2169,15 @@ struct SwipeablePhotoCard: View {
                 AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier, targetSize: CGSize(width: 600, height: 600))
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay {
+                        if !ThumbnailLoadFailureSimulation.isRequested {
+                            PhotoDarknessOverlay(
+                                classification: PhotoLuminanceClass.classify(
+                                    meanLuminance: photo.exposureScore ?? 0.5
+                                )
+                            )
+                        }
+                    }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .cornerRadius(16)

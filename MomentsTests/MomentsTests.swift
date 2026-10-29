@@ -2,6 +2,7 @@
 // Unit tests for Moments app
 
 import XCTest
+import os
 import SwiftData
 import UserNotifications
 @testable import Moments
@@ -2523,9 +2524,9 @@ final class MomentsTests: XCTestCase {
     }
     
     func testHomeHeroHeadlineUsesNextBatch() throws {
-        let headline = HomeView.heroHeadline(bytes: 1_900_000_000)
-        XCTAssertTrue(headline.contains("Hoy podés liberar"), headline)
-        XCTAssertTrue(headline.contains("~2 min"), headline)
+        let headline = HomeView.heroHeadline(todayBytes: 33_800_000, totalBytes: 24_300_000_000)
+        XCTAssertTrue(headline.contains("En el lote de hoy"), headline)
+        XCTAssertTrue(headline.contains("en total podés liberar"), headline)
         XCTAssertFalse(headline.contains("Analizando"))
     }
     
@@ -2938,6 +2939,27 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(Notification.Name.openDailyReview.rawValue, "openDailyReview")
     }
     
+    func testPhotoLuminanceClassifiesBlackFrameDarkAndNormal() {
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.0), .blackFrame)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.01), .blackFrame)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: PhotoLuminanceClass.blackFrameThreshold), .blackFrame)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.05), .dark)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.10), .dark)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.149), .dark)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: PhotoLuminanceClass.darkThreshold), .normal)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.22), .normal)
+        XCTAssertEqual(PhotoLuminanceClass.classify(meanLuminance: 0.5), .normal)
+        XCTAssertLessThan(PhotoLuminanceClass.blackFrameThreshold, PhotoLuminanceClass.darkThreshold)
+        XCTAssertEqual(PhotoLuminanceClass.blackFrameTitle, "Foto casi toda negra")
+        XCTAssertEqual(PhotoLuminanceClass.loadFailureTitle, "No pudimos cargar esta foto")
+    }
+    
+    func testHomeRevealDisablesAnimationWhenNotActive() {
+        XCTAssertTrue(HomeRevealPolicy.disablesAnimations(applicationState: .background))
+        XCTAssertTrue(HomeRevealPolicy.disablesAnimations(applicationState: .inactive))
+        XCTAssertFalse(HomeRevealPolicy.disablesAnimations(applicationState: .active))
+    }
+    
     func testBackgroundScanAwaitsWorkInsteadOfFireAndForget() {
         // performBackgroundScan used to spawn unstructured Tasks and return true immediately.
         // The completion gate plus sequential indexing is the contract: work finishes first.
@@ -2945,4 +2967,141 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(BackgroundTaskCompletion.shouldComplete(previouslyCompleted: true),
                        "setTaskCompleted must run after the awaited scan, and only once")
     }
+    
+    // MARK: - Off-main scan pipeline + checkpoint resume (P0 build 266)
+    
+    func testScanPipelineRunsOffMainThreadAndResumesFromCheckpoint() {
+        let log = Logger(subsystem: "com.sbuffose.moments.tests", category: "ScanPipeline")
+        log.info("test.enter sync main=\(Thread.isMainThread, privacy: .public)")
+        
+        // Sync test + Foundation-only processor. The previous async+actor
+        // version crashed the first host before test.enter (xcresult counted
+        // that as a failure even though the retry passed in 55ms).
+        let box = ScanPipelineProbeBox()
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            log.info("probe.start main=\(Thread.isMainThread, privacy: .public)")
+            let store = ScanCheckpointStore(suiteName: "test.scan.pipeline.\(UUID().uuidString)")
+            store.start(totalPhotos: 20)
+            let items = (0..<20).map { ScanWorkItem(id: "photo-\($0)") }
+            let threads = ScanThreadProbe()
+            ScanSyntheticBatch.processBatch(Array(items.prefix(7)), store: store) { _ in
+                threads.note()
+            }
+            let processedAfterFirst = store.processedCount
+            let firstComplete = store.isComplete
+            log.info("probe.first-batch.done count=\(processedAfterFirst, privacy: .public)")
+            
+            let remaining = items.filter { !store.isProcessed($0.id) }
+            let resumeThreads = ScanThreadProbe()
+            ScanSyntheticBatch.processBatch(remaining, store: store) { _ in
+                resumeThreads.note()
+            }
+            log.info("probe.resume.done count=\(store.processedCount, privacy: .public)")
+            
+            box.report = ScanPipelineProbeReport(
+                firstOffMain: threads.sawOffMain,
+                firstOnMain: threads.sawOnMain,
+                processedAfterFirst: processedAfterFirst,
+                firstComplete: firstComplete,
+                remainingCount: remaining.count,
+                resumeOffMain: resumeThreads.sawOffMain,
+                resumeOnMain: resumeThreads.sawOnMain,
+                processedAfterResume: store.processedCount,
+                photo0Processed: store.isProcessed("photo-0"),
+                photo19Processed: store.isProcessed("photo-19")
+            )
+            group.leave()
+        }
+        XCTAssertEqual(
+            group.wait(timeout: .now() + 8),
+            .success,
+            "Synthetic batch probe timed out"
+        )
+        guard let report = box.report else {
+            return XCTFail("Probe did not produce a report")
+        }
+        log.info("test.returned processed=\(report.processedAfterResume, privacy: .public)")
+        
+        XCTAssertTrue(report.firstOffMain, "Scan/Vision work must run off the main thread")
+        XCTAssertFalse(report.firstOnMain, "First batch callback must not hop back to MainActor")
+        XCTAssertEqual(report.processedAfterFirst, 7, "Checkpoint should persist the first batch")
+        XCTAssertFalse(report.firstComplete)
+        XCTAssertGreaterThan(report.processedAfterFirst, 0)
+        XCTAssertEqual(report.remainingCount, 13, "Resume must skip already-processed items, not restart from 0")
+        XCTAssertTrue(report.resumeOffMain, "Resumed batch must also stay off the main thread")
+        XCTAssertFalse(report.resumeOnMain, "Resume callback must not hop back to MainActor")
+        XCTAssertEqual(report.processedAfterResume, 20, "Resume continues from the checkpoint instead of resetting")
+        XCTAssertGreaterThan(report.processedAfterResume, 7)
+        XCTAssertTrue(report.photo0Processed)
+        XCTAssertTrue(report.photo19Processed)
+    }
+    
+    func testContinuedTaskRequestMatchesWildcardAndIsSubmittedOnEmpezar() {
+        ContinuedProcessingSubmissionRecorder.reset()
+        XCTAssertNil(ContinuedProcessingSubmissionRecorder.lastUserInitiatedSubmission)
+        
+        let request = FirstRunScanStart.submitContinuedProcessingOnEmpezar(remainingPhotos: 7800)
+        
+        XCTAssertTrue(request.matchesPermittedWildcard,
+                      "Identifier \(request.identifier) must match \(ContinuedProcessingRequest.identifierWildcard)")
+        XCTAssertTrue(request.identifier.hasPrefix(ContinuedProcessingRequest.identifierPrefix))
+        XCTAssertFalse(request.identifier.hasSuffix(".*"))
+        XCTAssertEqual(request.title, "Analizando tus fotos")
+        XCTAssertTrue(request.submittedFromUserAction, "Empezar is the required foreground user action")
+        XCTAssertEqual(request.remainingPhotos, 7800)
+        
+        let recorded = ContinuedProcessingSubmissionRecorder.lastUserInitiatedSubmission
+        XCTAssertEqual(recorded?.identifier, request.identifier)
+        XCTAssertEqual(recorded?.title, "Analizando tus fotos")
+        XCTAssertTrue(recorded?.submittedFromUserAction ?? false,
+                      "Continued-task submit must be recorded on the Empezar tap")
+        XCTAssertTrue(recorded?.matchesPermittedWildcard ?? false)
+        
+        let sceneBackgroundRequest = ContinuedProcessingRequest.make(
+            remainingPhotos: 7800,
+            fromUserAction: false
+        )
+        XCTAssertFalse(sceneBackgroundRequest.submittedFromUserAction,
+                       "Scene-phase background must not be treated as the user action")
+        
+        XCTAssertEqual(ScanCompletionNotificationCopy.title,
+                       "Tus fotos están listas para limpiar y etiquetar")
+    }
+}
+
+// File-scope so XCTestCase @MainActor isolation cannot leak into the
+// ScanPipeline actor callback (that hop deadlocks the unit-test host).
+
+private struct ScanPipelineProbeReport: Sendable {
+    var firstOffMain: Bool
+    var firstOnMain: Bool
+    var processedAfterFirst: Int
+    var firstComplete: Bool
+    var remainingCount: Int
+    var resumeOffMain: Bool
+    var resumeOnMain: Bool
+    var processedAfterResume: Int
+    var photo0Processed: Bool
+    var photo19Processed: Bool
+}
+
+private final class ScanPipelineProbeBox: @unchecked Sendable {
+    var report: ScanPipelineProbeReport?
+}
+
+private final class ScanThreadProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var offMain = false
+    private var onMain = false
+    
+    func note() {
+        lock.lock()
+        if Thread.isMainThread { onMain = true } else { offMain = true }
+        lock.unlock()
+    }
+    
+    var sawOffMain: Bool { lock.lock(); defer { lock.unlock() }; return offMain }
+    var sawOnMain: Bool { lock.lock(); defer { lock.unlock() }; return onMain }
 }

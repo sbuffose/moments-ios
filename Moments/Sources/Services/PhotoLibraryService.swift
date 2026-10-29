@@ -20,6 +20,10 @@ class PhotoLibraryService: ObservableObject {
     // MARK: - Authorization
     
     func checkAuthorizationStatus() async -> PHAuthorizationStatus {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            authorizationStatus = .authorized
+            return .authorized
+        }
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         self.authorizationStatus = status
         self.isLimitedAccess = (status == .limited)
@@ -275,6 +279,11 @@ class PhotoLibraryService: ObservableObject {
     }
     
     private func createPersistedPhoto(from asset: PHAsset) -> PersistedPhoto {
+        Self.persistedPhoto(from: asset)
+    }
+    
+    /// Safe to call from a background actor — PHAsset reads are thread-safe.
+    nonisolated static func persistedPhoto(from asset: PHAsset) -> PersistedPhoto {
         let mediaType: String
         switch asset.mediaType {
         case .image: mediaType = "image"
@@ -312,7 +321,7 @@ class PhotoLibraryService: ObservableObject {
             subtypes.append("cinematicVideo")
         }
         
-        let photo = PersistedPhoto(
+        return PersistedPhoto(
             localIdentifier: asset.localIdentifier,
             creationDate: asset.creationDate,
             modificationDate: asset.modificationDate,
@@ -329,8 +338,6 @@ class PhotoLibraryService: ObservableObject {
             burstIdentifier: asset.burstIdentifier,
             representsBurst: asset.representsBurst
         )
-        
-        return photo
     }
     
     // MARK: - Asset Fetching

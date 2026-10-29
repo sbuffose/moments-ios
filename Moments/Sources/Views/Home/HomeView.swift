@@ -13,7 +13,6 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var showRecentlyDeletedInfo = false
     @State private var heroReady = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     /// Prevents the hero from laying out at zero width (one-letter columns).
     static let heroMinWidth: CGFloat = 300
@@ -26,14 +25,20 @@ struct HomeView: View {
                 Color.clear
                     .frame(width: 1, height: 1)
                     .accessibilityIdentifier("home.root")
+                    .allowsHitTesting(false)
                 
                 if appState.shouldShowFirstRunAnalyzing {
                     FirstRunAnalyzingView()
+                        .id("home.firstRun")
                 } else {
                     readyHomeScroll
+                        .id("home.ready.\(appState.homeRevealGeneration)")
+                        .opacity(1)
+                        .allowsHitTesting(true)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.automatic, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Moments")
@@ -41,22 +46,24 @@ struct HomeView: View {
                         .foregroundStyle(MomentsColors.textPrimary)
                 }
                 
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: MomentsSpacing.sm) {
-                        if (appState.isAnalyzing || appState.isIndexing) && !appState.shouldShowFirstRunAnalyzing {
-                            TimelineViewClock()
-                                .accessibilityIdentifier("home.scanClock")
-                                .accessibilityLabel("Preparando tu limpieza")
-                        }
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            Image(systemName: "gear")
-                                .foregroundStyle(MomentsColors.textSecondary)
-                        }
-                        .accessibilityIdentifier("home.settingsButton")
-                        .accessibilityLabel("Ajustes")
+                if (appState.isAnalyzing || appState.isIndexing) && !appState.shouldShowFirstRunAnalyzing {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        TimelineViewClock()
+                            .accessibilityIdentifier("home.scanClock")
+                            .accessibilityLabel("Preparando tu limpieza")
                     }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .imageScale(.medium)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                    }
+                    .accessibilityIdentifier("home.settingsButton")
+                    .accessibilityLabel("Ajustes")
                 }
             }
         }
@@ -72,12 +79,11 @@ struct HomeView: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing {
-                viewModel.refreshCategories()
+        .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
+            if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing && heroReady {
+                viewModel.refreshInventory()
             }
         }
-        .animation(MomentsMotion.spring(reduceMotion: reduceMotion), value: appState.shouldShowFirstRunAnalyzing)
     }
     
     private var readyHomeScroll: some View {
@@ -116,7 +122,9 @@ struct HomeView: View {
         }
         .accessibilityIdentifier("home.scrollView")
         .onAppear {
-            MomentsMotion.animate(reduceMotion: reduceMotion) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
                 heroReady = true
             }
         }
@@ -160,8 +168,12 @@ struct HomeView: View {
         return "\(today) de \(DailyReviewBatch.size) para hoy"
     }
     
+    static func heroHeadline(todayBytes: Int64, totalBytes: Int64) -> String {
+        "En el lote de hoy: \(SpaceFormatting.string(from: todayBytes)) · en total podés liberar \(SpaceFormatting.string(from: totalBytes))"
+    }
+    
     static func heroHeadline(bytes: Int64, minutes: Int = 2) -> String {
-        "Hoy podés liberar \(SpaceFormatting.string(from: bytes)) en ~\(minutes) min"
+        heroHeadline(todayBytes: bytes, totalBytes: bytes)
     }
     
     private var searchBar: some View {
@@ -208,7 +220,10 @@ struct HomeView: View {
     
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: MomentsSpacing.md) {
-            Text(Self.heroHeadline(bytes: viewModel.nextBatchBytes))
+            Text(Self.heroHeadline(
+                todayBytes: viewModel.inventory.todayBatchBytes,
+                totalBytes: viewModel.inventory.totalReclaimableBytes
+            ))
                 .font(MomentsTypography.headlineLarge)
                 .foregroundStyle(MomentsColors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -234,8 +249,10 @@ struct HomeView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("home.reviewButton")
             .accessibilityLabel("Empezar")
+            .accessibilityAddTraits(.isButton)
         }
         .frame(minWidth: Self.heroMinWidth, maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
     }
@@ -501,11 +518,13 @@ struct FeedCardView: View {
         case .cleanup(let title, let count, let size, let photos, let category):
             CleanupBatchCard(
                 title: title,
-                itemCount: count,
+                itemCount: min(count, DailyReviewBatch.size),
                 estimatedSize: size,
-                photos: photos,
+                photos: Array(photos.prefix(DailyReviewBatch.size)),
                 onReview: { viewModel.reviewCleanup(category: category) },
-                onQuickDelete: { viewModel.quickDelete(photos: photos) }
+                onQuickDelete: { viewModel.quickDelete(photos: Array(photos.prefix(DailyReviewBatch.size))) },
+                totalCount: count,
+                totalSize: size
             )
         }
     }
@@ -543,6 +562,7 @@ class HomeViewModel: ObservableObject {
     @Published var metadataCategories: [MetadataCategory] = []
     @Published var totalMetadataItems: Int = 0
     @Published var metadataSize: Int64 = 0
+    @Published var inventory: LibraryInventory = .empty
     
     var cleanupViewModel = CleanupViewModel()
     
@@ -562,11 +582,21 @@ class HomeViewModel: ObservableObject {
     }
     
     var nextBatchBytes: Int64 {
+        if inventory.todayBatchBytes > 0 {
+            return inventory.todayBatchBytes
+        }
         let photos = Array(cleanupViewModel.reviewQueue.prefix(DailyReviewBatch.size))
         if !photos.isEmpty {
             return photos.reduce(0) { $0 + $1.totalSize }
         }
         return metadataCategories.prefix(3).reduce(0) { $0 + $1.estimatedSize }
+    }
+    
+    func refreshInventory() {
+        guard let context = modelContext else { return }
+        inventory = LibraryInventoryService.snapshot(from: context)
+        canFreeSpace = inventory.totalReclaimableBytes
+        cleanupItemCount = inventory.totalReclaimableItems
     }
     
     var topHumanReasons: [String] {
@@ -588,18 +618,21 @@ class HomeViewModel: ObservableObject {
         importantDatesService.initialize(modelContext: modelContext)
         
         loadSpaceSaved()
-        loadMetadataCategories()
-        
-        Task {
+        // First paint must stay tappable. Inventory/makeQueue on a large
+        // library used to freeze MainActor right after launch (266).
+        Task { @MainActor in
+            refreshInventory()
+            loadMetadataCategories()
             await loadFeedCards()
         }
     }
     
     func refreshCategories() {
+        refreshInventory()
         loadMetadataCategories()
         
-        canFreeSpace = cleanupViewModel.estimatedSpaceFreed
-        cleanupItemCount = cleanupViewModel.totalCleanupItems
+        canFreeSpace = inventory.totalReclaimableBytes
+        cleanupItemCount = inventory.totalReclaimableItems
         cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
         
         // Top-scored photos: sorted by deletion likelihood (highest first), excluding Live Photos at top
@@ -717,8 +750,9 @@ class HomeViewModel: ObservableObject {
         totalMetadataItems = categories.reduce(0) { $0 + $1.count }
         metadataSize = categories.reduce(0) { $0 + $1.estimatedSize }
         
-        canFreeSpace = cleanupViewModel.estimatedSpaceFreed
-        cleanupItemCount = cleanupViewModel.totalCleanupItems
+        refreshInventory()
+        canFreeSpace = inventory.totalReclaimableBytes
+        cleanupItemCount = inventory.totalReclaimableItems
         cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
         
         // Top-scored photos for preview strip (sorted by deletion likelihood, highest first)
@@ -735,8 +769,9 @@ class HomeViewModel: ObservableObject {
         
         var cards: [HomeFeedCard] = []
         
-        canFreeSpace = cleanupViewModel.estimatedSpaceFreed
-        cleanupItemCount = cleanupViewModel.totalCleanupItems
+        refreshInventory()
+        canFreeSpace = inventory.totalReclaimableBytes
+        cleanupItemCount = inventory.totalReclaimableItems
         cleanupPreviewPhotos = Array(cleanupViewModel.categories.flatMap { $0.photos }.prefix(10))
         
         let calendar = Calendar.current
@@ -865,8 +900,9 @@ class HomeViewModel: ObservableObject {
     
     func quickDelete(photos: [PersistedPhoto]) {
         MomentsHaptics.success()
+        let batch = Array(photos.prefix(DailyReviewBatch.size))
         Task {
-            for photo in photos {
+            for photo in batch {
                 cleanupViewModel.selectedPhotos.insert(photo.id)
             }
             await cleanupViewModel.deleteSelectedPhotos()

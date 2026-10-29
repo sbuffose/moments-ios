@@ -125,6 +125,7 @@
 "cleanup_category_receipt" = "Receipts & Tickets";
 "cleanup_category_qrCode" = "QR Codes";
 "cleanup_category_largeVideo" = "Large Videos";
+"cleanup_category_livePhoto" = "Live Photos";
 
 /* Cleanup Actions */
 "cleanup_select_all" = "Select All";
@@ -575,7 +576,7 @@
 "group_delete_others %lld" = "Delete the other %lld";
 
 /* Background Tasks */
-"bg_task_title" = "Analyzing photos";
+"bg_task_title" = "Analizando tus fotos";
 "bg_task_subtitle_remaining" = "Remaining";
 "bg_task_title_finishing" = "Finishing";
 "bg_task_subtitle_almost_done" = "Almost done";

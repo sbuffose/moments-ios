@@ -24,7 +24,10 @@ struct ContentView: View {
                         appState.isLibraryAuthorized = true
                         appState.hasCompletedOnboarding = true
                         // Start background processing (non-blocking)
-                        if !FixturePhotoSeeder.isRequested && !appState.isIndexing && !appState.isAnalyzing {
+                        if !MomentsTestRuntime.shouldSkipLiveScan
+                            && !FixturePhotoSeeder.isRequested
+                            && !ActiveScanSimulation.isRequested
+                            && !appState.isIndexing && !appState.isAnalyzing {
                             appState.startBackgroundIndexingAndAnalysis()
                         }
                     }
@@ -152,7 +155,7 @@ struct FirstRunExplanationSheet: View {
                     Button {
                         appState.dismissFirstRunExplanation()
                     } label: {
-                        Text("¡Entendido, comenzar!")
+                        Text("Empezar")
                             .font(MomentsTypography.buttonLarge)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -168,6 +171,7 @@ struct FirstRunExplanationSheet: View {
                     }
                     .padding(.horizontal, MomentsSpacing.screenHorizontal)
                     .padding(.bottom, MomentsSpacing.xl)
+                    .accessibilityIdentifier("firstRun.startButton")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -365,20 +369,55 @@ struct ProcessingStatusSheet: View {
     }
 }
 
+/// Hidden accessibility probe so UI tests can read scan progress even when
+/// the 1×1 overlay would otherwise be omitted from the tree.
+struct ScanProgressProbe: View {
+    @EnvironmentObject var appState: AppState
+    
+    private var isActive: Bool {
+        appState.isIndexing || appState.isAnalyzing || ActiveScanSimulation.isRequested
+    }
+    
+    private var progress: Double {
+        if appState.isIndexing { return appState.indexingProgress }
+        if appState.isAnalyzing { return appState.analysisProgress }
+        return ActiveScanSimulation.isRequested ? max(appState.analysisProgress, 0.10) : 0
+    }
+    
+    var body: some View {
+        Group {
+            if isActive {
+                Text(String(format: "%.4f", progress))
+                    .font(.system(size: 1))
+                    .foregroundStyle(.clear)
+                    .frame(width: 8, height: 8)
+                    .accessibilityIdentifier("scan.progress")
+                    .accessibilityLabel("Progreso del análisis")
+                    .accessibilityValue(String(format: "%.4f", progress))
+                    .accessibilityHidden(false)
+                    .accessibilityElement(children: .ignore)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
 // MARK: - Main Tab View
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
+    /// Local selection so scan-progress `@Published` ticks on `AppState` cannot
+    /// rebuild TabView and snap back to Home (266: tabs/Asistente unresponsive).
+    @State private var tab: AppState.AppTab = .home
     
     var body: some View {
-        TabView(selection: $appState.selectedTab) {
+        TabView(selection: $tab) {
             HomeView()
                 .tabItem {
                     Label(String(localized: "tab_home"), systemImage: AppState.AppTab.home.icon)
                 }
                 .tag(AppState.AppTab.home)
                 .accessibilityIdentifier("tab.home")
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
             
             AssistantView()
                 .tabItem {
@@ -403,8 +442,23 @@ struct MainTabView: View {
         }
         .tint(MomentsColors.accent)
         .accessibilityIdentifier("main_tab_view")
-        .animation(MomentsAnimation.spring, value: appState.shouldShowFirstRunAnalyzing)
-        .animation(MomentsAnimation.spring, value: appState.selectedTab)
+        .onAppear {
+            tab = appState.selectedTab
+            TabBarChrome.apply()
+        }
+        .onChange(of: tab) { _, newValue in
+            if appState.selectedTab != newValue {
+                appState.selectedTab = newValue
+            }
+        }
+        .onChange(of: appState.selectedTab) { _, newValue in
+            if tab != newValue {
+                tab = newValue
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            ScanProgressProbe()
+        }
     }
 }
 

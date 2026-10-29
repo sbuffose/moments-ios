@@ -13,12 +13,18 @@ import Accelerate
 @MainActor
 class PhotoAnalysisService: ObservableObject {
     private let modelContext: ModelContext
-    private let imageAnalyzer = ImageAnalyzer()
-    private let faceAnalyzer = FaceAnalyzer()
-    private let geocodingService = GeocodingService.shared
+    private lazy var imageAnalyzer = ImageAnalyzer()
+    private lazy var faceAnalyzer = FaceAnalyzer()
+    private lazy var geocodingService = GeocodingService.shared
     private let metadataService = MetadataExtractionService.shared
     
-    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    /// Hardware CIContext crashes the XCTest host (eligibilityd / no GPU).
+    private lazy var ciContext: CIContext = {
+        let inTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.arguments.contains("-XCTest")
+            || ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
+        return CIContext(options: [.useSoftwareRenderer: inTests])
+    }()
     private let maxConcurrentAnalysis = 3
     private let batchSaveInterval = 20
     private let thumbnailSize = CGSize(width: 300, height: 300)
@@ -32,6 +38,10 @@ class PhotoAnalysisService: ObservableObject {
     // MARK: - Background Analysis (Non-blocking)
     
     func analyzePhotosInBackground(progressHandler: @escaping @Sendable (Int, Int, Double) async -> Void) async {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            await progressHandler(0, 0, 1.0)
+            return
+        }
         let descriptor = FetchDescriptor<PersistedPhoto>(
             predicate: #Predicate { !$0.analysisCompleted }
         )
@@ -91,6 +101,10 @@ class PhotoAnalysisService: ObservableObject {
     // MARK: - Background Analysis with Checkpointing
     
     func analyzeUnprocessedPhotosInBackground(progressHandler: @escaping @Sendable (Double) async -> Void) async -> Bool {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            await progressHandler(1.0)
+            return true
+        }
         do {
             let descriptor = FetchDescriptor<PersistedPhoto>(
                 predicate: #Predicate { !$0.analysisCompleted }
@@ -771,7 +785,14 @@ extension Array {
 // MARK: - Image Analyzer
 
 final class ImageAnalyzer: Sendable {
-    private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
+    /// Hardware CIContext crashes the XCTest host (no GPU / eligibilityd).
+    /// Production keeps the hardware path; tests force the software renderer.
+    private static let sharedCIContext: CIContext = {
+        let inTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.arguments.contains("-XCTest")
+            || ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
+        return CIContext(options: [.useSoftwareRenderer: inTests])
+    }()
     
     struct QualityMetrics: Sendable {
         let sharpness: Double
@@ -1377,7 +1398,7 @@ final class ImageAnalyzer: Sendable {
     func generateDHash(image: UIImage) -> UInt64? {
         guard let cgImage = image.cgImage else { return nil }
         
-        let context = CIContext()
+        let context = ImageAnalyzer.sharedCIContext
         let ciImage = CIImage(cgImage: cgImage)
         
         guard let resizedImage = resizeForDHash(ciImage, context: context),
