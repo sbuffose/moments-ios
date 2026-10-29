@@ -2965,6 +2965,17 @@ final class MomentsTests: XCTestCase {
     }
     
     @MainActor
+    func testGetSettingsSurvivesSchemaWithoutDailyReviewSettings() async throws {
+        let schema = Schema([PersistedPhoto.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        DailyReviewService.shared.initialize(modelContext: container.mainContext)
+        let settings = await DailyReviewService.shared.getSettings()
+        XCTAssertTrue(settings.isEnabled)
+        XCTAssertEqual(settings.reviewHour, 21)
+    }
+    
+    @MainActor
     func testDailyReviewSettingsCreatedOnInitialize() async throws {
         let schema = Schema([DailyReviewSettings.self, PersistedPhoto.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

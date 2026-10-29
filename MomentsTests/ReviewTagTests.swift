@@ -68,7 +68,13 @@ final class ReviewTagTests: XCTestCase {
     
     @MainActor
     func testTaggingPersistsAndMarksPhotoKept() throws {
-        let schema = Schema([PersistedPhoto.self, PhotoTag.self, PersistedPerson.self, PersistedPlaceCluster.self])
+        let schema = Schema([
+            PersistedPhoto.self,
+            PhotoTag.self,
+            PersistedPerson.self,
+            PersistedPlaceCluster.self,
+            DailyReviewSettings.self
+        ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         let context = container.mainContext
