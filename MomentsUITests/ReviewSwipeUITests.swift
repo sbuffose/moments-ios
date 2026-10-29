@@ -65,7 +65,7 @@ final class ReviewSwipeUITests: XCTestCase {
     private func openReview() {
         XCTAssertTrue(app.otherElements["home.root"].waitForExistence(timeout: 20)
                       || app.otherElements["home.scrollView"].waitForExistence(timeout: 8))
-        let start = app.buttons["home.reviewButton"]
+        let start = app.descendants(matching: .any)["home.reviewButton"].firstMatch
         XCTAssertTrue(start.waitForExistence(timeout: 12), "Empezar")
         start.tap()
         XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 12))
