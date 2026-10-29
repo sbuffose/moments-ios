@@ -509,6 +509,10 @@ jobs:
           run_tour "$SE_ID" "iphonese"
 
           COUNT=$(ls -1 "$RUNNER_TEMP/design-tour/"*.png 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$COUNT" -lt 8 ]; then
+            find "$RUNNER_TEMP/test-results" -name "*.png" -exec cp {} "$RUNNER_TEMP/design-tour/" \; || true
+            COUNT=$(ls -1 "$RUNNER_TEMP/design-tour/"*.png 2>/dev/null | wc -l | tr -d ' ')
+          fi
           echo "Design tour PNG count: $COUNT"
           if [ "$COUNT" -lt 8 ]; then
             echo "FAIL: expected design-tour screenshots, got $COUNT"

@@ -24,19 +24,34 @@ struct TimelineView: View {
     }
     
     private var loadingView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: MomentsSpacing.md) {
             ProgressView()
+                .tint(MomentsColors.accent)
             Text("timeline_loading")
-                .foregroundStyle(.secondary)
+                .font(MomentsTypography.bodyMedium)
+                .foregroundStyle(MomentsColors.textSecondary)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(MomentsColors.bgPrimary.ignoresSafeArea())
     }
     
     private var emptyStateView: some View {
-        ContentUnavailableView {
-            Label("timeline_empty_title", systemImage: "calendar")
-        } description: {
+        VStack(spacing: MomentsSpacing.md) {
+            Image(systemName: "calendar")
+                .font(.system(size: 44, weight: .medium, design: .rounded))
+                .foregroundStyle(MomentsColors.accent)
+            Text("timeline_empty_title")
+                .font(MomentsTypography.headlineMedium)
+                .foregroundStyle(MomentsColors.textPrimary)
             Text("timeline_empty_description")
+                .font(MomentsTypography.bodyMedium)
+                .foregroundStyle(MomentsColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.horizontal, MomentsSpacing.screenHorizontal)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(MomentsColors.bgPrimary.ignoresSafeArea())
     }
     
     private var timelineContent: some View {
@@ -71,9 +86,10 @@ struct TimelineView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "calendar.badge.clock")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(MomentsColors.accentSecondary)
                 Text("timeline_on_this_day")
-                    .font(.headline)
+                    .font(MomentsTypography.headlineMedium)
+                    .foregroundStyle(MomentsColors.textPrimary)
             }
             
             ScrollView(.horizontal, showsIndicators: false) {
@@ -335,7 +351,8 @@ struct MomentDetailView: View {
                     
                     if let subtitle = moment.subtitle {
                         Text(subtitle)
-                            .foregroundStyle(.secondary)
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.textSecondary)
                     }
                     
                     HStack {
@@ -348,8 +365,8 @@ struct MomentDetailView: View {
                             Text(locationName)
                         }
                     }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(MomentsTypography.labelMedium)
+                    .foregroundStyle(MomentsColors.textSecondary)
                 }
                 .padding(.horizontal)
                 

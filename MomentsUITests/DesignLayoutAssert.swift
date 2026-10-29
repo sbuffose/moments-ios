@@ -58,6 +58,15 @@ enum DesignLayoutAssert {
                 file: file,
                 line: line
             )
+            if let value = element.value as? String, !value.isEmpty, !element.label.isEmpty {
+                let clipped = element.label.hasSuffix("…") || element.label.hasSuffix("...")
+                XCTAssertFalse(
+                    clipped && value.count > element.label.count + 2,
+                    "\(label) accessibility value is longer than the visible label (truncated)",
+                    file: file,
+                    line: line
+                )
+            }
             frames.append((label, frame))
         }
         

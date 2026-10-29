@@ -11,7 +11,7 @@ struct TagReviewButton: View {
     var body: some View {
         Button(action: action) {
             Label("Etiquetar", systemImage: "tag")
-                .font(.subheadline.weight(.medium))
+                .font(MomentsTypography.labelLarge)
                 .foregroundStyle(MomentsColors.accent)
         }
         .accessibilityIdentifier("review.tagButton")
@@ -100,10 +100,11 @@ struct TagPhotoSheet: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option.title)
+                        .font(MomentsTypography.bodyMedium)
                         .foregroundStyle(MomentsColors.textPrimary)
                     if let subtitle = option.subtitle, !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(.caption)
+                            .font(MomentsTypography.labelSmall)
                             .foregroundStyle(MomentsColors.textSecondary)
                     }
                 }

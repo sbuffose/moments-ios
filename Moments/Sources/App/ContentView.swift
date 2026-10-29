@@ -512,6 +512,10 @@ struct OnboardingView: View {
         ZStack {
             MomentsColors.bgPrimary.ignoresSafeArea()
             
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityIdentifier("onboarding.root")
+            
             VStack(spacing: 0) {
                 TabView(selection: $currentPage) {
                     OnboardingPageView(
@@ -607,7 +611,9 @@ struct OnboardingView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             .padding(.bottom, MomentsSpacing.xs)
-                            .accessibilityIdentifier("onboarding.photosDenied")
+                            Color.clear
+                                .frame(width: 1, height: 1)
+                                .accessibilityIdentifier("onboarding.photosDenied")
                         }
                         Button {
                             requestAccess()
@@ -650,7 +656,6 @@ struct OnboardingView: View {
                 .padding(.bottom, MomentsSpacing.xl)
             }
         }
-        .accessibilityIdentifier("onboarding.root")
         .onAppear {
             if DesignTourSimulation.photosDenied {
                 currentPage = 2

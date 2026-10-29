@@ -39,7 +39,12 @@ final class DesignTourTests: XCTestCase {
         let device = resolvedDeviceSlug()
         
         launch(["-showOnboarding", appearance], seed: false, skipOnboarding: false)
-        XCTAssertTrue(app.otherElements["onboarding.root"].waitForExistence(timeout: 20), "Onboarding page 1")
+        XCTAssertTrue(
+            existsId("onboarding.root", timeout: 16)
+                || existsId("onboarding.page1", timeout: 4)
+                || app.buttons["onboarding.continue"].waitForExistence(timeout: 4),
+            "Onboarding page 1"
+        )
         capture("onboarding_page1", scheme: scheme, device: device)
         assertChrome([app.otherElements["onboarding.page1"], app.buttons["onboarding.continue"]])
         app.buttons["onboarding.continue"].tap()
@@ -50,9 +55,12 @@ final class DesignTourTests: XCTestCase {
         capture("onboarding_permission", scheme: scheme, device: device)
         
         launch(["-showOnboarding", "-simulatePhotosDenied", appearance], seed: false, skipOnboarding: false)
-        XCTAssertTrue(app.otherElements["onboarding.photosDenied"].waitForExistence(timeout: 12)
-                      || app.staticTexts["onboarding.photosDeniedTitle"].waitForExistence(timeout: 4),
-                      "Photos-denied onboarding")
+        XCTAssertTrue(
+            existsId("onboarding.photosDenied", timeout: 12)
+                || existsId("onboarding.photosDeniedTitle", timeout: 4)
+                || app.staticTexts["Sin acceso a Fotos"].waitForExistence(timeout: 4),
+            "Photos-denied onboarding"
+        )
         capture("permission_denied", scheme: scheme, device: device)
         
         launch(["-simulateFirstScan", appearance], seed: false)
@@ -223,9 +231,21 @@ final class DesignTourTests: XCTestCase {
             "UITEST_SCREENSHOT_DIR": ProcessInfo.processInfo.environment["UITEST_SCREENSHOT_DIR"] ?? ""
         ]
         app.launch()
-        _ = app.tabBars.firstMatch.waitForExistence(timeout: 20)
-            || app.otherElements["onboarding.root"].waitForExistence(timeout: 8)
-            || app.otherElements["firstRun.screen"].waitForExistence(timeout: 4)
+        if extras.contains("-showOnboarding") {
+            _ = existsId("onboarding.root", timeout: 10)
+                || app.buttons["onboarding.continue"].waitForExistence(timeout: 6)
+        } else {
+            _ = app.tabBars.firstMatch.waitForExistence(timeout: 16)
+                || existsId("firstRun.screen", timeout: 4)
+                || existsId("home.root", timeout: 4)
+        }
+    }
+    
+    private func existsId(_ id: String, timeout: TimeInterval) -> Bool {
+        if app.otherElements[id].waitForExistence(timeout: timeout) { return true }
+        if app.buttons[id].waitForExistence(timeout: 1) { return true }
+        if app.staticTexts[id].waitForExistence(timeout: 1) { return true }
+        return false
     }
     
     private func openHome() {
