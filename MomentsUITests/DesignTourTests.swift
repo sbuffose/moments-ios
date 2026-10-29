@@ -12,9 +12,6 @@ final class DesignTourTests: XCTestCase {
     }
     
     override func tearDownWithError() throws {
-        if app.state != .notRunning {
-            app.terminate()
-        }
         app = nil
     }
     
@@ -222,7 +219,7 @@ final class DesignTourTests: XCTestCase {
             table.swipeUp()
             return
         }
-        let window = app.windows.firstMatch.exists ? app.windows.firstMatch : app
+        let window = app.windows.firstMatch
         let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.70))
         let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32))
         start.press(forDuration: 0.08, thenDragTo: end)
