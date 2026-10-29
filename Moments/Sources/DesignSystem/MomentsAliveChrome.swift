@@ -80,14 +80,16 @@ struct MomentsConfettiBurst: View {
 struct AnimatedByteCounter: View {
     let bytes: Int64
     var identifier: String = "review.animatedCounter"
+    var font: Font = MomentsTypography.numberMedium
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var displayed: Int64 = 0
     
     var body: some View {
         Text(SpaceFormatting.string(from: displayed))
-            .font(MomentsTypography.numberMedium)
+            .font(font)
             .foregroundStyle(MomentsColors.freshGreen)
             .monospacedDigit()
+            .contentTransition(.numericText())
             .accessibilityIdentifier(identifier)
             .onAppear { animate(to: bytes) }
             .onChange(of: bytes) { _, newValue in animate(to: newValue) }
@@ -98,13 +100,22 @@ struct AnimatedByteCounter: View {
             displayed = target
             return
         }
-        displayed = 0
+        let from = displayed
         let steps = 12
         for step in 1...steps {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(step) * 0.03) {
-                displayed = target * Int64(step) / Int64(steps)
+                displayed = from + (target - from) * Int64(step) / Int64(steps)
             }
         }
+    }
+}
+
+extension View {
+    func momentsOpaqueNavigationBar() -> some View {
+        self
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(MomentsColors.bgPrimary, for: .navigationBar)
+            .toolbarColorScheme(nil, for: .navigationBar)
     }
 }
 

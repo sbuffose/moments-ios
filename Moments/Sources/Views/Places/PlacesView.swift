@@ -39,6 +39,7 @@ struct PlacesView: View {
             Text("places_loading")
                 .foregroundStyle(.secondary)
         }
+        .accessibilityIdentifier("places.loading")
     }
     
     private var emptyStateView: some View {
@@ -47,6 +48,7 @@ struct PlacesView: View {
         } description: {
             Text("places_empty_description")
         }
+        .accessibilityIdentifier("places.empty")
     }
     
     @ViewBuilder

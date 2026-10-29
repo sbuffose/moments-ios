@@ -85,9 +85,10 @@ class PlacesViewModel: ObservableObject {
     // MARK: - Loading
     
     func loadPlaces() async {
-        guard let context = modelContext else { return }
-        
-        isLoading = true
+        guard let context = modelContext else {
+            isLoading = false
+            return
+        }
         
         do {
             let descriptor = FetchDescriptor<PersistedPlace>(
@@ -96,9 +97,7 @@ class PlacesViewModel: ObservableObject {
             
             let persistedPlaces = try context.fetch(descriptor)
             
-            if persistedPlaces.isEmpty {
-                await generatePlaces()
-            } else {
+            if !persistedPlaces.isEmpty {
                 places = persistedPlaces.map { place in
                     PlaceItem(
                         id: place.id,
@@ -116,9 +115,12 @@ class PlacesViewModel: ObservableObject {
                 
                 updateClusters()
                 fitMapToPlaces()
+                isLoading = false
+                return
             }
             
             isLoading = false
+            await generatePlaces()
             
         } catch {
             errorMessage = "Error al cargar lugares: \(error.localizedDescription)"

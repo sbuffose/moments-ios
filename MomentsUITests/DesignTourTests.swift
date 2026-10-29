@@ -12,9 +12,6 @@ final class DesignTourTests: XCTestCase {
     }
     
     override func tearDownWithError() throws {
-        if app.state != .notRunning {
-            app.terminate()
-        }
         app = nil
     }
     
@@ -67,6 +64,9 @@ final class DesignTourTests: XCTestCase {
         capture("home_ready", scheme: scheme, device: device)
         assertScreen(.home)
         assertChrome([app.buttons["home.reviewButton"]])
+        scrollMainContent()
+        capture("home_scrolled", scheme: scheme, device: device)
+        DesignLayoutAssert.assertScrolledNavReadable(app, titleIdentifiers: ["home.navTitle"], titleLabels: ["Moments"])
         
         launch(["-simulateEmptyHome", appearance], seed: false)
         openHome()
@@ -116,10 +116,24 @@ final class DesignTourTests: XCTestCase {
         launch(["-seedFixturePhotos", appearance])
         openTab(2)
         capture("momentos_list", scheme: scheme, device: device)
+        scrollMainContent()
+        capture("momentos_scrolled", scheme: scheme, device: device)
+        DesignLayoutAssert.assertScrolledNavReadable(
+            app,
+            titleIdentifiers: [],
+            titleLabels: ["Línea de Tiempo", "Línea de tiempo", "Momentos"]
+        )
         openTab(1)
         capture("asistente_empty", scheme: scheme, device: device)
         openTab(3)
         capture("settings", scheme: scheme, device: device)
+        scrollMainContent()
+        capture("settings_scrolled", scheme: scheme, device: device)
+        DesignLayoutAssert.assertScrolledNavReadable(
+            app,
+            titleIdentifiers: [],
+            titleLabels: ["Ajustes"]
+        )
     }
     
     private func resolvedDeviceSlug() -> String {
@@ -133,10 +147,9 @@ final class DesignTourTests: XCTestCase {
     }
     
     private func launch(_ extras: [String], seed: Bool = true, skipOnboarding: Bool = true) {
-        if app.state != .notRunning {
-            app.terminate()
+        if app == nil {
+            app = XCUIApplication()
         }
-        app = XCUIApplication()
         var args = ["-AppleLanguages", "(es-AR)", "-AppleLocale", "es_AR"]
         if skipOnboarding {
             args.append("-skipOnboarding")
@@ -152,15 +165,38 @@ final class DesignTourTests: XCTestCase {
             "UITEST_DEVICE_SLUG": resolvedDeviceSlug(),
             "UITEST_SCREENSHOT_DIR": ProcessInfo.processInfo.environment["UITEST_SCREENSHOT_DIR"] ?? ""
         ]
-        app.launch()
-        if extras.contains("-showOnboarding") {
-            _ = existsId("onboarding.root", timeout: 10)
-                || app.buttons["onboarding.continue"].waitForExistence(timeout: 6)
-        } else {
-            _ = app.tabBars.firstMatch.waitForExistence(timeout: 16)
-                || existsId("firstRun.screen", timeout: 4)
-                || existsId("home.root", timeout: 4)
+        
+        let onboarding = extras.contains("-showOnboarding")
+        for _ in 0..<3 {
+            app.launch()
+            guard waitUntilRunning(timeout: 8) else { continue }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            let previous = continueAfterFailure
+            continueAfterFailure = true
+            let ready = waitForLaunchChrome(onboarding: onboarding)
+            continueAfterFailure = previous
+            if ready { return }
         }
+    }
+    
+    private func waitUntilRunning(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.state == .runningForeground { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return app.state == .runningForeground
+    }
+    
+    private func waitForLaunchChrome(onboarding: Bool) -> Bool {
+        guard app.state == .runningForeground else { return false }
+        if onboarding {
+            return existsId("onboarding.root", timeout: 10)
+                || app.buttons["onboarding.continue"].waitForExistence(timeout: 6)
+        }
+        return app.tabBars.firstMatch.waitForExistence(timeout: 12)
+            || existsId("firstRun.screen", timeout: 4)
+            || existsId("home.root", timeout: 4)
     }
     
     private func existsId(_ id: String, timeout: TimeInterval) -> Bool {
@@ -183,6 +219,33 @@ final class DesignTourTests: XCTestCase {
         guard tabBar.waitForExistence(timeout: 12) else { return }
         let button = tabBar.buttons.element(boundBy: index)
         if button.exists { button.tap() }
+    }
+    
+    private func scrollMainContent() {
+        // Never swipe scrollViews.firstMatch — on Momentos that is the 62pt
+        // chip strip, and XCTest times out evaluating the query.
+        let identified = [
+            app.scrollViews["home.scrollView"],
+            app.scrollViews["timeline.content"]
+        ]
+        for scroller in identified {
+            if scroller.exists, scroller.frame.height > 150 {
+                scroller.swipeUp()
+                scroller.swipeUp()
+                return
+            }
+        }
+        let table = app.tables.firstMatch
+        if table.exists, table.frame.height > 150 {
+            table.swipeUp()
+            table.swipeUp()
+            return
+        }
+        let window = app.windows.firstMatch
+        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.70))
+        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32))
+        start.press(forDuration: 0.08, thenDragTo: end)
+        start.press(forDuration: 0.08, thenDragTo: end)
     }
     
     private func openReview() {

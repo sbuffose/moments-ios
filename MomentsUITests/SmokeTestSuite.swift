@@ -408,45 +408,23 @@ final class SmokeTestSuite: XCTestCase {
             return
         }
         
-        var foundBadText = false
-        var badTextLocations: [String] = []
+        let inflect = NSPredicate(
+            format: "label CONTAINS 'inflect' OR label CONTAINS '^[' OR label CONTAINS '](inflect'"
+        )
         
         // Scan all tabs for bad text
         for tabIndex in 0..<4 {
             tabBar.buttons.element(boundBy: tabIndex).tap()
-            sleep(2)
+            _ = app.otherElements.firstMatch.waitForExistence(timeout: 3)
             
-            // Scroll to see more content
-            let scrollView = app.scrollViews.firstMatch
-            if scrollView.exists {
-                scrollView.swipeUp()
-                sleep(1)
-            }
-            
-            // Get all static texts and check for inflect syntax
-            let allTexts = app.staticTexts.allElementsBoundByIndex
-            for text in allTexts {
-                let label = text.label
-                
-                // Check for raw inflect syntax patterns
-                if label.contains("^[") || 
-                   label.contains("](inflect") ||
-                   label.contains("inflect: true") ||
-                   label.contains("inflect:true") {
-                    foundBadText = true
-                    badTextLocations.append("Tab \(tabIndex): '\(label)'")
-                }
-            }
-            
-            // Check buttons too
-            let allButtons = app.buttons.allElementsBoundByIndex
-            for button in allButtons {
-                let label = button.label
-                if label.contains("^[") || label.contains("inflect") {
-                    foundBadText = true
-                    badTextLocations.append("Tab \(tabIndex) button: '\(label)'")
-                }
-            }
+            XCTAssertFalse(
+                app.staticTexts.matching(inflect).firstMatch.exists,
+                "Tab \(tabIndex) shows raw inflect syntax"
+            )
+            XCTAssertFalse(
+                app.buttons.matching(inflect).firstMatch.exists,
+                "Tab \(tabIndex) button shows raw inflect syntax"
+            )
             
             // Take screenshot of each tab
             let screenshot = app.screenshot()
@@ -455,9 +433,6 @@ final class SmokeTestSuite: XCTestCase {
             attachment.lifetime = .keepAlways
             add(attachment)
         }
-        
-        // Assert no bad text found
-        XCTAssertFalse(foundBadText, "Found raw inflect syntax: \(badTextLocations.joined(separator: ", "))")
         
         print("SUCCESS: No inflect syntax visible anywhere")
     }
@@ -680,35 +655,18 @@ final class SmokeTestSuite: XCTestCase {
             return
         }
         
-        var foundBadPlural = false
-        var badPluralLocations: [String] = []
+        let oneFotos = NSPredicate(format: "label CONTAINS '1 fotos'")
         
         // Scan all tabs
         for tabIndex in 0..<4 {
             tabBar.buttons.element(boundBy: tabIndex).tap()
-            sleep(2)
+            _ = app.otherElements.firstMatch.waitForExistence(timeout: 3)
             
-            // Scroll to see more content
-            let scrollView = app.scrollViews.firstMatch
-            if scrollView.exists {
-                scrollView.swipeUp()
-                sleep(1)
-            }
-            
-            // Check for "1 fotos" (incorrect plural)
-            let allTexts = app.staticTexts.allElementsBoundByIndex
-            for text in allTexts {
-                let label = text.label
-                
-                // "1 fotos" is wrong - should be "1 foto"
-                if label.contains("1 fotos") {
-                    foundBadPlural = true
-                    badPluralLocations.append("Tab \(tabIndex): '\(label)'")
-                }
-            }
+            XCTAssertFalse(
+                app.staticTexts.matching(oneFotos).firstMatch.exists,
+                "Tab \(tabIndex) shows incorrect '1 fotos' pluralization"
+            )
         }
-        
-        XCTAssertFalse(foundBadPlural, "Found incorrect '1 fotos' pluralization: \(badPluralLocations.joined(separator: ", "))")
         
         print("SUCCESS: No '1 fotos' pluralization bugs found")
     }
@@ -752,6 +710,15 @@ final class SmokeTestSuite: XCTestCase {
         if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
         XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
         
+        let delete = app.buttons["review.deleteButton"]
+        if delete.waitForExistence(timeout: 6) {
+            delete.tap()
+        } else {
+            let byLabel = app.buttons.matching(NSPredicate(format: "label ==[c] 'Eliminar'")).firstMatch
+            XCTAssertTrue(byLabel.waitForExistence(timeout: 4), "Need one delete so the summary is the post-delete path")
+            byLabel.tap()
+        }
+        
         let terminar = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Terminar'")).firstMatch
         XCTAssertTrue(terminar.waitForExistence(timeout: 8), "Terminar opens the session summary")
         terminar.tap()
@@ -765,13 +732,19 @@ final class SmokeTestSuite: XCTestCase {
             "Summary must state that space returns after emptying Recently Deleted"
         )
         let howTo = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+            NSPredicate(format: "label CONTAINS[c] 'Se libera al vaciar Eliminados recientemente'")
         ).firstMatch
         XCTAssertTrue(
             howTo.waitForExistence(timeout: 6)
             || app.buttons["space.openPhotos"].waitForExistence(timeout: 3)
             || app.buttons["Abrir Fotos"].waitForExistence(timeout: 2),
             "Summary must include the how-to or the Open Photos button"
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+            ).firstMatch.exists,
+            "Old album path copy must be gone"
         )
     }
     
@@ -1037,7 +1010,7 @@ final class SmokeTestSuite: XCTestCase {
         XCTAssertTrue(
             app.otherElements["space.recentlyDeletedHint"].waitForExistence(timeout: 6)
             || app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+                NSPredicate(format: "label CONTAINS[c] 'Se libera al vaciar Eliminados recientemente'")
             ).firstMatch.waitForExistence(timeout: 4)
         )
         let openPhotos = app.buttons["space.openPhotos"]

@@ -2709,7 +2709,9 @@ final class MomentsTests: XCTestCase {
             SpaceFormatting.homeCumulativeSpaceHeadline(bytes: 1_200_000_000).contains("Ya liberaste"),
             SpaceFormatting.homeCumulativeSpaceHeadline(bytes: 1_200_000_000)
         )
-        XCTAssertEqual(SpaceFormatting.recentlyDeletedHowTo, "Fotos > Álbumes > Eliminados recientemente > Eliminar todo")
+        XCTAssertEqual(SpaceFormatting.recentlyDeletedHowTo, "Se libera al vaciar Eliminados recientemente")
+        XCTAssertFalse(SpaceFormatting.recentlyDeletedHowTo.contains("Fotos > Álbumes"))
+        XCTAssertFalse(SpaceFormatting.recentlyDeletedHowTo.contains("Eliminar todo"))
         XCTAssertEqual(SpaceFormatting.photosAppURL?.scheme, "photos-redirect")
     }
     

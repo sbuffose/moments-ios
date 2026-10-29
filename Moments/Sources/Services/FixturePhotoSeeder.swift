@@ -38,6 +38,9 @@ enum FixturePhotoSeeder {
                 if !existing.contains(where: { $0.localIdentifier == "fixture-black-frame-1" }) {
                     seedBlackFramePhotos(into: context)
                 }
+                if existing.filter({ $0.mediaTypeRaw == "video" }).count < 5 {
+                    seedReviewVideos(into: context)
+                }
                 reconcileReviewableBlackFrame(into: context)
                 seedReviewTagFixtures(into: context)
                 try context.save()
@@ -221,17 +224,8 @@ enum FixturePhotoSeeder {
             }
         )
         
-        // Short video
-        makePhoto(
-            identifier: "fixture-video-1",
-            category: .largeVideo,
-            score: 0.58,
-            size: 28_000_000,
-            mediaType: "video",
-            extra: { photo in
-                photo.duration = 12
-            }
-        )
+        // Videos so review/home cover mixed batches and the +100 MB chip
+        photos.append(contentsOf: seedReviewVideos(into: context))
         
         // Live Photo candidate
         makePhoto(
@@ -440,6 +434,45 @@ enum FixturePhotoSeeder {
                 faceCount: 3
             )
             context.insert(sofia)
+        }
+        if people.contains(where: { $0.id == "fixture-person-unnamed" }) == false {
+            let unnamed = PersistedPerson(
+                id: "fixture-person-unnamed",
+                name: nil,
+                faceClusterId: "fixture-cluster-unnamed",
+                faceCount: 8
+            )
+            context.insert(unnamed)
+        }
+        return created
+    }
+    
+    @discardableResult
+    private static func seedReviewVideos(into context: ModelContext) -> [PersistedPhoto] {
+        let existing = (try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? []
+        var created: [PersistedPhoto] = []
+        let now = Date()
+        let specs: [(String, Double, Int64, Double)] = [
+            ("fixture-video-1", 0.96, 28_000_000, 12),
+            ("fixture-video-2", 0.95, 31_000_000, 18),
+            ("fixture-video-3", 0.94, 22_000_000, 9),
+            ("fixture-video-4", 0.93, 19_000_000, 7),
+            ("fixture-video-large", 0.92, 128_000_000, 64)
+        ]
+        for (identifier, score, size, duration) in specs {
+            if existing.contains(where: { $0.localIdentifier == identifier }) { continue }
+            let photo = PersistedPhoto(localIdentifier: identifier, creationDate: now)
+            photo.analysisCompleted = true
+            photo.lastAnalyzedAt = now
+            photo.cleanupCategory = .largeVideo
+            photo.deletionLikelihoodScore = score
+            photo.estimatedFileSize = size
+            photo.pixelWidth = 1920
+            photo.pixelHeight = 1080
+            photo.mediaTypeRaw = "video"
+            photo.duration = duration
+            context.insert(photo)
+            created.append(photo)
         }
         return created
     }

@@ -548,6 +548,7 @@ struct MomentsListView: View {
                 }
             }
             .navigationTitle(selectedSection.navigationTitle)
+            .momentsOpaqueNavigationBar()
             .background(MomentsColors.bgPrimary)
         }
     }

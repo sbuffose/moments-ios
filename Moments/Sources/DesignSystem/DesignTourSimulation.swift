@@ -13,6 +13,7 @@ enum DesignTourSimulation {
     static let midSwipeDeleteArgument = "-simulateMidSwipeDelete"
     static let midSwipeSnoozeArgument = "-simulateMidSwipeSnooze"
     static let reviewSwipeSinglesArgument = "-reviewSwipeSingles"
+    static let reviewVideoFirstArgument = "-reviewVideoFirst"
     static let previewSavedBytes: Int64 = 48_000_000
     static let previewDeletedBytes: Int64 = 18_000_000
     

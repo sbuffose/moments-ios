@@ -82,9 +82,10 @@ class TimelineViewModel: ObservableObject {
     // MARK: - Loading
     
     func loadTimeline() async {
-        guard let context = modelContext else { return }
-        
-        isLoading = true
+        guard let context = modelContext else {
+            isLoading = false
+            return
+        }
         
         do {
             let momentDescriptor = FetchDescriptor<PersistedMoment>()
@@ -92,13 +93,15 @@ class TimelineViewModel: ObservableObject {
             var persistedMoments = try context.fetch(momentDescriptor)
             persistedMoments.sort { $0.startDate > $1.startDate }
             
-            if persistedMoments.isEmpty {
-                await generateMoments()
-            } else {
+            if !persistedMoments.isEmpty {
                 await loadFromPersistedMoments(persistedMoments)
+                isLoading = false
+                return
             }
             
+            // Never leave the tab on an endless spinner while clustering a large library.
             isLoading = false
+            await generateMoments()
             
         } catch {
             errorMessage = "Error al cargar línea de tiempo: \(error.localizedDescription)"
@@ -244,8 +247,11 @@ class TimelineViewModel: ObservableObject {
             
             try context.save()
             
-            // Recargar
-            await loadTimeline()
+            var generated = try context.fetch(FetchDescriptor<PersistedMoment>())
+            generated.sort { $0.startDate > $1.startDate }
+            if !generated.isEmpty {
+                await loadFromPersistedMoments(generated)
+            }
             
         } catch {
             errorMessage = "Error generando momentos: \(error.localizedDescription)"

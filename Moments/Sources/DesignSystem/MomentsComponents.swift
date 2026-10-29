@@ -397,6 +397,8 @@ struct CatalogingQuestionCard: View {
             }
         }
         .momentsCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant.catalogPrompt")
     }
 }
 
@@ -558,7 +560,7 @@ enum SpaceFormatting {
         "Ya liberaste \(string(from: bytes)) con Moments"
     }
     
-    static let recentlyDeletedHowTo = "Fotos > Álbumes > Eliminados recientemente > Eliminar todo"
+    static let recentlyDeletedHowTo = "Se libera al vaciar Eliminados recientemente"
     
     static let photosAppURL = URL(string: "photos-redirect://")
 }
@@ -581,6 +583,7 @@ struct RecentlyDeletedHintView: View {
             Text(SpaceFormatting.recentlyDeletedHowTo)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("space.recentlyDeletedHowTo")
             if showsOpenPhotosButton, let url = SpaceFormatting.photosAppURL {
                 Button {
                     UIApplication.shared.open(url)
@@ -621,6 +624,19 @@ enum MomentsPluralization {
     
     static func deletePhotos(_ count: Int) -> String {
         count == 1 ? "Eliminar \(count) foto" : "Eliminar \(count) fotos"
+    }
+    
+    static func deleteMedia(photos: Int, videos: Int) -> String {
+        switch (photos, videos) {
+        case (0, 0):
+            return "Nada para eliminar"
+        case (0, _):
+            return "Eliminar \(Self.videos(videos))"
+        case (_, 0):
+            return deletePhotos(photos)
+        default:
+            return "Eliminar \(Self.photos(photos)) y \(Self.videos(videos))"
+        }
     }
     
     static func deleteOthers(_ count: Int) -> String {
