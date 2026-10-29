@@ -147,10 +147,9 @@ final class DesignTourTests: XCTestCase {
     }
     
     private func launch(_ extras: [String], seed: Bool = true, skipOnboarding: Bool = true) {
-        // Do not call terminate() here. SpringBoard often times out after a
-        // long tour and XCTest records that as a failure. launch() replaces
-        // the running instance.
-        app = XCUIApplication()
+        if app == nil {
+            app = XCUIApplication()
+        }
         var args = ["-AppleLanguages", "(es-AR)", "-AppleLocale", "es_AR"]
         if skipOnboarding {
             args.append("-skipOnboarding")
@@ -166,15 +165,38 @@ final class DesignTourTests: XCTestCase {
             "UITEST_DEVICE_SLUG": resolvedDeviceSlug(),
             "UITEST_SCREENSHOT_DIR": ProcessInfo.processInfo.environment["UITEST_SCREENSHOT_DIR"] ?? ""
         ]
-        app.launch()
-        if extras.contains("-showOnboarding") {
-            _ = existsId("onboarding.root", timeout: 10)
-                || app.buttons["onboarding.continue"].waitForExistence(timeout: 6)
-        } else {
-            _ = app.tabBars.firstMatch.waitForExistence(timeout: 16)
-                || existsId("firstRun.screen", timeout: 4)
-                || existsId("home.root", timeout: 4)
+        
+        let onboarding = extras.contains("-showOnboarding")
+        for _ in 0..<3 {
+            app.launch()
+            guard waitUntilRunning(timeout: 8) else { continue }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            let previous = continueAfterFailure
+            continueAfterFailure = true
+            let ready = waitForLaunchChrome(onboarding: onboarding)
+            continueAfterFailure = previous
+            if ready { return }
         }
+    }
+    
+    private func waitUntilRunning(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.state == .runningForeground { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return app.state == .runningForeground
+    }
+    
+    private func waitForLaunchChrome(onboarding: Bool) -> Bool {
+        guard app.state == .runningForeground else { return false }
+        if onboarding {
+            return existsId("onboarding.root", timeout: 10)
+                || app.buttons["onboarding.continue"].waitForExistence(timeout: 6)
+        }
+        return app.tabBars.firstMatch.waitForExistence(timeout: 12)
+            || existsId("firstRun.screen", timeout: 4)
+            || existsId("home.root", timeout: 4)
     }
     
     private func existsId(_ id: String, timeout: TimeInterval) -> Bool {
