@@ -562,7 +562,7 @@ struct OnThisDayView: View {
 struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
     @StateObject private var shareService = ShareLoadingService()
-    @State private var showFinishSheet = false
+    @State private var showingSummary = false
     @State private var showTagSheet = false
     @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
@@ -628,9 +628,36 @@ struct CleanupReviewView: View {
         }
     }
     
+    private var showingBatchSummary: Bool {
+        showingSummary || currentItem == nil || ReviewBatchSummarySimulation.isActive
+    }
+    
+    private var keptCountForSummary: Int {
+        let deleted = Set(photosToDelete.map(\.id))
+        let kept = viewModel.keptPhotos.subtracting(deleted).count
+        if kept > 0 { return kept }
+        let reviewed = viewModel.reviewedItemCount()
+        if reviewed > 0 { return reviewed }
+        return totalItems
+    }
+    
+    private var summaryState: ReviewBatchSummaryState {
+        ReviewBatchSummaryState.resolve(
+            deletedCount: photosToDelete.count,
+            deletedBytes: deletionSize,
+            keptCount: keptCountForSummary
+        )
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
-            if let currentItem {
+            if showingBatchSummary {
+                ReviewBatchSummaryView(
+                    state: summaryState,
+                    onMore: { handleMoreBatch() },
+                    onDone: { handleDoneForToday() }
+                )
+            } else if let currentItem {
                 ProgressView(value: currentProgress)
                     .padding(.horizontal)
                     .padding(.top)
@@ -696,22 +723,19 @@ struct CleanupReviewView: View {
                         }
                     )
                 }
-                
-            } else {
-                // Review complete (all items reviewed)
-                reviewCompleteView
             }
         }
-        .navigationTitle(Text("Revisar fotos"))
+        .navigationTitle(showingBatchSummary ? Text("") : Text("Revisar fotos"))
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(photosToDelete.count > 0)
+        .navigationBarBackButtonHidden(showingBatchSummary || photosToDelete.count > 0)
+        .toolbar(showingBatchSummary ? .hidden : .visible, for: .navigationBar)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.root")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                if photosToDelete.count > 0 {
+                if photosToDelete.count > 0 && !showingBatchSummary {
                     Button {
-                        showFinishSheet = true
+                        showingSummary = true
                     } label: {
                         Image(systemName: "chevron.left")
                     }
@@ -719,40 +743,21 @@ struct CleanupReviewView: View {
             }
             
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Terminar") {
-                    showFinishSheet = true
+                if !showingBatchSummary {
+                    Button("Terminar") {
+                        showingSummary = true
+                    }
+                    .fontWeight(.medium)
                 }
-                .fontWeight(.medium)
             }
         }
-        .interactiveDismissDisabled(photosToDelete.count > 0)
+        .interactiveDismissDisabled(photosToDelete.count > 0 || showingBatchSummary)
         .sheet(isPresented: $showTagSheet) {
             TagPhotoSheet(photos: photosForCurrentItem) { identifiers in
                 for id in identifiers {
                     viewModel.keepPhoto(id, duration: .forever)
                 }
             }
-        }
-        .sheet(isPresented: $showFinishSheet) {
-            ReviewSummarySheet(
-                photosToDelete: photosToDelete,
-                deletionSize: deletionSize,
-                viewModel: viewModel,
-                onConfirmDelete: {
-                    Task {
-                        await viewModel.deleteSelectedPhotos()
-                        viewModel.clearPersistedProgress()
-                        dismiss()
-                    }
-                },
-                onKeepAll: {
-                    viewModel.clearPersistedProgress()
-                    dismiss()
-                },
-                onContinue: {
-                    showFinishSheet = false
-                }
-            )
         }
         .sheet(item: $shareItem) { item in
             ShareActivityController(shareItem: item) { didShare in
@@ -961,73 +966,24 @@ struct CleanupReviewView: View {
         return photo.cleanupCategory != .none ? photo.cleanupCategory : nil
     }
     
-    private var reviewCompleteView: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.15))
-                    .frame(width: 100, height: 100)
-                
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.green)
+    private func handleMoreBatch() {
+        showingSummary = false
+        Task {
+            if !photosToDelete.isEmpty {
+                await viewModel.deleteSelectedPhotos()
             }
-            
-            VStack(spacing: 8) {
-                RecentlyDeletedHintView(bytes: deletionSize)
-                    .multilineTextAlignment(.center)
-                
-                if photosToDelete.isEmpty {
-                    Text("No marcaste nada para borrar en este lote")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("En este lote de \(totalItems)")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .accessibilityIdentifier("review.sessionSummary")
-            
-            Spacer()
-            
-            if viewModel.remainingAfterBatch > 0 {
-                Button {
-                    viewModel.startNextDailyBatch()
-                } label: {
-                    Text("Otras 20")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(MomentsColors.accent)
-                        .cornerRadius(14)
-                }
-                .padding(.horizontal)
-                .accessibilityIdentifier("review.moreBatch")
-            }
-            
-            Button {
-                if photosToDelete.isEmpty {
-                    viewModel.clearPersistedProgress()
-                    dismiss()
-                } else {
-                    showFinishSheet = true
-                }
-            } label: {
-                Text("Listo por hoy")
-                    .font(.headline)
-                    .foregroundStyle(.tint)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(14)
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 32)
-            .accessibilityIdentifier("review.doneForToday")
+            viewModel.startNextDailyBatch()
         }
-        .momentsEntrance()
+    }
+    
+    private func handleDoneForToday() {
+        Task {
+            if !photosToDelete.isEmpty {
+                await viewModel.deleteSelectedPhotos()
+            }
+            viewModel.clearPersistedProgress()
+            dismiss()
+        }
     }
 }
 
@@ -1401,158 +1357,164 @@ struct SimilarGroupCard: View {
     }
 }
 
-// MARK: - Review Summary Sheet
+// MARK: - End-of-batch summary (one full screen, never a sheet over an inline summary)
 
-struct ReviewSummarySheet: View {
-    let photosToDelete: [PersistedPhoto]
-    let deletionSize: Int64
-    let viewModel: CleanupViewModel
-    let onConfirmDelete: () -> Void
-    let onKeepAll: () -> Void
-    let onContinue: () -> Void
+struct ReviewBatchSummaryView: View {
+    let state: ReviewBatchSummaryState
+    let onMore: () -> Void
+    let onDone: () -> Void
     
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+    @State private var freedProgress: Double = 0
     
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Spacer()
+        VStack(spacing: 0) {
+            Spacer(minLength: MomentsSpacing.xl)
+            
+            VStack(spacing: MomentsSpacing.lg) {
+                icon
+                    .scaleEffect(appeared ? 1 : (reduceMotion ? 1 : 0.84))
+                    .opacity(appeared ? 1 : 0)
                 
-                if photosToDelete.isEmpty {
-                    // No photos marked for deletion
-                    ZStack {
-                        Circle()
-                            .fill(Color.green.opacity(0.15))
-                            .frame(width: 100, height: 100)
-                        
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundStyle(.green)
-                    }
-                    
-                    Text("No hay fotos para eliminar")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    
-                    Text("Conservaste todas las fotos revisadas")
-                        .foregroundStyle(.secondary)
-                    
-                    RecentlyDeletedHintView(bytes: nil)
-                        .padding(.horizontal)
-                } else {
-                    // Photos marked for deletion
-                    ZStack {
-                        Circle()
-                            .fill(Color.red.opacity(0.15))
-                            .frame(width: 100, height: 100)
-                        
-                        Image(systemName: "trash.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundStyle(.red)
-                    }
-                    
-                    VStack(spacing: 8) {
-                        Text(MomentsPluralization.deletePhotos(photosToDelete.count))
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Text(formattedSize(deletionSize))
-                            .font(.title)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.red)
-                        
-                        RecentlyDeletedHintView(bytes: deletionSize)
-                    }
-                    
-                    // Preview of photos to delete
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            ForEach(photosToDelete.prefix(10), id: \.id) { photo in
-                                AsyncPhotoThumbnail(localIdentifier: photo.localIdentifier)
-                                    .frame(width: 60, height: 60)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-                            
-                            if photosToDelete.count > 10 {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(.systemGray4))
-                                        .frame(width: 60, height: 60)
-                                    
-                                    Text("+\(photosToDelete.count - 10)")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                }
+                titleBlock
                 
-                Spacer()
-                
-                VStack(spacing: 12) {
-                    if !photosToDelete.isEmpty {
-                        Button(role: .destructive) {
-                            onConfirmDelete()
-                        } label: {
-                            HStack {
-                                Image(systemName: "trash")
-                                Text(MomentsPluralization.deletePhotos(photosToDelete.count))
-                            }
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.red)
-                            .cornerRadius(14)
-                        }
-                    }
-                    
-                    Button {
-                        onKeepAll()
-                    } label: {
-                        Text(photosToDelete.isEmpty ? "Salir" : "Conservar todas y salir")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(14)
-                    }
-                    
-                    Button {
-                        onContinue()
-                    } label: {
-                        Text("Seguir revisando")
-                            .font(.subheadline)
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 32)
-            }
-            .navigationTitle("Resumen")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
+                if case .deletedSome = state {
+                    recentlyDeletedLine
                 }
             }
+            .padding(.horizontal, MomentsSpacing.screenHorizontal)
+            
+            Spacer(minLength: MomentsSpacing.lg)
+            
+            VStack(spacing: MomentsSpacing.sm) {
+                Button(action: onMore) {
+                    Text("Otras 20")
+                }
+                .momentsAccentButton()
+                .accessibilityIdentifier("review.moreBatch")
+                
+                Button(action: onDone) {
+                    Text("Listo por hoy")
+                }
+                .momentsSecondaryButton()
+                .accessibilityIdentifier("review.doneForToday")
+            }
+            .padding(.horizontal, MomentsSpacing.screenHorizontal)
+            .padding(.bottom, MomentsSpacing.xxl)
         }
-        .presentationDetents([.medium, .large])
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(MomentsColors.bgPrimary.ignoresSafeArea())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("review.batchSummary")
+        .onAppear {
+            MomentsMotion.animate(reduceMotion: reduceMotion) {
+                appeared = true
+            }
+            animateFreedCounter()
+        }
     }
     
-    private func formattedSize(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+    @ViewBuilder
+    private var icon: some View {
+        ZStack {
+            Circle()
+                .fill(iconFill)
+                .frame(width: 120, height: 120)
+            Image(systemName: iconName)
+                .font(.system(size: 56, weight: .medium, design: .rounded))
+                .foregroundStyle(iconColor)
+        }
+        .accessibilityHidden(true)
+    }
+    
+    @ViewBuilder
+    private var titleBlock: some View {
+        switch state {
+        case .keptAll(let count):
+            VStack(spacing: MomentsSpacing.sm) {
+                Text("Todo en orden")
+                    .font(MomentsTypography.displayMedium)
+                    .foregroundStyle(MomentsColors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("review.batchSummary.title")
+                Text(SpaceFormatting.keptAllSubtitle(count: count))
+                    .font(MomentsTypography.titleSmall)
+                    .foregroundStyle(MomentsColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("review.batchSummary.subtitle")
+            }
+        case .deletedSome(let bytes):
+            Text(SpaceFormatting.freedHeadline(bytes: displayedFreedBytes(final: bytes)))
+                .font(MomentsTypography.displayMedium)
+                .foregroundStyle(MomentsColors.accent)
+                .multilineTextAlignment(.center)
+                .contentTransition(.numericText())
+                .accessibilityIdentifier("review.batchSummary.freed")
+        }
+    }
+    
+    private var recentlyDeletedLine: some View {
+        VStack(spacing: MomentsSpacing.xs) {
+            Text(SpaceFormatting.recentlyDeletedSummaryLine)
+                .font(MomentsTypography.bodyMedium)
+                .foregroundStyle(MomentsColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if let url = SpaceFormatting.photosAppURL {
+                Button {
+                    UIApplication.shared.open(url)
+                } label: {
+                    Text("Abrir Fotos")
+                        .font(MomentsTypography.labelLarge)
+                        .foregroundStyle(MomentsColors.accentSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("space.openPhotos")
+            }
+        }
+    }
+    
+    private var iconName: String {
+        switch state {
+        case .keptAll: return "checkmark.circle.fill"
+        case .deletedSome: return "sparkles"
+        }
+    }
+    
+    private var iconColor: Color {
+        switch state {
+        case .keptAll: return MomentsColors.accent
+        case .deletedSome: return MomentsColors.accentSecondary
+        }
+    }
+    
+    private var iconFill: Color {
+        switch state {
+        case .keptAll: return MomentsColors.accent.opacity(0.16)
+        case .deletedSome: return MomentsColors.accentSecondary.opacity(0.16)
+        }
+    }
+    
+    private func displayedFreedBytes(final bytes: Int64) -> Int64 {
+        guard bytes > 0 else { return 0 }
+        let value = Int64((Double(bytes) * freedProgress).rounded())
+        return value
+    }
+    
+    private func animateFreedCounter() {
+        guard case .deletedSome(let bytes) = state, bytes > 0 else {
+            freedProgress = 1
+            return
+        }
+        if reduceMotion {
+            freedProgress = 1
+            return
+        }
+        freedProgress = 0
+        withAnimation(MomentsAnimation.springSlow) {
+            freedProgress = 1
+        }
     }
 }
 

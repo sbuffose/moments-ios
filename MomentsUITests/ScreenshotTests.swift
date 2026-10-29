@@ -133,6 +133,57 @@ final class ScreenshotTests: XCTestCase {
         ready.terminate()
     }
     
+    func testCaptureBatchSummaryLightAndDark() throws {
+        captureBatchSummary(
+            name: "summary_kept_all_light",
+            appearance: "-uiAppearanceLight",
+            simulation: "-simulateKeptAllSummary"
+        )
+        captureBatchSummary(
+            name: "summary_kept_all_dark",
+            appearance: "-uiAppearanceDark",
+            simulation: "-simulateKeptAllSummary"
+        )
+        captureBatchSummary(
+            name: "summary_deleted_light",
+            appearance: "-uiAppearanceLight",
+            simulation: "-simulateDeletedSummary"
+        )
+        captureBatchSummary(
+            name: "summary_deleted_dark",
+            appearance: "-uiAppearanceDark",
+            simulation: "-simulateDeletedSummary"
+        )
+    }
+    
+    private func captureBatchSummary(name: String, appearance: String, simulation: String) {
+        let shot = XCUIApplication()
+        shot.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            simulation,
+            appearance,
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        shot.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        shot.launch()
+        let tabBar = shot.tabBars.firstMatch
+        _ = tabBar.waitForExistence(timeout: 20)
+        tabBar.buttons.element(boundBy: 0).tap()
+        let start = shot.buttons["home.reviewButton"]
+        let startByLabel = shot.buttons["Empezar"]
+        if start.waitForExistence(timeout: 10) {
+            start.tap()
+        } else if startByLabel.waitForExistence(timeout: 4) {
+            startByLabel.tap()
+        }
+        _ = shot.otherElements["review.batchSummary"].waitForExistence(timeout: 10)
+        sleep(1)
+        captureScreenshot(name: name, app: shot)
+        shot.terminate()
+    }
+    
     func testCaptureLoadingStates() throws {
         // Launch app and capture loading states before content loads
         let freshApp = XCUIApplication()

@@ -738,39 +738,122 @@ final class SmokeTestSuite: XCTestCase {
         add(shot)
     }
     
-    func testRecentlyDeletedHintAppearsInSummary() throws {
+    func testKeptAllBatchSummaryIsSingleFullScreen() throws {
+        launchReviewWithSummarySimulation("-simulateKeptAllSummary")
+        assertSingleBatchSummaryContainer()
+        
+        XCTAssertTrue(
+            app.staticTexts["Todo en orden"].waitForExistence(timeout: 4)
+                || app.staticTexts["review.batchSummary.title"].waitForExistence(timeout: 2),
+            "Kept-all summary needs the friendly title"
+        )
+        let conserved = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Conservaste'")).firstMatch
+        XCTAssertTrue(conserved.waitForExistence(timeout: 4), "Kept-all must say how many photos were kept")
+        
+        XCTAssertFalse(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Liberaste'")).firstMatch.exists,
+            "Kept-all must not show a freed-space headline"
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")).firstMatch.exists,
+            "Kept-all must not mention Recently Deleted"
+        )
+        XCTAssertEqual(
+            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Abrir Fotos'")).count,
+            0,
+            "Kept-all has no Abrir Fotos"
+        )
+        XCTAssertFalse(app.otherElements["space.recentlyDeletedHint"].exists)
+        assertOtras20IsHittable()
+    }
+    
+    func testDeletedSomeBatchSummaryIsSingleFullScreen() throws {
+        launchReviewWithSummarySimulation("-simulateDeletedSummary")
+        assertSingleBatchSummaryContainer()
+        
+        let freed = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Liberaste'")).firstMatch
+        XCTAssertTrue(freed.waitForExistence(timeout: 6), "Deleted-some summary must animate Liberaste")
+        XCTAssertFalse(freed.label.contains("0 KB"), freed.label)
+        XCTAssertFalse(freed.label.contains("Liberaste 0"), freed.label)
+        
+        let shortLine = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Se libera al vaciar Eliminados recientemente'")
+        ).firstMatch
+        XCTAssertTrue(shortLine.waitForExistence(timeout: 4), "Need the one short Recently Deleted line")
+        
+        let openPhotos = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Abrir Fotos'"))
+        XCTAssertEqual(openPhotos.count, 1, "Abrir Fotos must appear exactly once")
+        XCTAssertFalse(app.otherElements["space.recentlyDeletedHint"].exists)
+        XCTAssertFalse(
+            app.staticTexts["Todo en orden"].exists,
+            "Deleted-some is not the kept-all title"
+        )
+        assertOtras20IsHittable()
+    }
+    
+    private func launchReviewWithSummarySimulation(_ argument: String) {
+        app.launchArguments.append(argument)
         app.launch()
         let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch to reach the batch summary")
         tabBar.buttons.element(boundBy: 0).tap()
         let reviewButton = app.buttons["home.reviewButton"]
         XCTAssertTrue(
             reviewButton.waitForExistence(timeout: 10) || app.buttons["Empezar"].waitForExistence(timeout: 4),
-            "Need Review to reach the post-delete summary"
+            "Need Empezar to open the batch summary"
         )
         if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
-        XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
-        
-        let terminar = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Terminar'")).firstMatch
-        XCTAssertTrue(terminar.waitForExistence(timeout: 8), "Terminar opens the session summary")
-        terminar.tap()
-        
-        let hint = app.otherElements["space.recentlyDeletedHint"]
-        let recovery = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] 'Eliminados recientemente'")
-        ).firstMatch
         XCTAssertTrue(
-            hint.waitForExistence(timeout: 8) || recovery.waitForExistence(timeout: 4),
-            "Summary must state that space returns after emptying Recently Deleted"
+            app.otherElements["review.root"].waitForExistence(timeout: 10),
+            "Review must open"
         )
-        let howTo = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes > Eliminados recientemente'")
+    }
+    
+    private func assertSingleBatchSummaryContainer() {
+        let summary = app.otherElements["review.batchSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 10), "Need one full-screen summary container")
+        XCTAssertEqual(
+            app.otherElements.matching(identifier: "review.batchSummary").count,
+            1,
+            "Exactly one summary container — never an inline summary plus a sheet"
+        )
+        XCTAssertEqual(app.sheets.count, 0, "Summary must not sit under a dimming sheet")
+        
+        let emptyTitle = app.staticTexts["No hay fotos para eliminar"]
+        let resumen = app.staticTexts["Resumen"]
+        XCTAssertFalse(
+            resumen.exists && emptyTitle.exists,
+            "Resumen must not overlap No hay fotos para eliminar"
+        )
+        XCTAssertFalse(emptyTitle.exists, "Old empty-delete title must be gone")
+        XCTAssertFalse(app.navigationBars["Resumen"].exists, "No sheet nav title stacked on the summary")
+        
+        let zero = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] '0 KB' OR label CONTAINS[c] '0 bytes' OR label CONTAINS 'Liberaste 0'")
         ).firstMatch
+        XCTAssertFalse(zero.exists, "Must never show Liberaste 0 KB")
+        
+        let truncated = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Fotos > Álbumes' OR label CONTAINS[c] 'Eliminar t'")
+        ).firstMatch
+        XCTAssertFalse(truncated.exists, "Must not show the truncated Photos path")
+        
+        XCTAssertFalse(app.buttons["Salir"].exists, "Salir is gone")
+        XCTAssertFalse(app.buttons["Seguir revisando"].exists, "Seguir revisando is gone")
+    }
+    
+    private func assertOtras20IsHittable() {
+        let more = app.buttons["review.moreBatch"]
+        let moreByLabel = app.buttons["Otras 20"]
         XCTAssertTrue(
-            howTo.waitForExistence(timeout: 6)
-            || app.buttons["space.openPhotos"].waitForExistence(timeout: 3)
-            || app.buttons["Abrir Fotos"].waitForExistence(timeout: 2),
-            "Summary must include the how-to or the Open Photos button"
+            more.waitForExistence(timeout: 6) || moreByLabel.waitForExistence(timeout: 3),
+            "Otras 20 must exist"
+        )
+        let button = more.exists ? more : moreByLabel
+        XCTAssertTrue(button.isHittable, "Otras 20 must be hittable")
+        XCTAssertTrue(
+            app.buttons["review.doneForToday"].exists || app.buttons["Listo por hoy"].exists,
+            "Listo por hoy stays as the secondary action"
         )
     }
     

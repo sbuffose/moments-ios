@@ -533,7 +533,66 @@ enum SpaceFormatting {
     
     static let recentlyDeletedHowTo = "Fotos > Álbumes > Eliminados recientemente > Eliminar todo"
     
+    /// One short line for the end-of-batch summary. Never the long Photos path.
+    static let recentlyDeletedSummaryLine = "Se libera al vaciar Eliminados recientemente"
+    
     static let photosAppURL = URL(string: "photos-redirect://")
+    
+    static func keptAllSubtitle(count: Int) -> String {
+        if count <= 0 {
+            return "Conservaste las fotos"
+        }
+        if count == 1 {
+            return "Conservaste la foto"
+        }
+        return "Conservaste las \(count) fotos"
+    }
+    
+    /// Never formats a zero byte count as "0 KB".
+    static func freedHeadline(bytes: Int64) -> String {
+        guard bytes > 0 else { return "Liberaste espacio" }
+        return "Liberaste \(string(from: bytes))"
+    }
+}
+
+enum ReviewBatchSummarySimulation {
+    static let keptAllArgument = "-simulateKeptAllSummary"
+    static let deletedArgument = "-simulateDeletedSummary"
+    static let previewFreedBytes: Int64 = 4_200_000
+    
+    static var isKeptAll: Bool {
+        ProcessInfo.processInfo.arguments.contains(keptAllArgument)
+    }
+    
+    static var isDeletedSome: Bool {
+        ProcessInfo.processInfo.arguments.contains(deletedArgument)
+    }
+    
+    static var isActive: Bool { isKeptAll || isDeletedSome }
+}
+
+enum ReviewBatchSummaryState: Equatable {
+    case keptAll(photoCount: Int)
+    case deletedSome(bytes: Int64)
+    
+    static func resolve(
+        deletedCount: Int,
+        deletedBytes: Int64,
+        keptCount: Int,
+        simulateKeptAll: Bool = ReviewBatchSummarySimulation.isKeptAll,
+        simulateDeletedSome: Bool = ReviewBatchSummarySimulation.isDeletedSome
+    ) -> ReviewBatchSummaryState {
+        if simulateDeletedSome {
+            return .deletedSome(bytes: ReviewBatchSummarySimulation.previewFreedBytes)
+        }
+        if simulateKeptAll {
+            return .keptAll(photoCount: DailyReviewBatch.size)
+        }
+        if deletedCount > 0 {
+            return .deletedSome(bytes: deletedBytes)
+        }
+        return .keptAll(photoCount: keptCount)
+    }
 }
 
 struct RecentlyDeletedHintView: View {

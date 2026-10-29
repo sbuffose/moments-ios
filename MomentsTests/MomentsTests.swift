@@ -2688,6 +2688,67 @@ final class MomentsTests: XCTestCase {
         )
         XCTAssertEqual(SpaceFormatting.recentlyDeletedHowTo, "Fotos > Álbumes > Eliminados recientemente > Eliminar todo")
         XCTAssertEqual(SpaceFormatting.photosAppURL?.scheme, "photos-redirect")
+        XCTAssertEqual(
+            SpaceFormatting.recentlyDeletedSummaryLine,
+            "Se libera al vaciar Eliminados recientemente"
+        )
+    }
+    
+    func testReviewBatchSummaryStatesNeverShowZeroKBOrStackedTitles() {
+        XCTAssertEqual(SpaceFormatting.keptAllSubtitle(count: 20), "Conservaste las 20 fotos")
+        XCTAssertEqual(SpaceFormatting.keptAllSubtitle(count: 1), "Conservaste la foto")
+        XCTAssertEqual(SpaceFormatting.keptAllSubtitle(count: 0), "Conservaste las fotos")
+        
+        let zeroHeadline = SpaceFormatting.freedHeadline(bytes: 0)
+        XCTAssertFalse(zeroHeadline.contains("0 KB"), zeroHeadline)
+        XCTAssertFalse(zeroHeadline.contains("0 bytes"), zeroHeadline)
+        XCTAssertFalse(zeroHeadline.contains("Liberaste 0"), zeroHeadline)
+        
+        let freed = SpaceFormatting.freedHeadline(bytes: 4_200_000)
+        XCTAssertTrue(freed.hasPrefix("Liberaste"), freed)
+        XCTAssertTrue(freed.contains("MB") || freed.contains("Mb"), freed)
+        XCTAssertFalse(freed.contains("0 KB"), freed)
+        
+        let kept = ReviewBatchSummaryState.resolve(
+            deletedCount: 0,
+            deletedBytes: 0,
+            keptCount: 20,
+            simulateKeptAll: false,
+            simulateDeletedSome: false
+        )
+        XCTAssertEqual(kept, .keptAll(photoCount: 20))
+        
+        let deleted = ReviewBatchSummaryState.resolve(
+            deletedCount: 3,
+            deletedBytes: 0,
+            keptCount: 17,
+            simulateKeptAll: false,
+            simulateDeletedSome: false
+        )
+        XCTAssertEqual(deleted, .deletedSome(bytes: 0))
+        
+        let simulatedKept = ReviewBatchSummaryState.resolve(
+            deletedCount: 2,
+            deletedBytes: 8_000,
+            keptCount: 5,
+            simulateKeptAll: true,
+            simulateDeletedSome: false
+        )
+        XCTAssertEqual(simulatedKept, .keptAll(photoCount: DailyReviewBatch.size))
+        
+        let simulatedDeleted = ReviewBatchSummaryState.resolve(
+            deletedCount: 0,
+            deletedBytes: 0,
+            keptCount: 20,
+            simulateKeptAll: false,
+            simulateDeletedSome: true
+        )
+        XCTAssertEqual(simulatedDeleted, .deletedSome(bytes: ReviewBatchSummarySimulation.previewFreedBytes))
+        XCTAssertGreaterThan(ReviewBatchSummarySimulation.previewFreedBytes, 0)
+        
+        XCTAssertNotEqual(SpaceFormatting.recentlyDeletedSummaryLine, SpaceFormatting.recentlyDeletedHowTo)
+        XCTAssertFalse(SpaceFormatting.recentlyDeletedSummaryLine.contains("Fotos >"))
+        XCTAssertFalse(SpaceFormatting.recentlyDeletedSummaryLine.contains("Eliminar t"))
     }
     
     func testNewPhotoCheckCapsAndRespectsKeep() {
