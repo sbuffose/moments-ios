@@ -93,11 +93,11 @@ struct HomeView: View {
                 searchBar
                 
                 ZStack {
-                    if !heroReady {
+                    if heroReady {
+                        heroCard
+                    } else {
                         heroSkeleton
                     }
-                    heroCard
-                        .opacity(heroReady ? 1 : 0)
                 }
                 
                 freedAndStorageCard
@@ -232,10 +232,13 @@ struct HomeView: View {
                 totalBytes: viewModel.inventory.totalReclaimableBytes,
                 itemCount: viewModel.inventory.todayBatchItems
             ))
-                .font(MomentsTypography.headlineLarge)
+                .font(MomentsTypography.displaySmall)
                 .foregroundStyle(MomentsColors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 4)
+                .background(MomentsColors.bgCard)
                 .accessibilityIdentifier("home.heroHeadline")
             
             ForEach(viewModel.topHumanReasons.prefix(3), id: \.self) { reason in

@@ -5,6 +5,7 @@ import XCTest
 import os
 import SwiftData
 import UserNotifications
+import UIKit
 @testable import Moments
 
 final class MomentsTests: XCTestCase {
@@ -2629,6 +2630,23 @@ final class MomentsTests: XCTestCase {
             MomentsColors.contrastRatio(foreground: .white, background: MomentsColors.darkGreenGrey),
             4.5
         )
+    }
+    
+    func testHeroTextContrastsAgainstCardInLightAndDark() {
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+        let lightRatio = MomentsColors.contrastRatio(
+            foreground: MomentsColors.textPrimaryUIColor.resolvedColor(with: light),
+            background: MomentsColors.bgCardUIColor.resolvedColor(with: light)
+        )
+        let darkRatio = MomentsColors.contrastRatio(
+            foreground: MomentsColors.textPrimaryUIColor.resolvedColor(with: dark),
+            background: MomentsColors.bgCardUIColor.resolvedColor(with: dark)
+        )
+        XCTAssertGreaterThan(lightRatio, 2.4, "Light hero vs card contrast \(lightRatio)")
+        XCTAssertGreaterThan(darkRatio, 2.4, "Dark hero vs card contrast \(darkRatio)")
+        XCTAssertGreaterThan(lightRatio, 7, "Light hero must stay well above washed-out")
+        XCTAssertGreaterThan(darkRatio, 7, "Dark hero must stay well above washed-out")
     }
     
     func testFirstRunCopyHasNoRawLibraryCount() {
