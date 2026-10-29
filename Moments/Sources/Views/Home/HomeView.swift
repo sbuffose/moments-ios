@@ -25,6 +25,7 @@ struct HomeView: View {
                 Color.clear
                     .frame(width: 1, height: 1)
                     .accessibilityIdentifier("home.root")
+                    .allowsHitTesting(false)
                 
                 if appState.shouldShowFirstRunAnalyzing {
                     FirstRunAnalyzingView()
@@ -78,9 +79,9 @@ struct HomeView: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
             if appState.isAnalyzing && !appState.shouldShowFirstRunAnalyzing && heroReady {
-                viewModel.refreshCategories()
+                viewModel.refreshInventory()
             }
         }
     }
@@ -248,8 +249,10 @@ struct HomeView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("home.reviewButton")
             .accessibilityLabel("Empezar")
+            .accessibilityAddTraits(.isButton)
         }
         .frame(minWidth: Self.heroMinWidth, maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
     }
@@ -615,10 +618,11 @@ class HomeViewModel: ObservableObject {
         importantDatesService.initialize(modelContext: modelContext)
         
         loadSpaceSaved()
-        refreshInventory()
-        loadMetadataCategories()
-        
-        Task {
+        // First paint must stay tappable. Inventory/makeQueue on a large
+        // library used to freeze MainActor right after launch (266).
+        Task { @MainActor in
+            refreshInventory()
+            loadMetadataCategories()
             await loadFeedCards()
         }
     }

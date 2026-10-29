@@ -617,6 +617,19 @@ struct CleanupReviewView: View {
         }
     }
     
+    private var showsBlackFrameLabel: Bool {
+        switch currentItem {
+        case .single(let photo):
+            return PhotoLuminanceClass.classify(meanLuminance: photo.exposureScore ?? 0.5) == .blackFrame
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos.contains {
+                PhotoLuminanceClass.classify(meanLuminance: $0.exposureScore ?? 0.5) == .blackFrame
+            }
+        case nil:
+            return false
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             if let currentItem {
@@ -654,6 +667,20 @@ struct CleanupReviewView: View {
                         .id(category)
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.2), value: category)
+                }
+                
+                if showsBlackFrameLabel {
+                    Text(PhotoLuminanceClass.blackFrameTitle)
+                        .font(MomentsTypography.headlineMedium)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.72), in: Capsule())
+                        .padding(.top, 6)
+                        .accessibilityIdentifier("review.blackFrameLabel")
+                        .accessibilityLabel(PhotoLuminanceClass.blackFrameTitle)
+                        .allowsHitTesting(false)
                 }
                 
                 Spacer()

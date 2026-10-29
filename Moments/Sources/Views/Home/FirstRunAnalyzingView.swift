@@ -31,10 +31,12 @@ struct FirstRunAnalyzingView: View {
             Color.clear
                 .frame(width: 1, height: 1)
                 .accessibilityIdentifier("home.root")
+                .allowsHitTesting(false)
             
             Color.clear
                 .frame(width: 1, height: 1)
                 .accessibilityIdentifier("firstRun.root")
+                .allowsHitTesting(false)
             
             VStack(spacing: MomentsSpacing.lg) {
                 Spacer()

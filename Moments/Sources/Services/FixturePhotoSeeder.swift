@@ -37,8 +37,9 @@ enum FixturePhotoSeeder {
                 }
                 if !existing.contains(where: { $0.localIdentifier == "fixture-black-frame-1" }) {
                     seedBlackFramePhotos(into: context)
-                    try context.save()
                 }
+                reconcileReviewableBlackFrame(into: context)
+                try context.save()
                 let refreshed = try context.fetch(FetchDescriptor<PersistedPhoto>()).filter {
                     $0.localIdentifier.hasPrefix("fixture-")
                 }
@@ -315,9 +316,37 @@ enum FixturePhotoSeeder {
             ))
         }
         
+        reconcileReviewableBlackFrame(into: context)
         try context.save()
         UserDefaults.standard.set(true, forKey: seededFlagKey)
         return summarize(photos, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
+    }
+    
+    /// Every launch: black-frame fixture is unkept, scored first, and has
+    /// exposure 0.01 so review shows "Foto casi toda negra".
+    private static func reconcileReviewableBlackFrame(into context: ModelContext) {
+        let photos = (try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? []
+        let black = photos.first { $0.localIdentifier == "fixture-black-frame-1" }
+            ?? seedBlackFramePhotos(into: context).first
+        guard let black else { return }
+        black.analysisCompleted = true
+        black.cleanupCategory = .underexposed
+        black.deletionLikelihoodScore = 0.99
+        black.exposureScore = 0.01
+        black.sharpnessScore = 0.02
+        black.keepDecision = .none
+        black.keepUntil = nil
+        black.keepDecisionDate = nil
+        black.isProtected = false
+        
+        func strip(_ key: String) {
+            var ids = UserDefaults.standard.array(forKey: key) as? [String] ?? []
+            ids.removeAll { $0 == black.id }
+            UserDefaults.standard.set(ids, forKey: key)
+        }
+        strip("com.moments.cleanup.reviewedPhotos")
+        strip("com.moments.cleanup.selectedPhotos")
+        strip("com.moments.cleanup.keptPhotos")
     }
     
     @discardableResult

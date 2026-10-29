@@ -309,8 +309,25 @@ final class ScanCancellation: @unchecked Sendable {
 // MARK: - Pipeline actor (never MainActor)
 
 actor ScanPipeline {
-    private let imageAnalyzer = ImageAnalyzer()
-    private let faceAnalyzer = FaceAnalyzer()
+    /// Built only when a real photo is analyzed. Synthetic `processBatch`
+    /// (unit tests) must not construct CIContext / Vision — that crashes the
+    /// test host on first init.
+    private var imageAnalyzer: ImageAnalyzer?
+    private var faceAnalyzer: FaceAnalyzer?
+    
+    private func qualityAnalyzer() -> ImageAnalyzer {
+        if let imageAnalyzer { return imageAnalyzer }
+        let created = ImageAnalyzer()
+        imageAnalyzer = created
+        return created
+    }
+    
+    private func facesAnalyzer() -> FaceAnalyzer {
+        if let faceAnalyzer { return faceAnalyzer }
+        let created = FaceAnalyzer()
+        faceAnalyzer = created
+        return created
+    }
     
     /// One synthetic item. Actor hops off MainActor; used by the unit test.
     @discardableResult
@@ -513,13 +530,14 @@ actor ScanPipeline {
             return
         }
         
-        let quality = await imageAnalyzer.analyzeQuality(image: image)
-        let text = await imageAnalyzer.analyzeText(image: image)
-        let labels = await imageAnalyzer.classifyImage(image: image)
-        let barcode = await imageAnalyzer.detectBarcodes(image: image)
-        let featurePrint = await imageAnalyzer.generateFeaturePrint(image: image)
-        let dHash: UInt64? = autoreleasepool { imageAnalyzer.generateDHash(image: image) }
-        let faces = await faceAnalyzer.detectFaces(in: image, photoId: photo.id)
+        let analyzer = qualityAnalyzer()
+        let quality = await analyzer.analyzeQuality(image: image)
+        let text = await analyzer.analyzeText(image: image)
+        let labels = await analyzer.classifyImage(image: image)
+        let barcode = await analyzer.detectBarcodes(image: image)
+        let featurePrint = await analyzer.generateFeaturePrint(image: image)
+        let dHash: UInt64? = autoreleasepool { analyzer.generateDHash(image: image) }
+        let faces = await facesAnalyzer().detectFaces(in: image, photoId: photo.id)
         
         let metadata = await MetadataExtractionService.shared.extractMetadata(for: asset)
         let originResult = await MetadataExtractionService.shared.detectOrigin(for: asset, metadata: metadata)
@@ -772,7 +790,7 @@ enum ActiveScanSimulation {
         ticker?.cancel()
         ticker = Task.detached(priority: .utility) {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 300_000_000)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 advance(by: 1)
                 await MainActor.run {
                     apply(to: appState)
@@ -815,10 +833,13 @@ enum ActiveScanSimulation {
             lock.lock(); defer { lock.unlock() }
             return processed
         }())
-        appState.isAnalyzing = true
-        appState.isIndexing = false
-        appState.totalPhotosAnalyzed = count
-        appState.totalPhotosToAnalyze = total
-        appState.analysisProgress = Double(count) / Double(total)
+        let progress = Double(count) / Double(total)
+        if appState.isAnalyzing != true { appState.isAnalyzing = true }
+        if appState.isIndexing { appState.isIndexing = false }
+        if appState.totalPhotosAnalyzed != count { appState.totalPhotosAnalyzed = count }
+        if appState.totalPhotosToAnalyze != total { appState.totalPhotosToAnalyze = total }
+        if abs(appState.analysisProgress - progress) > 0.0001 {
+            appState.analysisProgress = progress
+        }
     }
 }

@@ -127,4 +127,60 @@ final class Build266SurfaceTests: XCTestCase {
         ThumbnailCache.shared.store(image, for: "cache-keep")
         XCTAssertNotNil(ThumbnailCache.shared.cachedImage(for: "cache-keep"))
     }
+    
+    @MainActor
+    func testBlackFrameFixtureLeadsTheDailyReviewQueue() throws {
+        let schema = Schema([PersistedPhoto.self, SimilarGroup.self, LearnedPreferences.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let best = PersistedPhoto(localIdentifier: "dup-best", creationDate: Date())
+        best.analysisCompleted = true
+        best.cleanupCategory = .duplicate
+        best.deletionLikelihoodScore = 0.20
+        best.isBestInGroup = true
+        context.insert(best)
+        let copy = PersistedPhoto(localIdentifier: "dup-copy", creationDate: Date())
+        copy.analysisCompleted = true
+        copy.cleanupCategory = .duplicate
+        copy.deletionLikelihoodScore = 0.88
+        context.insert(copy)
+        let group = SimilarGroup(id: "dup-group", photoIds: [best.id, copy.id], bestPhotoId: best.id)
+        group.isExactDuplicate = true
+        context.insert(group)
+        
+        let black = PersistedPhoto(localIdentifier: "fixture-black-frame-1", creationDate: Date())
+        black.analysisCompleted = true
+        black.cleanupCategory = .underexposed
+        black.deletionLikelihoodScore = 0.99
+        black.exposureScore = 0.01
+        black.keepDecision = .forever
+        context.insert(black)
+        try context.save()
+        
+        black.keepDecision = .none
+        black.exposureScore = 0.01
+        black.deletionLikelihoodScore = 0.99
+        try context.save()
+        
+        XCTAssertEqual(
+            PhotoLuminanceClass.classify(meanLuminance: black.exposureScore ?? 1),
+            .blackFrame
+        )
+        
+        let photos = try context.fetch(FetchDescriptor<PersistedPhoto>())
+        let groups = try context.fetch(FetchDescriptor<SimilarGroup>())
+        let queue = CleanupViewModel.makeQueue(photos: photos, groups: groups)
+        let capped = DailyReviewBatch.cap(queue)
+        XCTAssertFalse(capped.batch.isEmpty)
+        guard case .single(let first) = capped.batch.first else {
+            return XCTFail("Black-frame single must lead the daily batch, not a group")
+        }
+        XCTAssertEqual(first.localIdentifier, "fixture-black-frame-1")
+        XCTAssertEqual(
+            PhotoLuminanceClass.classify(meanLuminance: first.exposureScore ?? 1),
+            .blackFrame
+        )
+    }
 }

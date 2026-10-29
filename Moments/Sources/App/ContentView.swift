@@ -405,9 +405,12 @@ struct ScanProgressProbe: View {
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
+    /// Local selection so scan-progress `@Published` ticks on `AppState` cannot
+    /// rebuild TabView and snap back to Home (266: tabs/Asistente unresponsive).
+    @State private var tab: AppState.AppTab = .home
     
     var body: some View {
-        TabView(selection: $appState.selectedTab) {
+        TabView(selection: $tab) {
             HomeView()
                 .tabItem {
                     Label(String(localized: "tab_home"), systemImage: AppState.AppTab.home.icon)
@@ -439,7 +442,18 @@ struct MainTabView: View {
         .tint(MomentsColors.accent)
         .accessibilityIdentifier("main_tab_view")
         .onAppear {
+            tab = appState.selectedTab
             TabBarChrome.apply()
+        }
+        .onChange(of: tab) { _, newValue in
+            if appState.selectedTab != newValue {
+                appState.selectedTab = newValue
+            }
+        }
+        .onChange(of: appState.selectedTab) { _, newValue in
+            if tab != newValue {
+                tab = newValue
+            }
         }
         .overlay(alignment: .topLeading) {
             ScanProgressProbe()

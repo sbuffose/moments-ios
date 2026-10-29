@@ -18,6 +18,8 @@ struct PhotoDarknessOverlay: View {
                     Text(PhotoLuminanceClass.blackFrameTitle)
                         .font(MomentsTypography.headlineMedium)
                         .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("review.blackFrameLabel")
+                        .accessibilityLabel(PhotoLuminanceClass.blackFrameTitle)
                     Text(PhotoLuminanceClass.blackFrameSubtitle)
                         .font(MomentsTypography.bodySmall)
                         .multilineTextAlignment(.center)
@@ -28,7 +30,7 @@ struct PhotoDarknessOverlay: View {
                 .padding(MomentsSpacing.md)
             }
             .allowsHitTesting(false)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("review.blackFrameLabel")
             .accessibilityLabel(PhotoLuminanceClass.blackFrameTitle)
         case .dark:

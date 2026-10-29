@@ -771,7 +771,13 @@ extension Array {
 // MARK: - Image Analyzer
 
 final class ImageAnalyzer: Sendable {
-    private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
+    /// Hardware CIContext crashes the XCTest host (no GPU / eligibilityd).
+    /// Production keeps the hardware path; tests force the software renderer.
+    private static let sharedCIContext: CIContext = {
+        let inTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.arguments.contains("-XCTest")
+        return CIContext(options: [.useSoftwareRenderer: inTests])
+    }()
     
     struct QualityMetrics: Sendable {
         let sharpness: Double

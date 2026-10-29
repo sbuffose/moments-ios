@@ -577,12 +577,12 @@ class AppState: ObservableObject {
     
     func refreshIndexedCountFromStore() {
         guard let context = modelContext else { return }
-        let inventory = LibraryInventoryService.snapshot(from: context)
-        if inventory.indexedCount > 0 {
-            totalPhotosIndexed = inventory.indexedCount
-            totalPhotosAnalyzed = max(totalPhotosAnalyzed, inventory.analyzedCount)
-            totalPhotosToAnalyze = max(totalPhotosToAnalyze, inventory.indexedCount)
-        }
+        let photos = (try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? []
+        guard !photos.isEmpty else { return }
+        totalPhotosIndexed = photos.count
+        let analyzed = photos.filter(\.analysisCompleted).count
+        totalPhotosAnalyzed = max(totalPhotosAnalyzed, analyzed)
+        totalPhotosToAnalyze = max(totalPhotosToAnalyze, photos.count)
     }
     
     private func migrateInitialAnalysisFlagIfNeeded() {

@@ -20,6 +20,7 @@ struct AssistantView: View {
             Color.clear
                 .frame(width: 1, height: 1)
                 .accessibilityIdentifier("assistant.root")
+                .allowsHitTesting(false)
             
             VStack(spacing: 0) {
                 // Messages/Cards feed
@@ -50,8 +51,9 @@ struct AssistantView: View {
                     }
                 }
                 
-                // Suggestions when empty or focused
-                if viewModel.messages.isEmpty || isInputFocused {
+                // Keep chips on-screen so Asistente stays tappable during analysis
+                // even after the welcome message arrives.
+                if viewModel.messages.count <= 2 || isInputFocused {
                     suggestionsView
                 }
                 
@@ -59,6 +61,8 @@ struct AssistantView: View {
                 inputBar
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant.root")
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
         }
@@ -313,10 +317,10 @@ class AssistantViewModel: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
+        suggestions = defaultSuggestions
         intentParser.initialize(modelContext: modelContext)
         cleanupViewModel.initialize(modelContext: modelContext)
         importantDatesService.initialize(modelContext: modelContext)
-        suggestions = defaultSuggestions
         
         Task {
             await loadProactiveCards()

@@ -1344,6 +1344,68 @@ final class SmokeTestSuite: XCTestCase {
         XCTAssertGreaterThan(after, before, "Background work must advance the checkpoint, not restart")
     }
     
+    /// P0 266: "abre pero no puedo tocar". Large fixture library + live scan
+    /// must leave Home Empezar, every tab, and Asistente input hittable in ≤2s.
+    func testLaunchDuringActiveScanStaysTappableWithinTwoSeconds() throws {
+        app.launchArguments = [
+            "-skipOnboarding",
+            "-seedFixturePhotos",
+            "-simulateActiveScan",
+            "-AppleLanguages", "(es-AR)",
+            "-AppleLocale", "es_AR"
+        ]
+        app.launchEnvironment = ["UI_TESTING": "1", "UITEST_MODE": "1"]
+        app.launch()
+        
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 30), "App must launch during an active fixture scan")
+        
+        tabBar.buttons.element(boundBy: 0).tap()
+        let start = app.buttons["home.reviewButton"]
+        let startByLabel = app.buttons["Empezar"]
+        XCTAssertTrue(
+            start.waitForExistence(timeout: 2) || startByLabel.waitForExistence(timeout: 2),
+            "Empezar must appear within 2s after launch during analysis"
+        )
+        let startButton = start.exists ? start : startByLabel
+        XCTAssertTrue(startButton.isHittable, "Empezar must be hittable — frozen/dim Home is the 266 bug")
+        startButton.tap()
+        XCTAssertTrue(
+            app.otherElements["review.root"].waitForExistence(timeout: 2),
+            "Opening review during analysis must happen within 2s"
+        )
+        
+        if app.navigationBars.buttons.count > 0 {
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 2), "Tab bar must return within 2s")
+        let tabCount = min(tabBar.buttons.count, 4)
+        XCTAssertGreaterThanOrEqual(tabCount, 4, "Home, Asistente, Momentos and Ajustes must exist")
+        for index in 0..<tabCount {
+            let tab = tabBar.buttons.element(boundBy: index)
+            XCTAssertTrue(tab.waitForExistence(timeout: 2), "Tab \(index) must exist during analysis")
+            XCTAssertTrue(tab.isHittable, "Tab \(index) must be hittable during analysis")
+            tab.tap()
+        }
+        
+        tabBar.buttons.element(boundBy: 1).tap()
+        let input = app.textFields["assistant.input"]
+        let inputByPlaceholder = app.textFields["Preguntame algo..."]
+        XCTAssertTrue(
+            input.waitForExistence(timeout: 2) || inputByPlaceholder.waitForExistence(timeout: 2),
+            "Asistente input must appear within 2s during analysis"
+        )
+        let assistantInput = input.exists ? input : inputByPlaceholder
+        XCTAssertTrue(assistantInput.isHittable, "Asistente input must be tappable during analysis")
+        assistantInput.tap()
+        
+        let suggestion = app.buttons["assistant.suggestion"]
+        if suggestion.waitForExistence(timeout: 2) {
+            XCTAssertTrue(suggestion.isHittable, "Asistente chips must stay tappable during analysis")
+        }
+    }
+    
     func testFirstRunCompletionRevealsOpaqueHittableHome() throws {
         app.launchArguments = [
             "-skipOnboarding",
