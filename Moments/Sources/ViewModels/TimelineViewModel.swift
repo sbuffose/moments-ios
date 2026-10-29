@@ -108,8 +108,9 @@ class TimelineViewModel: ObservableObject {
     }
     
     private func loadFromPersistedMoments(_ persistedMoments: [PersistedMoment]) async {
+        guard let context = modelContext else { return }
         let calendar = Calendar(identifier: .gregorian)
-        let allPhotos = ((try? modelContext?.fetch(FetchDescriptor<PersistedPhoto>())) ?? [])
+        let allPhotos = ((try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? [])
         let idToLocal = PhotoIdentifierResolver.idToLocalMap(from: allPhotos)
         
         let grouped = Dictionary(grouping: persistedMoments) { moment -> String in
