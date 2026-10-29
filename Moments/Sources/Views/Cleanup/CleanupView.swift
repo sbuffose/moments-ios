@@ -5,6 +5,7 @@ import SwiftUI
 import SwiftData
 import Photos
 import AVFoundation
+import UIKit
 
 struct CleanupView: View {
     @Environment(\.modelContext) private var modelContext
@@ -740,6 +741,7 @@ struct CleanupReviewView: View {
         .navigationTitle(isShowingSummary ? Text("") : Text("Revisar fotos"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .background(DisableInteractivePop())
         .overlay(alignment: .bottom) {
             VStack(spacing: 8) {
                 Text(lastDecision.rawValue)
@@ -2675,6 +2677,18 @@ struct SimilarPhotoCell: View {
             .onLongPressGesture {
                 onLongPress()
             }
+    }
+}
+
+private struct DisableInteractivePop: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
+    
+    final class Controller: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+        }
     }
 }
 

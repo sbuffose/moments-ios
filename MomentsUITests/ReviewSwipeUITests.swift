@@ -101,16 +101,16 @@ final class ReviewSwipeUITests: XCTestCase {
         let end: CGVector
         switch direction {
         case .left:
-            start = CGVector(dx: 0.80, dy: 0.48)
-            end = CGVector(dx: 0.08, dy: 0.52)
+            start = CGVector(dx: 0.82, dy: 0.42)
+            end = CGVector(dx: 0.22, dy: 0.46)
         case .right:
-            start = CGVector(dx: 0.20, dy: 0.48)
-            end = CGVector(dx: 0.92, dy: 0.52)
+            start = CGVector(dx: 0.18, dy: 0.42)
+            end = CGVector(dx: 0.88, dy: 0.46)
         case .up:
-            start = CGVector(dx: 0.50, dy: 0.78)
-            end = CGVector(dx: 0.50, dy: 0.08)
+            start = CGVector(dx: 0.50, dy: 0.72)
+            end = CGVector(dx: 0.50, dy: 0.14)
         }
         card.coordinate(withNormalizedOffset: start)
-            .press(forDuration: 0.08, thenDragTo: card.coordinate(withNormalizedOffset: end))
+            .press(forDuration: 0.18, thenDragTo: card.coordinate(withNormalizedOffset: end))
     }
 }
