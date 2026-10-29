@@ -38,6 +38,8 @@ struct HomeView: View {
                         .allowsHitTesting(true)
                 }
             }
+            .animation(nil, value: appState.shouldShowFirstRunAnalyzing)
+            .animation(nil, value: appState.homeRevealGeneration)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.automatic, for: .navigationBar)
             .toolbar {
@@ -93,11 +95,11 @@ struct HomeView: View {
                 searchBar
                 
                 ZStack {
-                    if !heroReady {
+                    if heroReady {
+                        heroCard
+                    } else {
                         heroSkeleton
                     }
-                    heroCard
-                        .opacity(heroReady ? 1 : 0)
                 }
                 
                 freedAndStorageCard
@@ -235,7 +237,9 @@ struct HomeView: View {
                 .font(MomentsTypography.headlineLarge)
                 .foregroundStyle(MomentsColors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+                .background(MomentsColors.bgCard)
+                .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("home.heroHeadline")
             
             ForEach(viewModel.topHumanReasons.prefix(3), id: \.self) { reason in

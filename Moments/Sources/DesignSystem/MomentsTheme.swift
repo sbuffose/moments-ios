@@ -43,19 +43,23 @@ struct MomentsColors {
     }
     
     static var bgCard: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? UIColor(red: 0.175, green: 0.225, blue: 0.196, alpha: 1.0)
-                : UIColor(red: 0.988, green: 0.973, blue: 0.945, alpha: 1.0)
-        })
+        Color(bgCardUIColor)
     }
     
     static var textPrimary: Color {
-        Color(UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? UIColor(red: 0.95, green: 0.96, blue: 0.93, alpha: 1.0)
-                : UIColor(red: 0.16, green: 0.20, blue: 0.17, alpha: 1.0)
-        })
+        Color(textPrimaryUIColor)
+    }
+    
+    static let bgCardUIColor = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.175, green: 0.225, blue: 0.196, alpha: 1.0)
+            : UIColor(red: 0.988, green: 0.973, blue: 0.945, alpha: 1.0)
+    }
+    
+    static let textPrimaryUIColor = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.95, green: 0.96, blue: 0.93, alpha: 1.0)
+            : UIColor(red: 0.16, green: 0.20, blue: 0.17, alpha: 1.0)
     }
     
     static var textSecondary: Color {
