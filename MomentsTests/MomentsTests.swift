@@ -2699,12 +2699,11 @@ final class MomentsTests: XCTestCase {
         XCTAssertFalse(NewPhotoCheckService.isObviouslyBad(category: .screenshot, keepDecision: nil))
     }
     
-    func testAlbumSuggestionPrefersCooking4UForFood() {
-        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food, plate, dinner", lastChoice: nil), "Cooking4U")
-        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "comida casera", lastChoice: nil), "Cooking4U")
-        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "travel, beach", lastChoice: nil), "Viajes")
-        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: "food", lastChoice: "Recetas"), "Recetas")
-        XCTAssertEqual(AlbumService.suggestedAlbumTitle(labels: nil, lastChoice: nil), "Moments")
+    func testReviewTagSheetNeverUsesPhotoKitAlbumTitles() {
+        XCTAssertTrue(ReviewTagSheetData.forbiddenAlbumTitles.contains("whatsapp"))
+        XCTAssertTrue(ReviewTagSheetData.forbiddenAlbumTitles.contains("instagram"))
+        XCTAssertTrue(ReviewTagSheetData.forbiddenAlbumTitles.contains("moments"))
+        XCTAssertEqual(ReviewTagOption.fixedCategories.map(\.title), ["Familia", "Amigos", "Viajes"])
     }
     
     func testFormatAuditRejectsReorderedCatalogingFromApp() {

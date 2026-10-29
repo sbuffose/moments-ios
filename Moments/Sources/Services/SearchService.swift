@@ -99,7 +99,11 @@ class SearchService: ObservableObject {
             var results: [SearchResult] = []
             
             for photo in photos {
-                let (score, matchedFields) = calculateMatchScore(photo: photo, searchTerms: searchTerms)
+                var (score, matchedFields) = calculateMatchScore(photo: photo, searchTerms: searchTerms)
+                if ReviewTagService.photoMatches(photo, query: query, context: context) {
+                    score += 20
+                    matchedFields.append(.label("tag"))
+                }
                 if score > 0 {
                     results.append(SearchResult(id: photo.id, photo: photo, score: score, matchedFields: matchedFields))
                 }

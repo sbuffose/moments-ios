@@ -563,7 +563,7 @@ struct CleanupReviewView: View {
     @ObservedObject var viewModel: CleanupViewModel
     @StateObject private var shareService = ShareLoadingService()
     @State private var showFinishSheet = false
-    @State private var showAlbumSheet = false
+    @State private var showTagSheet = false
     @State private var shareItem: ShareItem?
     @State private var showPostShareDeletePrompt = false
     @State private var sharedPhotoId: String?
@@ -603,6 +603,17 @@ struct CleanupReviewView: View {
     
     private var currentItem: ReviewItem? {
         unreviewedItems.first
+    }
+    
+    private var photosForCurrentItem: [PersistedPhoto] {
+        switch currentItem {
+        case .single(let photo):
+            return [photo]
+        case .exactDuplicateGroup(_, let photos), .similarGroup(_, let photos):
+            return photos
+        case nil:
+            return []
+        }
     }
     
     private var currentCategory: CleanupCategoryType? {
@@ -668,7 +679,7 @@ struct CleanupReviewView: View {
                         group: group,
                         photos: photos,
                         viewModel: viewModel,
-                        onSaveToAlbum: { showAlbumSheet = true },
+                        onSaveToAlbum: { showTagSheet = true },
                         onComplete: {
                             // Queue shrinks automatically - don't advance index
                         }
@@ -679,7 +690,7 @@ struct CleanupReviewView: View {
                         group: group,
                         photos: photos,
                         viewModel: viewModel,
-                        onSaveToAlbum: { showAlbumSheet = true },
+                        onSaveToAlbum: { showTagSheet = true },
                         onComplete: {
                             // Queue shrinks automatically - don't advance index
                         }
@@ -715,8 +726,8 @@ struct CleanupReviewView: View {
             }
         }
         .interactiveDismissDisabled(photosToDelete.count > 0)
-        .sheet(isPresented: $showAlbumSheet) {
-            SaveToAlbumSheet(item: currentItem) { identifiers in
+        .sheet(isPresented: $showTagSheet) {
+            TagPhotoSheet(photos: photosForCurrentItem) { identifiers in
                 for id in identifiers {
                     viewModel.keepPhoto(id, duration: .forever)
                 }
@@ -851,8 +862,8 @@ struct CleanupReviewView: View {
                 .padding(.bottom, 8)
             }
             
-            SaveToAlbumReviewButton {
-                showAlbumSheet = true
+            TagReviewButton {
+                showTagSheet = true
             }
             .padding(.bottom, 8)
             
@@ -1159,7 +1170,7 @@ struct ExactDuplicateGroupCard: View {
                     onComplete()
                 }
                 
-                SaveToAlbumReviewButton(action: onSaveToAlbum)
+                TagReviewButton(action: onSaveToAlbum)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -1368,7 +1379,7 @@ struct SimilarGroupCard: View {
                     }
                 }
                 
-                SaveToAlbumReviewButton(action: onSaveToAlbum)
+                TagReviewButton(action: onSaveToAlbum)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -2413,22 +2424,6 @@ struct SimilarPhotoCell: View {
             .onLongPressGesture {
                 onLongPress()
             }
-    }
-}
-
-// MARK: - Save to album (under the photo, not in the nav bar)
-
-struct SaveToAlbumReviewButton: View {
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Label("Guardar en álbum", systemImage: "rectangle.stack.badge.plus")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(MomentsColors.accent)
-        }
-        .accessibilityIdentifier("review.saveToAlbum")
-        .accessibilityLabel("Guardar en álbum")
     }
 }
 

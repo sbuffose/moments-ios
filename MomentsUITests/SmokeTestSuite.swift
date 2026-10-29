@@ -1246,7 +1246,7 @@ final class SmokeTestSuite: XCTestCase {
         )
     }
     
-    func testSaveToAlbumButtonInReview() throws {
+    func testReviewEtiquetarTagsAndAssistantFindsFamilia() throws {
         app.launch()
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 30))
@@ -1258,16 +1258,87 @@ final class SmokeTestSuite: XCTestCase {
         if reviewButton.exists { reviewButton.tap() } else { app.buttons["Empezar"].tap() }
         XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 10))
         
-        let save = app.buttons["review.saveToAlbum"]
+        let tag = app.buttons["review.tagButton"]
         XCTAssertTrue(
-            save.waitForExistence(timeout: 8) || app.buttons["Guardar en álbum"].waitForExistence(timeout: 4),
-            "Review must offer Guardar en álbum"
+            tag.waitForExistence(timeout: 8) || app.buttons["Etiquetar"].waitForExistence(timeout: 4),
+            "Review must offer Etiquetar"
         )
-        if save.exists { save.tap() } else { app.buttons["Guardar en álbum"].tap() }
+        if tag.exists { tag.tap() } else { app.buttons["Etiquetar"].tap() }
         XCTAssertTrue(
-            app.otherElements["review.albumSheet"].waitForExistence(timeout: 8)
-            || app.navigationBars["Guardar en álbum"].waitForExistence(timeout: 4)
-            || app.staticTexts["Guardar en álbum"].waitForExistence(timeout: 4)
+            app.otherElements["review.tagSheet"].waitForExistence(timeout: 8)
+                || app.navigationBars["Etiquetar"].waitForExistence(timeout: 4)
+                || app.staticTexts["Etiquetar"].waitForExistence(timeout: 4)
+        )
+        
+        XCTAssertTrue(
+            app.buttons["review.tag.familia"].waitForExistence(timeout: 6)
+                || app.staticTexts["Familia"].waitForExistence(timeout: 4),
+            "Sheet must show Familia"
+        )
+        XCTAssertTrue(
+            app.buttons["review.tag.amigos"].waitForExistence(timeout: 4)
+                || app.staticTexts["Amigos"].waitForExistence(timeout: 3),
+            "Sheet must show Amigos"
+        )
+        XCTAssertTrue(
+            app.buttons["review.tag.viajes"].waitForExistence(timeout: 4)
+                || app.staticTexts["Viajes"].waitForExistence(timeout: 3),
+            "Sheet must show Viajes"
+        )
+        XCTAssertTrue(
+            app.buttons["review.tag.person"].waitForExistence(timeout: 6)
+                || app.staticTexts["Sofía"].waitForExistence(timeout: 4),
+            "Sheet must show a tagged person"
+        )
+        XCTAssertTrue(
+            app.buttons["review.tag.trip"].waitForExistence(timeout: 8)
+                || app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Viaje a'")).firstMatch.waitForExistence(timeout: 4),
+            "Sheet must show a suggested trip"
+        )
+        
+        if app.buttons["review.tag.familia"].exists {
+            app.buttons["review.tag.familia"].tap()
+        } else {
+            app.staticTexts["Familia"].tap()
+        }
+        if app.buttons["review.tag.trip"].exists {
+            app.buttons["review.tag.trip"].tap()
+        } else {
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Viaje a'")).firstMatch.tap()
+        }
+        
+        let confirm = app.buttons["review.tagConfirm"]
+        XCTAssertTrue(
+            confirm.waitForExistence(timeout: 4) || app.buttons["Etiquetar"].waitForExistence(timeout: 3)
+        )
+        if confirm.exists { confirm.tap() } else { app.navigationBars.buttons["Etiquetar"].tap() }
+        
+        XCTAssertTrue(app.otherElements["review.root"].waitForExistence(timeout: 8))
+        XCTAssertFalse(
+            app.otherElements["review.tagSheet"].waitForExistence(timeout: 2),
+            "Sheet must dismiss after tagging"
+        )
+        
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 8))
+        tabBar.buttons.element(boundBy: 1).tap()
+        XCTAssertTrue(app.waitForAssistant(), "Asistente must open after tagging")
+        let input = app.textFields["assistant.input"]
+        XCTAssertTrue(
+            input.waitForExistence(timeout: 8) || app.textFields["Preguntame algo..."].waitForExistence(timeout: 4)
+        )
+        let field = input.exists ? input : app.textFields["Preguntame algo..."]
+        field.tap()
+        field.typeText("Familia")
+        if app.buttons["assistant.send"].waitForExistence(timeout: 2) {
+            app.buttons["assistant.send"].tap()
+        } else {
+            app.submitKeyboard()
+        }
+        XCTAssertTrue(
+            app.otherElements["assistant.searchResults"].waitForExistence(timeout: 10)
+                || app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Encontré'")).firstMatch.waitForExistence(timeout: 6)
+                || app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Familia'")).firstMatch.waitForExistence(timeout: 4),
+            "Asistente search for Familia must show the tagged photo"
         )
     }
 }

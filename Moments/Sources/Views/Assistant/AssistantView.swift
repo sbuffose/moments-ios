@@ -99,12 +99,14 @@ struct AssistantView: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 32))
                         .foregroundStyle(
-                            inputText.isEmpty 
-                                ? MomentsColors.textTertiary 
+                            inputText.isEmpty
+                                ? MomentsColors.textTertiary
                                 : MomentsColors.accent
                         )
                 }
                 .disabled(inputText.isEmpty)
+                .accessibilityIdentifier("assistant.send")
+                .accessibilityLabel("Enviar")
             }
             .padding(.horizontal, MomentsSpacing.screenHorizontal)
             .padding(.vertical, MomentsSpacing.sm)
@@ -186,6 +188,7 @@ struct MessageView: View {
                 photos: photos,
                 action: { viewModel.expandPhotoGrid(photos) }
             )
+            .accessibilityIdentifier("assistant.searchResults")
             
         case .cleanup(let title, let count, let size, let photos, let category):
             CleanupBatchCard(
@@ -473,10 +476,13 @@ class AssistantViewModel: ObservableObject {
             }
         }
         
-        // Filter by query in labels
+        // Filter by query in labels + in-app tags (Familia, viajes, people)
         let queryTerms = query.lowercased().split(separator: " ").map(String.init)
         if !queryTerms.isEmpty {
             results = results.filter { photo in
+                if ReviewTagService.photoMatches(photo, query: query, context: context) {
+                    return true
+                }
                 let searchable = photo.searchableText
                 return queryTerms.contains { searchable.contains($0) }
             }

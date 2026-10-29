@@ -47,6 +47,10 @@ struct TimelineView: View {
                     onThisDaySection
                 }
                 
+                if !viewModel.photoTags.isEmpty {
+                    tagsSection
+                }
+                
                 // Trips Section
                 if !viewModel.trips.isEmpty {
                     tripsSection
@@ -81,6 +85,32 @@ struct TimelineView: View {
             }
         }
         .padding(.bottom)
+    }
+    
+    private var tagsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "tag.fill")
+                    .foregroundStyle(MomentsColors.accent)
+                Text("Etiquetas")
+                    .font(.headline)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(viewModel.photoTags, id: \.id) { tag in
+                        Text(tag.name)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(MomentsColors.accent.opacity(0.14), in: Capsule())
+                            .accessibilityIdentifier("moments.tag.\(tag.id)")
+                            .accessibilityLabel(tag.name)
+                    }
+                }
+            }
+        }
+        .padding(.bottom)
+        .accessibilityIdentifier("moments.tags")
     }
     
     // MARK: - Trips

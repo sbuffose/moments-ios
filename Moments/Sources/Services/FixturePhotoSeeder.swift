@@ -33,13 +33,13 @@ enum FixturePhotoSeeder {
             if !existing.isEmpty {
                 if existing.filter({ $0.origin.isMessagingApp }).count < 50 {
                     seedMessagingPhotos(into: context, existing: existing)
-                    try context.save()
-                    let refreshed = try context.fetch(FetchDescriptor<PersistedPhoto>()).filter {
-                        $0.localIdentifier.hasPrefix("fixture-")
-                    }
-                    return summarize(refreshed, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
                 }
-                return summarize(existing, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
+                seedReviewTagFixtures(into: context)
+                try context.save()
+                let refreshed = try context.fetch(FetchDescriptor<PersistedPhoto>()).filter {
+                    $0.localIdentifier.hasPrefix("fixture-")
+                }
+                return summarize(refreshed, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
             }
         }
         
@@ -223,7 +223,9 @@ enum FixturePhotoSeeder {
                 extra: { photo in
                     photo.sharpnessScore = 0.8
                     photo.visionLabels = index % 2 == 0 ? "person|outdoor" : "food|indoor"
-                    photo.placeCity = index % 2 == 0 ? "Buenos Aires" : "Córdoba"
+                    photo.placeCity = "Buenos Aires"
+                    photo.latitude = -34.6037
+                    photo.longitude = -58.3816
                 }
             )
         }
@@ -262,6 +264,7 @@ enum FixturePhotoSeeder {
         // (threshold 50) runs on the launch path. Low score / .none so they
         // do not flood the daily review queue.
         photos.append(contentsOf: seedMessagingPhotos(into: context, existing: photos))
+        photos.append(contentsOf: seedReviewTagFixtures(into: context))
         
         let oct26 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct26-") }
         let oct20 = photos.filter { $0.localIdentifier.hasPrefix("fixture-oct20-") }
@@ -289,6 +292,49 @@ enum FixturePhotoSeeder {
         try context.save()
         UserDefaults.standard.set(true, forKey: seededFlagKey)
         return summarize(photos, groups: (try? context.fetch(FetchDescriptor<SimilarGroup>())) ?? [])
+    }
+    
+    @discardableResult
+    private static func seedReviewTagFixtures(into context: ModelContext) -> [PersistedPhoto] {
+        let calendar = Calendar(identifier: .gregorian)
+        let mdqDate = calendar.date(from: DateComponents(year: 2025, month: 3, day: 12, hour: 15)) ?? Date()
+        var created: [PersistedPhoto] = []
+        let existing = (try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? []
+        
+        if existing.contains(where: { $0.localIdentifier == "fixture-tag-mdq-1" }) == false {
+            let photo = PersistedPhoto(localIdentifier: "fixture-tag-mdq-1", creationDate: mdqDate)
+            photo.analysisCompleted = true
+            photo.lastAnalyzedAt = Date()
+            photo.cleanupCategory = .screenshot
+            photo.deletionLikelihoodScore = 0.99
+            photo.estimatedFileSize = 210_000
+            photo.pixelWidth = 1200
+            photo.pixelHeight = 900
+            photo.mediaTypeRaw = "image"
+            photo.mediaSubtypesRaw = "screenshot"
+            photo.origin = .screenshot
+            photo.latitude = -38.0055
+            photo.longitude = -57.5426
+            photo.placeCity = "Mar del Plata"
+            photo.exposureScore = 0.5
+            context.insert(photo)
+            created.append(photo)
+        }
+        
+        let people = (try? context.fetch(FetchDescriptor<PersistedPerson>())) ?? []
+        if people.contains(where: { $0.id == "fixture-person-sofia" }) == false {
+            let cover = (created + existing).first { $0.localIdentifier == "fixture-tag-mdq-1" }
+            let sofia = PersistedPerson(
+                id: "fixture-person-sofia",
+                name: "Sofía",
+                faceClusterId: "fixture-cluster-sofia",
+                representativeFacePhotoId: cover?.id,
+                photoIds: cover.map { [$0.id] } ?? [],
+                faceCount: 3
+            )
+            context.insert(sofia)
+        }
+        return created
     }
     
     @discardableResult

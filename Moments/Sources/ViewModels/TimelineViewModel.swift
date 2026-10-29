@@ -13,6 +13,7 @@ class TimelineViewModel: ObservableObject {
     @Published var sections: [TimelineSectionItem] = []
     @Published var onThisDayMemories: [OnThisDayMemoryItem] = []
     @Published var trips: [TripItem] = []
+    @Published var photoTags: [PhotoTag] = []
     @Published var selectedMoment: MomentItem?
     @Published var errorMessage: String?
     
@@ -178,6 +179,11 @@ class TimelineViewModel: ObservableObject {
                 )
             }
             .sorted { $0.startDate > $1.startDate }
+        
+        photoTags = ReviewTagService.persistedCategoryTags(from: context)
+        for extra in ReviewTagService.persistedTripItems(from: context) where !trips.contains(where: { $0.id == extra.id }) {
+            trips.append(extra)
+        }
     }
     
     private func generateMoments() async {
