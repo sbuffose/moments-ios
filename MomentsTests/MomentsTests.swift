@@ -2,6 +2,7 @@
 // Unit tests for Moments app
 
 import XCTest
+import os
 import SwiftData
 import UserNotifications
 @testable import Moments
@@ -2969,53 +2970,116 @@ final class MomentsTests: XCTestCase {
     
     // MARK: - Off-main scan pipeline + checkpoint resume (P0 build 266)
     
-    private final class ScanThreadProbe: @unchecked Sendable {
-        private let lock = NSLock()
-        private var offMain = false
-        private var onMain = false
+    func testScanPipelineRunsOffMainThreadAndResumesFromCheckpoint() async throws {
+        let log = Logger(subsystem: "com.sbuffose.moments.tests", category: "ScanPipeline")
+        log.info("test.enter main=\(Thread.isMainThread, privacy: .public)")
+        // XCTestCase is MainActor. Await a nonisolated helper so MainActor is
+        // free while the pipeline actor runs — otherwise the nested probe
+        // (or any SwiftData hop) deadlocks the host.
+        let report = try await Self.runScanPipelineCheckpointProbe()
+        log.info("test.returned processed=\(report.processedAfterResume, privacy: .public)")
         
-        func note() {
-            lock.lock()
-            if Thread.isMainThread { onMain = true } else { offMain = true }
-            lock.unlock()
-        }
-        
-        var sawOffMain: Bool { lock.lock(); defer { lock.unlock() }; return offMain }
-        var stayedOffMain: Bool { lock.lock(); defer { lock.unlock() }; return offMain && !onMain }
+        XCTAssertTrue(report.firstOffMain, "Scan/Vision work must run off the main thread")
+        XCTAssertFalse(report.firstOnMain, "First batch callback must not hop back to MainActor")
+        XCTAssertEqual(report.processedAfterFirst, 7, "Checkpoint should persist the first batch")
+        XCTAssertFalse(report.firstComplete)
+        XCTAssertGreaterThan(report.processedAfterFirst, 0)
+        XCTAssertEqual(report.remainingCount, 13, "Resume must skip already-processed items, not restart from 0")
+        XCTAssertTrue(report.resumeOffMain, "Resumed batch must also stay off the main thread")
+        XCTAssertFalse(report.resumeOnMain, "Resume callback must not hop back to MainActor")
+        XCTAssertEqual(report.processedAfterResume, 20, "Resume continues from the checkpoint instead of resetting")
+        XCTAssertGreaterThan(report.processedAfterResume, 7)
+        XCTAssertTrue(report.photo0Processed)
+        XCTAssertTrue(report.photo19Processed)
+        XCTAssertEqual(report.isolatedRowCount, 1, "In-memory container must stay isolated from the host store")
     }
     
-    func testScanPipelineRunsOffMainThreadAndResumesFromCheckpoint() async {
+    nonisolated private static func runScanPipelineCheckpointProbe() async throws -> ScanPipelineProbeReport {
+        let log = Logger(subsystem: "com.sbuffose.moments.tests", category: "ScanPipeline")
+        log.info("probe.start main=\(Thread.isMainThread, privacy: .public)")
+        
+        let schema = Schema([PersistedPhoto.self, AnalysisState.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        log.info("probe.container.creating")
+        let container = try ModelContainer(for: schema, configurations: [config])
+        log.info("probe.container.ready")
+        
+        // Background context on this isolated container — never the host app store.
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        context.insert(PersistedPhoto(id: "probe-isolated", localIdentifier: "probe-isolated"))
+        try context.save()
+        let isolated = try context.fetch(FetchDescriptor<PersistedPhoto>()).count
+        log.info("probe.swiftdata.saved rows=\(isolated, privacy: .public)")
+        
         let suite = "test.scan.pipeline.\(UUID().uuidString)"
         let store = ScanCheckpointStore(suiteName: suite)
         store.start(totalPhotos: 20)
+        log.info("probe.store.started")
         
         let items = (0..<20).map { ScanWorkItem(id: "photo-\($0)") }
         let pipeline = ScanPipeline()
         let threads = ScanThreadProbe()
         
-        await pipeline.processBatch(Array(items.prefix(7)), store: store) { _ in
-            threads.note()
+        try await withDeadline(seconds: 5, step: "first-batch") {
+            await pipeline.processBatch(Array(items.prefix(7)), store: store) { _ in
+                threads.note()
+            }
         }
-        
-        XCTAssertTrue(threads.sawOffMain, "Scan/Vision work must run off the main thread")
-        XCTAssertEqual(store.processedCount, 7, "Checkpoint should persist the first batch")
-        XCTAssertFalse(store.isComplete)
-        XCTAssertGreaterThan(store.processedCount, 0)
+        let processedAfterFirst = store.processedCount
+        let firstComplete = store.isComplete
+        log.info("probe.first-batch.done count=\(processedAfterFirst, privacy: .public)")
         
         let remaining = items.filter { !store.isProcessed($0.id) }
-        XCTAssertEqual(remaining.count, 13, "Resume must skip already-processed items, not restart from 0")
         
         let pipeline2 = ScanPipeline()
         let resumeThreads = ScanThreadProbe()
-        await pipeline2.processBatch(remaining, store: store) { _ in
-            resumeThreads.note()
+        try await withDeadline(seconds: 5, step: "resume-batch") {
+            await pipeline2.processBatch(remaining, store: store) { _ in
+                resumeThreads.note()
+            }
         }
+        log.info("probe.resume.done count=\(store.processedCount, privacy: .public)")
+        log.info("probe.done isolatedRows=\(isolated, privacy: .public)")
         
-        XCTAssertTrue(resumeThreads.stayedOffMain, "Resumed batch must also stay off the main thread")
-        XCTAssertEqual(store.processedCount, 20, "Resume continues from the checkpoint instead of resetting")
-        XCTAssertGreaterThan(store.processedCount, 7)
-        XCTAssertTrue(store.isProcessed("photo-0"))
-        XCTAssertTrue(store.isProcessed("photo-19"))
+        return ScanPipelineProbeReport(
+            firstOffMain: threads.sawOffMain,
+            firstOnMain: threads.sawOnMain,
+            processedAfterFirst: processedAfterFirst,
+            firstComplete: firstComplete,
+            remainingCount: remaining.count,
+            resumeOffMain: resumeThreads.sawOffMain,
+            resumeOnMain: resumeThreads.sawOnMain,
+            processedAfterResume: store.processedCount,
+            photo0Processed: store.isProcessed("photo-0"),
+            photo19Processed: store.isProcessed("photo-19"),
+            isolatedRowCount: isolated
+        )
+    }
+    
+    nonisolated private static func withDeadline<T: Sendable>(
+        seconds: TimeInterval,
+        step: String,
+        _ work: @Sendable @escaping () async throws -> T
+    ) async throws -> T {
+        let log = Logger(subsystem: "com.sbuffose.moments.tests", category: "ScanPipeline")
+        log.info("deadline.begin \(step, privacy: .public)")
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await work()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                log.error("deadline.timeout \(step, privacy: .public)")
+                throw ScanPipelineProbeTimeout.step(step)
+            }
+            guard let value = try await group.next() else {
+                throw ScanPipelineProbeTimeout.step(step)
+            }
+            group.cancelAll()
+            log.info("deadline.end \(step, privacy: .public)")
+            return value
+        }
     }
     
     func testContinuedTaskRequestMatchesWildcardAndIsSubmittedOnEmpezar() {
@@ -3049,4 +3113,47 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(ScanCompletionNotificationCopy.title,
                        "Tus fotos están listas para limpiar y etiquetar")
     }
+}
+
+// File-scope so XCTestCase @MainActor isolation cannot leak into the
+// ScanPipeline actor callback (that hop deadlocks the unit-test host).
+
+private struct ScanPipelineProbeReport: Sendable {
+    var firstOffMain: Bool
+    var firstOnMain: Bool
+    var processedAfterFirst: Int
+    var firstComplete: Bool
+    var remainingCount: Int
+    var resumeOffMain: Bool
+    var resumeOnMain: Bool
+    var processedAfterResume: Int
+    var photo0Processed: Bool
+    var photo19Processed: Bool
+    var isolatedRowCount: Int
+}
+
+private enum ScanPipelineProbeTimeout: Error, CustomStringConvertible {
+    case step(String)
+    
+    var description: String {
+        switch self {
+        case .step(let name):
+            return "Scan pipeline probe timed out at \(name)"
+        }
+    }
+}
+
+private final class ScanThreadProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var offMain = false
+    private var onMain = false
+    
+    func note() {
+        lock.lock()
+        if Thread.isMainThread { onMain = true } else { offMain = true }
+        lock.unlock()
+    }
+    
+    var sawOffMain: Bool { lock.lock(); defer { lock.unlock() }; return offMain }
+    var sawOnMain: Bool { lock.lock(); defer { lock.unlock() }; return onMain }
 }
