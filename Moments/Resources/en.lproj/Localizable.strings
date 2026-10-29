@@ -612,3 +612,19 @@
 "learning_screenshot_delete" = "You tend to delete screenshots";
 "learning_blurry_keep" = "You keep many photos that appear blurry";
 "learning_duplicate_delete" = "You tend to delete duplicates";
+
+/* Review humor — short, warm, never mean */
+"humor_delete_blurry" = "Bye, blurry one 👋";
+"humor_delete_butterfly" = "On to the next one";
+"humor_keep_heart" = "This one stays ❤️";
+"humor_keep_gem" = "A little gem";
+"humor_snooze_week" = "We'll talk in a week";
+"humor_screenshot" = "Another screenshot you never opened 😅";
+"humor_batch_done" = "Done! Your library says thanks";
+"humor_batch_kept_all" = "You're a keeper of everything, huh? 😄";
+"humor_liberaste %1$@" = "You freed %1$@";
+"humor_undo" = "Undo";
+"humor_mascot" = "Moments sunshine";
+"humor_stamp_keep" = "Keep";
+"humor_stamp_delete" = "Delete";
+"humor_stamp_snooze" = "Later";

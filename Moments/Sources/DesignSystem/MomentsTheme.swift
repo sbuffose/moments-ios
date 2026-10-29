@@ -74,20 +74,55 @@ struct MomentsColors {
         })
     }
     
-    /// Soft sage — primary.
-    static let accent = Color(red: 0.310, green: 0.478, blue: 0.376)
-    /// Warm terracotta — accent / CTAs.
-    static let accentSecondary = Color(red: 0.761, green: 0.365, blue: 0.227)
+    /// Fresh green — primary.
+    static let accent = Color(red: 0.22, green: 0.62, blue: 0.38)
+    /// Warm orange — CTAs.
+    static let accentSecondary = Color(red: 0.92, green: 0.48, blue: 0.18)
+    static let freshGreen = Color(red: 0.22, green: 0.62, blue: 0.38)
+    static let coral = Color(red: 0.94, green: 0.38, blue: 0.36)
+    static let sunnyYellow = Color(red: 0.98, green: 0.78, blue: 0.22)
+    static let skyBlue = Color(red: 0.30, green: 0.64, blue: 0.92)
     
     static func pastelChip(for category: CleanupCategoryType) -> Color {
         switch category {
-        case .screenshot, .screenRecording: return Color(red: 0.86, green: 0.93, blue: 0.88)
-        case .blurry, .underexposed: return Color(red: 0.93, green: 0.90, blue: 0.84)
-        case .overexposed: return Color(red: 0.98, green: 0.90, blue: 0.82)
-        case .duplicate, .nearDuplicate, .burst: return Color(red: 0.84, green: 0.92, blue: 0.86)
-        case .document, .receipt, .qrCode: return Color(red: 0.97, green: 0.88, blue: 0.82)
-        case .livePhoto: return Color(red: 0.90, green: 0.93, blue: 0.86)
-        default: return Color(red: 0.92, green: 0.93, blue: 0.88)
+        case .screenshot, .screenRecording: return skyBlue.opacity(0.22)
+        case .blurry, .underexposed: return sunnyYellow.opacity(0.28)
+        case .overexposed: return coral.opacity(0.20)
+        case .duplicate, .nearDuplicate, .burst: return freshGreen.opacity(0.22)
+        case .document, .receipt, .qrCode: return accentSecondary.opacity(0.22)
+        case .livePhoto: return skyBlue.opacity(0.18)
+        default: return freshGreen.opacity(0.16)
+        }
+    }
+    
+    static func categoryAccent(for category: CleanupCategoryType) -> Color {
+        switch category {
+        case .screenshot, .screenRecording: return skyBlue
+        case .blurry, .underexposed: return sunnyYellow
+        case .overexposed: return coral
+        case .duplicate, .nearDuplicate, .burst: return freshGreen
+        case .document, .receipt, .qrCode: return accentSecondary
+        case .livePhoto: return skyBlue
+        default: return accent
+        }
+    }
+    
+    static func chipAccent(for id: String) -> Color {
+        let lowered = id.lowercased()
+        if lowered.contains("screenshot") || lowered.contains("captura") { return skyBlue }
+        if lowered.contains("blur") || lowered.contains("borros") { return sunnyYellow }
+        if lowered.contains("duplicate") || lowered.contains("duplic") { return freshGreen }
+        if lowered.contains("whats") || lowered.contains("telegram") { return coral }
+        if lowered.contains("document") || lowered.contains("recibo") { return accentSecondary }
+        return accent
+    }
+    
+    static func swipeWash(_ direction: ReviewSwipeDirection) -> Color {
+        switch direction {
+        case .keep: return freshGreen
+        case .delete: return coral
+        case .snooze: return sunnyYellow
+        case .none: return .clear
         }
     }
     
@@ -353,7 +388,7 @@ struct MomentsAccentButtonStyle: ButtonStyle {
                     .opacity(configuration.isPressed ? 0.8 : 1.0)
             )
             .cornerRadius(16)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
             .animation(MomentsAnimation.springFast, value: configuration.isPressed)
     }
 }
@@ -373,7 +408,7 @@ struct MomentsSecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, MomentsSpacing.lg)
             .background(MomentsColors.bgTertiary)
             .cornerRadius(16)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
             .animation(MomentsAnimation.springFast, value: configuration.isPressed)
     }
 }

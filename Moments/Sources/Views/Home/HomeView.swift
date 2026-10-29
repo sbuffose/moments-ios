@@ -13,6 +13,7 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var showRecentlyDeletedInfo = false
     @State private var heroReady = true
+    @Namespace private var homeMotion
     
     /// Prevents the hero from laying out at zero width (one-letter columns).
     static let heroMinWidth: CGFloat = 300
@@ -20,7 +21,7 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MomentsColors.bgPrimary.ignoresSafeArea()
+                MomentsAliveBackground()
                 
                 Color.clear
                     .frame(width: 1, height: 1)
@@ -255,6 +256,8 @@ struct HomeView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
+        .homeCardBreathing()
+        .matchedGeometryEffect(id: "spaceCounter", in: homeMotion)
     }
     
     private var categoryChips: some View {
@@ -265,13 +268,13 @@ struct HomeView: View {
                         CleanupView()
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: category.icon)
+                            MomentsCategoryGlyph(systemName: category.icon, color: MomentsColors.chipAccent(for: category.id))
                             Text(category.title)
                                 .font(MomentsTypography.labelMedium)
                         }
                         .padding(.horizontal, MomentsSpacing.sm)
                         .padding(.vertical, MomentsSpacing.xs)
-                        .background(MomentsColors.accent.opacity(0.14))
+                        .background(MomentsColors.chipAccent(for: category.id).opacity(0.14))
                         .clipShape(Capsule())
                         .foregroundStyle(MomentsColors.textPrimary)
                     }
@@ -618,6 +621,17 @@ class HomeViewModel: ObservableObject {
         importantDatesService.initialize(modelContext: modelContext)
         
         loadSpaceSaved()
+        if DesignTourSimulation.spaceSaved {
+            totalSpaceSaved = DesignTourSimulation.previewSavedBytes
+        }
+        if DesignTourSimulation.emptyHome {
+            metadataCategories = []
+            feedCards = []
+            canFreeSpace = 0
+            cleanupItemCount = 0
+            inventory = .empty
+            return
+        }
         // First paint must stay tappable. Inventory/makeQueue on a large
         // library used to freeze MainActor right after launch (266).
         Task { @MainActor in

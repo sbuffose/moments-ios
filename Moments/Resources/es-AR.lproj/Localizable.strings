@@ -612,3 +612,19 @@
 "learning_screenshot_delete" = "Solés borrar capturas de pantalla";
 "learning_blurry_keep" = "Conservás muchas fotos que parecen borrosas";
 "learning_duplicate_delete" = "Solés eliminar duplicados";
+
+/* Review humor — short, warm, never mean */
+"humor_delete_blurry" = "Chau, borrosa 👋";
+"humor_delete_butterfly" = "A otra cosa, mariposa";
+"humor_keep_heart" = "Esta se queda ❤️";
+"humor_keep_gem" = "Joyita";
+"humor_snooze_week" = "Lo charlamos en una semana";
+"humor_screenshot" = "Otra captura que nunca miraste 😅";
+"humor_batch_done" = "¡Listo! Tu galería te lo agradece";
+"humor_batch_kept_all" = "Sos de los que guardan todo, ¿no? 😄";
+"humor_liberaste %1$@" = "Liberaste %1$@";
+"humor_undo" = "Deshacer";
+"humor_mascot" = "Sol de Moments";
+"humor_stamp_keep" = "Conservar";
+"humor_stamp_delete" = "Eliminar";
+"humor_stamp_snooze" = "Después";

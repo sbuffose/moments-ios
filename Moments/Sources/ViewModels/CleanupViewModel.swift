@@ -463,6 +463,19 @@ class CleanupViewModel: ObservableObject {
         }
     }
     
+    func undoLastReview(_ photoId: String) {
+        reviewedPhotos.remove(photoId)
+        selectedPhotos.remove(photoId)
+        keptPhotos.remove(photoId)
+        if let photo = allPhotos.first(where: { $0.id == photoId }) {
+            photo.keepDecision = .none
+            photo.keepUntil = nil
+            photo.keepDecisionDate = nil
+            try? modelContext?.save()
+        }
+        persistProgress()
+    }
+    
     func keepPhoto(_ photoId: String, duration: KeepDuration) {
         var photo = allPhotos.first(where: { $0.id == photoId })
         if photo == nil, let context = modelContext {

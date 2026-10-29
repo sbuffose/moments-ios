@@ -124,6 +124,7 @@ struct MomentsApp: App {
                 .modelContainer(container)
                 .preferredColorScheme(UITestAppearance.override)
                 .onAppear {
+                    DesignTourSimulation.applyUserDefaultsIfNeeded()
                     appState.initialize(modelContext: container.mainContext)
                 }
                 .onChange(of: scenePhase) { oldPhase, newPhase in

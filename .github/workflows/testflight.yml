@@ -343,6 +343,7 @@ jobs:
             -only-testing:MomentsUITests/SmokeTestSuite \
             -only-testing:MomentsUITests/MomentsUITests \
             -only-testing:MomentsUITests/ScreenshotTests \
+            -only-testing:MomentsUITests/ReviewSwipeUITests \
             -parallel-testing-enabled NO \
             -maximum-concurrent-test-simulator-destinations 1 \
             -resultBundlePath "$RUNNER_TEMP/test-results/UITests.xcresult" \
@@ -410,11 +411,127 @@ jobs:
             ${{ runner.temp }}/ui_test_summary.txt
           retention-days: 14
 
+  design-tour:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          BUILD_NUMBER=${{ needs.build.outputs.build_number }}
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"1\"/CURRENT_PROJECT_VERSION: \"$BUILD_NUMBER\"/" project.yml
+          xcodegen generate
+
+      - name: Run DesignTour on iPhone 16 Pro and SE
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/design-tour"
+          RUNTIME=$(xcrun simctl list runtimes iOS | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
+          echo "Using runtime $RUNTIME"
+
+          create_or_find() {
+            local NAME="$1"
+            local TYPE="$2"
+            local ID
+            ID=$(xcrun simctl list devices available | grep "$NAME" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()' || true)
+            if [ -z "$ID" ]; then
+              ID=$(xcrun simctl create "$NAME" "$TYPE" "$RUNTIME")
+            fi
+            echo "$ID"
+          }
+
+          PRO_ID=$(create_or_find "iPhone 16 Pro" "iPhone 16 Pro")
+          if [ -z "$PRO_ID" ]; then
+            PRO_ID=$(create_or_find "iPhone 15 Pro" "iPhone 15 Pro")
+          fi
+          SE_ID=$(create_or_find "iPhone SE (3rd generation)" "iPhone SE (3rd generation)")
+          if [ -z "$SE_ID" ]; then
+            SE_ID=$(xcrun simctl create "iPhone SE DesignTour" "com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation" "$RUNTIME" 2>/dev/null || \
+                    xcrun simctl create "iPhone SE DesignTour" "iPhone SE (3rd generation)" "$RUNTIME" 2>/dev/null || \
+                    xcrun simctl list devices available | grep -i "SE" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()')
+          fi
+          echo "pro=$PRO_ID se=$SE_ID"
+          if [ -z "$PRO_ID" ] || [ -z "$SE_ID" ]; then
+            echo "FAIL: could not create iPhone 16 Pro and iPhone SE simulators"
+            xcrun simctl list devicetypes | grep -i iphone
+            exit 1
+          fi
+
+          run_tour() {
+            local DEVICE_ID="$1"
+            local SLUG="$2"
+            xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+            sleep 4
+            xcrun simctl privacy "$DEVICE_ID" grant photos "$BUNDLE_ID" || true
+            xcrun simctl privacy "$DEVICE_ID" grant photos-add "$BUNDLE_ID" || true
+            xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLanguages -array "es-AR" "es" "en"
+            xcrun simctl spawn "$DEVICE_ID" defaults write -g AppleLocale -string "es_AR"
+            mkdir -p "$RUNNER_TEMP/design-tour" "$RUNNER_TEMP/test-results"
+            set +e
+            xcodebuild test \
+              -project Moments.xcodeproj \
+              -scheme Moments \
+              -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+              -only-testing:MomentsUITests/DesignTourTests \
+              -parallel-testing-enabled NO \
+              -resultBundlePath "$RUNNER_TEMP/test-results/DesignTour-$SLUG.xcresult" \
+              CODE_SIGN_IDENTITY="-" \
+              CODE_SIGNING_REQUIRED=NO \
+              TEST_RUNNER_UITEST_DEVICE_SLUG="$SLUG" \
+              TEST_RUNNER_UITEST_SCREENSHOT_DIR="$RUNNER_TEMP/design-tour" \
+              2>&1 | tee "$RUNNER_TEMP/design_tour_${SLUG}.log"
+            local STATUS=${PIPESTATUS[0]}
+            set -e
+            python3 scripts/ci/parse_xcresult.py \
+              --bundle "$RUNNER_TEMP/test-results/DesignTour-$SLUG.xcresult" \
+              --log "$RUNNER_TEMP/design_tour_${SLUG}.log" \
+              --min-tests 2 \
+              --label ui \
+              --summary-out "$RUNNER_TEMP/design_tour_${SLUG}_summary.txt"
+            if [ "$STATUS" -ne 0 ]; then
+              echo "xcodebuild test exited with $STATUS for $SLUG"
+              exit "$STATUS"
+            fi
+            xcrun simctl shutdown "$DEVICE_ID" 2>/dev/null || true
+          }
+
+          run_tour "$PRO_ID" "iphone16pro"
+          run_tour "$SE_ID" "iphonese"
+
+          COUNT=$(ls -1 "$RUNNER_TEMP/design-tour/"*.png 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$COUNT" -lt 8 ]; then
+            find "$RUNNER_TEMP/test-results" -name "*.png" -exec cp {} "$RUNNER_TEMP/design-tour/" \; || true
+            COUNT=$(ls -1 "$RUNNER_TEMP/design-tour/"*.png 2>/dev/null | wc -l | tr -d ' ')
+          fi
+          echo "Design tour PNG count: $COUNT"
+          if [ "$COUNT" -lt 8 ]; then
+            echo "FAIL: expected design-tour screenshots, got $COUNT"
+            exit 1
+          fi
+
+      - name: Upload design-tour artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: design-tour
+          path: ${{ runner.temp }}/design-tour/
+          retention-days: 14
+
   # Job 4: TestFlight Upload
-  # CRITICAL: Depends on BOTH unit-tests AND ui-tests passing
-  # An upload is IMPOSSIBLE if any test fails
+  # CRITICAL: Depends on unit, UI, and the design tour passing
   testflight:
-    needs: [build, unit-tests, ui-tests]
+    needs: [build, unit-tests, ui-tests, design-tour]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-15
     timeout-minutes: 25
