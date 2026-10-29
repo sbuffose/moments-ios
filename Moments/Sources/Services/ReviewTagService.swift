@@ -302,18 +302,26 @@ enum ReviewTagService {
         let resolved = geocoder ?? defaultGeocoder()
         let people = namedPeople(in: context)
         let trips = await suggestedTrips(photos: photos, context: context, geocoder: resolved)
-        var data = ReviewTagSheetData(
+        return assembledSheetData(people: people, trips: trips)
+    }
+    
+    static func assembledSheetData(
+        people: [ReviewTagOption],
+        trips: [ReviewTagOption]
+    ) -> ReviewTagSheetData {
+        deduplicated(ReviewTagSheetData(
             people: people,
             categories: ReviewTagOption.fixedCategories,
             trips: trips
-        )
-        data = deduplicated(data)
-        return data
+        ))
     }
     
     @MainActor
     static func namedPeople(in context: ModelContext) -> [ReviewTagOption] {
         let all = (try? context.fetch(FetchDescriptor<PersistedPerson>())) ?? []
+        let photos = MomentsTestRuntime.shouldSkipLiveScan
+            ? []
+            : ((try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? [])
         var seen = Set<String>()
         var options: [ReviewTagOption] = []
         for person in all where person.isNamed {
@@ -322,8 +330,7 @@ enum ReviewTagService {
             let id = "person.\(person.id)"
             guard seen.insert(id).inserted else { continue }
             let faceId = person.representativeFacePhotoId.flatMap { stored in
-                let photos = (try? context.fetch(FetchDescriptor<PersistedPhoto>())) ?? []
-                return photos.first { $0.id == stored || $0.localIdentifier == stored }?.localIdentifier
+                photos.first { $0.id == stored || $0.localIdentifier == stored }?.localIdentifier
             }
             options.append(ReviewTagOption(
                 id: id,

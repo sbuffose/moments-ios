@@ -49,6 +49,18 @@ final class ReviewSwipeHumorTests: XCTestCase {
         XCTAssertNotEqual(kept, ReviewHumorLine.batchKeptAll.localized)
     }
     
+    func testReviewActionColorsMatchThemedButtons() {
+        XCTAssertEqual(ReviewActionKind.keep.paletteName, "freshGreen")
+        XCTAssertEqual(ReviewActionKind.share.paletteName, "skyBlue")
+        XCTAssertEqual(ReviewActionKind.delete.paletteName, "coral")
+        XCTAssertEqual(ReviewActionKind.keep.label, "Conservar")
+        XCTAssertEqual(ReviewActionKind.share.label, "Compartir")
+        XCTAssertEqual(ReviewActionKind.delete.label, "Eliminar")
+        XCTAssertNotEqual(ReviewActionKind.keep.paletteName, ReviewActionKind.share.paletteName)
+        XCTAssertNotEqual(ReviewActionKind.share.paletteName, ReviewActionKind.delete.paletteName)
+        XCTAssertNotEqual(ReviewActionKind.keep.paletteName, ReviewActionKind.delete.paletteName)
+    }
+    
     func testHumorKeysExistInBothLanguages() {
         for line in ReviewHumorLine.allCases {
             XCTAssertFalse(line.localized.isEmpty, line.localizationKey)

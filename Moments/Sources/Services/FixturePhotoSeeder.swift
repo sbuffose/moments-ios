@@ -175,6 +175,7 @@ enum FixturePhotoSeeder {
                 extra: { photo in
                     photo.sharpnessScore = 0.08
                     photo.visionAestheticsScore = 0.2
+                    if index == 1 { photo.origin = .download }
                 }
             )
         }
@@ -185,12 +186,13 @@ enum FixturePhotoSeeder {
             category: .underexposed,
             score: 0.99,
             size: 180_000,
-            extra: { photo in
-                photo.exposureScore = 0.01
-                photo.sharpnessScore = 0.02
-                photo.visionAestheticsScore = 0.05
-                photo.visionIsUtility = true
-            }
+                extra: { photo in
+                    photo.exposureScore = 0.01
+                    photo.sharpnessScore = 0.02
+                    photo.visionAestheticsScore = 0.05
+                    photo.visionIsUtility = true
+                    photo.origin = .camera
+                }
         )
         
         // Underexposed but visible
@@ -365,6 +367,7 @@ enum FixturePhotoSeeder {
             photo.pixelHeight = 900
             photo.mediaTypeRaw = "image"
             photo.exposureScore = exposure
+            photo.origin = .camera
             context.insert(photo)
             return photo
         }

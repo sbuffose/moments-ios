@@ -40,6 +40,24 @@ final class ReviewSwipeUITests: XCTestCase {
         swipeAndAssert(direction: .up, expected: "snooze")
     }
     
+    func testTapCardOpensFullScreenViewerAndDismisses() {
+        openReview()
+        let card = cardQuery
+        XCTAssertTrue(card.waitForExistence(timeout: 6), "Review card")
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        
+        let viewer = app.descendants(matching: .any)["review.photoViewer"].firstMatch
+        XCTAssertTrue(viewer.waitForExistence(timeout: 5), "Full-screen viewer after tap")
+        
+        let close = app.buttons["review.photoViewer.dismiss"]
+        if close.waitForExistence(timeout: 2) {
+            close.tap()
+        } else {
+            viewer.swipeDown()
+        }
+        XCTAssertFalse(viewer.waitForExistence(timeout: 3), "Viewer must dismiss")
+    }
+    
     private enum Swipe {
         case left, right, up
     }

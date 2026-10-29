@@ -81,6 +81,7 @@ final class DesignTourTests: XCTestCase {
         openReview()
         capture("review_card", scheme: scheme, device: device)
         assertScreen(.review)
+        DesignLayoutAssert.assertReviewCardAtRest(app)
         
         launch(["-seedFixturePhotos", "-simulateMidSwipeKeep", appearance])
         openReview()

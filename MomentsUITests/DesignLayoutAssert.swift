@@ -114,7 +114,103 @@ enum DesignLayoutAssert {
                 file: file,
                 line: line
             )
+            assertStampInsideCard(app, file: file, line: line)
         }
+    }
+    
+    static func assertReviewCardAtRest(
+        _ app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let card = app.descendants(matching: .any)["review.photoCard"].firstMatch
+        XCTAssertTrue(card.exists, "Review card must exist at rest", file: file, line: line)
+        let window = app.windows.firstMatch.exists ? app.windows.firstMatch.frame : app.frame
+        let frame = card.frame
+        XCTAssertGreaterThan(frame.width, 40, "Review card has no width", file: file, line: line)
+        XCTAssertGreaterThan(frame.height, 40, "Review card has no height", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(
+            frame.minX,
+            window.minX + 8,
+            "Review card overflows leading edge at rest: \(frame) vs \(window)",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThanOrEqual(
+            frame.maxX,
+            window.maxX - 8,
+            "Review card overflows trailing edge at rest: \(frame) vs \(window)",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThanOrEqual(
+            frame.minY,
+            window.minY,
+            "Review card overflows top edge at rest: \(frame) vs \(window)",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThanOrEqual(
+            frame.maxY,
+            window.maxY,
+            "Review card overflows bottom edge at rest: \(frame) vs \(window)",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            app.staticTexts["Guardar en álbum"].exists || app.buttons["Guardar en álbum"].exists,
+            "Guardar en álbum must not sit under the card",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            app.buttons["review.tagButton"].exists || app.buttons["Etiquetar"].exists,
+            "Etiquetar must stay visible beside the card",
+            file: file,
+            line: line
+        )
+    }
+    
+    static func assertStampInsideCard(
+        _ app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let stamp = app.staticTexts["review.swipeStamp"]
+        guard stamp.exists else { return }
+        let card = app.descendants(matching: .any)["review.photoCard"].firstMatch
+        guard card.exists else { return }
+        let stampFrame = stamp.frame
+        let cardFrame = card.frame
+        XCTAssertFalse(stampFrame.isEmpty, "Swipe stamp has an empty frame", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(
+            stampFrame.minX,
+            cardFrame.minX - 1,
+            "Stamp overflows card leading: \(stampFrame) vs \(cardFrame)",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThanOrEqual(
+            stampFrame.maxX,
+            cardFrame.maxX + 1,
+            "Stamp overflows card trailing: \(stampFrame) vs \(cardFrame)",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThanOrEqual(
+            stampFrame.minY,
+            cardFrame.minY - 1,
+            "Stamp overflows card top: \(stampFrame) vs \(cardFrame)",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThanOrEqual(
+            stampFrame.maxY,
+            cardFrame.maxY + 1,
+            "Stamp overflows card bottom: \(stampFrame) vs \(cardFrame)",
+            file: file,
+            line: line
+        )
     }
     
     static func assertNoAlbumCopy(

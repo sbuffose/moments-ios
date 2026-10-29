@@ -102,48 +102,53 @@ final class ReviewTagTests: XCTestCase {
         )
     }
     
-    @MainActor
-    func testTagSheetDataHasNoDuplicatesOrPhotoKitAlbums() async throws {
-        let schema = Schema([PersistedPhoto.self, PhotoTag.self, PersistedPerson.self, PersistedPlaceCluster.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: schema, configurations: [config])
-        let context = container.mainContext
-        
-        let homeDate = calendarDate(year: 2025, month: 1, day: 4)
-        for index in 1...5 {
-            let home = PersistedPhoto(localIdentifier: "sheet-home-\(index)", creationDate: homeDate.addingTimeInterval(Double(index) * 86_400))
-            home.analysisCompleted = true
-            home.latitude = -34.6037
-            home.longitude = -58.3816
-            context.insert(home)
-        }
-        let mdq = PersistedPhoto(
-            localIdentifier: "sheet-mdq",
-            creationDate: calendarDate(year: 2025, month: 3, day: 12)
+    func testTagSheetDataHasNoDuplicatesOrPhotoKitAlbums() {
+        let sofia = ReviewTagOption(
+            id: "person.p-sofia",
+            kind: .person,
+            title: "Sofía",
+            subtitle: nil,
+            personId: "p-sofia",
+            facePhotoLocalIdentifier: nil,
+            isPreselected: false,
+            searchAliases: ["sofía"]
         )
-        mdq.analysisCompleted = true
-        mdq.latitude = -38.0055
-        mdq.longitude = -57.5426
-        mdq.cleanupCategory = .screenshot
-        context.insert(mdq)
+        let duplicateSofia = ReviewTagOption(
+            id: "person.p-sofia-2",
+            kind: .person,
+            title: "Sofía",
+            subtitle: nil,
+            personId: "p-sofia-2",
+            facePhotoLocalIdentifier: nil,
+            isPreselected: false,
+            searchAliases: ["sofía"]
+        )
+        let albumPeople = ["WhatsApp", "Instagram", "Moments"].enumerated().map { index, name in
+            ReviewTagOption(
+                id: "person.album-\(index)",
+                kind: .person,
+                title: name,
+                subtitle: nil,
+                personId: "album-\(index)",
+                facePhotoLocalIdentifier: nil,
+                isPreselected: false,
+                searchAliases: [name.lowercased()]
+            )
+        }
+        let mdqTrip = ReviewTagOption(
+            id: TripClustering.tripId(city: "Mar del Plata", date: calendarDate(year: 2025, month: 3, day: 12)),
+            kind: .trip,
+            title: TripClustering.tripTitle(city: "Mar del Plata", date: calendarDate(year: 2025, month: 3, day: 12)),
+            subtitle: "Mar del Plata",
+            personId: nil,
+            facePhotoLocalIdentifier: nil,
+            isPreselected: true,
+            searchAliases: TripClustering.cityAliases(for: "Mar del Plata")
+        )
         
-        let sofia = PersistedPerson(id: "p-sofia", name: "Sofía", faceClusterId: "c-sofia")
-        context.insert(sofia)
-        let duplicateSofia = PersistedPerson(id: "p-sofia-2", name: "Sofía", faceClusterId: "c-sofia-2")
-        context.insert(duplicateSofia)
-        context.insert(PersistedPerson(id: "p-wa", name: "WhatsApp", faceClusterId: "c-wa"))
-        context.insert(PersistedPerson(id: "p-ig", name: "Instagram", faceClusterId: "c-ig"))
-        context.insert(PersistedPerson(id: "p-moments", name: "Moments", faceClusterId: "c-mo"))
-        try context.save()
-        
-        let geocoder = StubReverseGeocoder(places: [
-            (-38.0055, -57.5426, "Mar del Plata"),
-            (-34.6037, -58.3816, "Buenos Aires")
-        ])
-        let data = await ReviewTagService.sheetData(
-            photos: [mdq],
-            context: context,
-            geocoder: geocoder
+        let data = ReviewTagService.assembledSheetData(
+            people: [sofia, duplicateSofia] + albumPeople,
+            trips: [mdqTrip]
         )
         
         XCTAssertFalse(data.hasDuplicateIds)
