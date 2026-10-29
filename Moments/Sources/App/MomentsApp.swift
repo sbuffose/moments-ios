@@ -124,6 +124,7 @@ struct MomentsApp: App {
                 .modelContainer(container)
                 .preferredColorScheme(UITestAppearance.override)
                 .onAppear {
+                    DesignTourSimulation.applyUserDefaultsIfNeeded()
                     appState.initialize(modelContext: container.mainContext)
                 }
                 .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -220,6 +221,10 @@ class AppState: ObservableObject {
     init() {
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingCompletedKey)
         self.hasCompletedInitialAnalysis = UserDefaults.standard.bool(forKey: initialAnalysisCompletedKey)
+        
+        if DesignTourSimulation.showOnboarding {
+            hasCompletedOnboarding = false
+        }
         
         if FirstRunAnalyzingView.isSimulated {
             hasCompletedOnboarding = true

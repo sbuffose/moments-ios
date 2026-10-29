@@ -9,7 +9,8 @@ struct ContentView: View {
     @ObservedObject private var newPhotoCheck = NewPhotoCheckService.shared
     
     private var isTestingMode: Bool {
-        ProcessInfo.processInfo.arguments.contains("-skipOnboarding") ||
+        if DesignTourSimulation.showOnboarding { return false }
+        return ProcessInfo.processInfo.arguments.contains("-skipOnboarding") ||
         ProcessInfo.processInfo.arguments.contains("--uitesting") ||
         ProcessInfo.processInfo.environment["UI_TESTING"] == "1" ||
         ProcessInfo.processInfo.environment["UITEST_MODE"] == "1"
@@ -17,7 +18,9 @@ struct ContentView: View {
     
     var body: some View {
         Group {
-            if isTestingMode {
+            if DesignTourSimulation.showOnboarding {
+                OnboardingView()
+            } else if isTestingMode {
                 // Testing mode: skip onboarding, go directly to home
                 MainTabView()
                     .onAppear {
@@ -559,7 +562,7 @@ struct OnboardingView: View {
     
     var body: some View {
         ZStack {
-            MomentsColors.bgPrimary.ignoresSafeArea()
+            MomentsAliveBackground(intensity: 0.85)
             
             VStack(spacing: 0) {
                 TabView(selection: $currentPage) {
@@ -683,7 +686,9 @@ struct OnboardingView: View {
                 .padding(.bottom, MomentsSpacing.xl)
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onboarding.root")
+        .accessibilityProbe("onboarding.root")
     }
     
     private func requestAccess() {

@@ -190,6 +190,10 @@ class CleanupViewModel: ObservableObject {
     // MARK: - Progress Persistence
     
     private func loadPersistedProgress() {
+        if ProcessInfo.processInfo.arguments.contains("-reviewSwipeSingles") {
+            clearPersistedProgress()
+            return
+        }
         if let selectedData = UserDefaults.standard.array(forKey: selectedPhotosKey) as? [String] {
             selectedPhotos = Set(selectedData)
         }
@@ -351,7 +355,10 @@ class CleanupViewModel: ObservableObject {
     
     private func buildReviewQueue() {
         let preferences = try? modelContext?.fetch(FetchDescriptor<LearnedPreferences>()).first
-        let queue = Self.makeQueue(photos: allPhotos, groups: similarGroups, preferences: preferences)
+        var queue = Self.makeQueue(photos: allPhotos, groups: similarGroups, preferences: preferences)
+        if ProcessInfo.processInfo.arguments.contains("-reviewSwipeSingles") {
+            queue = queue.filter { !$0.isGroup }
+        }
         
         let capped = DailyReviewBatch.cap(queue, preferences: preferences)
         remainingAfterBatch = capped.remaining
@@ -461,6 +468,19 @@ class CleanupViewModel: ObservableObject {
             case .oneWeek, .oneMonth, .threeMonths: return .snoozed
             }
         }
+    }
+    
+    func undoLastReview(_ photoId: String) {
+        reviewedPhotos.remove(photoId)
+        selectedPhotos.remove(photoId)
+        keptPhotos.remove(photoId)
+        if let photo = allPhotos.first(where: { $0.id == photoId }) {
+            photo.keepDecision = .none
+            photo.keepUntil = nil
+            photo.keepDecisionDate = nil
+            try? modelContext?.save()
+        }
+        persistProgress()
     }
     
     func keepPhoto(_ photoId: String, duration: KeepDuration) {
