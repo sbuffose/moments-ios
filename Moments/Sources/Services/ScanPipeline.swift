@@ -309,25 +309,8 @@ final class ScanCancellation: @unchecked Sendable {
 // MARK: - Pipeline actor (never MainActor)
 
 actor ScanPipeline {
-    /// Built only when a real photo is analyzed. Synthetic `processBatch`
-    /// (unit tests) must not construct CIContext / Vision — that crashes the
-    /// test host on first init.
-    private var imageAnalyzer: ImageAnalyzer?
-    private var faceAnalyzer: FaceAnalyzer?
-    
-    private func qualityAnalyzer() -> ImageAnalyzer {
-        if let imageAnalyzer { return imageAnalyzer }
-        let created = ImageAnalyzer()
-        imageAnalyzer = created
-        return created
-    }
-    
-    private func facesAnalyzer() -> FaceAnalyzer {
-        if let faceAnalyzer { return faceAnalyzer }
-        let created = FaceAnalyzer()
-        faceAnalyzer = created
-        return created
-    }
+    /// Vision / CIContext live only on the library path. `processBatch` is
+    /// synthetic so unit tests never construct those types.
     
     /// One synthetic item. Actor hops off MainActor; used by the unit test.
     @discardableResult
@@ -508,6 +491,10 @@ actor ScanPipeline {
     }
     
     private func analyzeOne(_ photo: PersistedPhoto, context: ModelContext) async {
+        if MomentsTestRuntime.shouldSkipLiveScan {
+            photo.analysisCompleted = true
+            return
+        }
         let result = PHAsset.fetchAssets(withLocalIdentifiers: [photo.localIdentifier], options: nil)
         guard let asset = result.firstObject else {
             photo.analysisCompleted = true
@@ -530,14 +517,14 @@ actor ScanPipeline {
             return
         }
         
-        let analyzer = qualityAnalyzer()
+        let analyzer = ImageAnalyzer()
         let quality = await analyzer.analyzeQuality(image: image)
         let text = await analyzer.analyzeText(image: image)
         let labels = await analyzer.classifyImage(image: image)
         let barcode = await analyzer.detectBarcodes(image: image)
         let featurePrint = await analyzer.generateFeaturePrint(image: image)
         let dHash: UInt64? = autoreleasepool { analyzer.generateDHash(image: image) }
-        let faces = await facesAnalyzer().detectFaces(in: image, photoId: photo.id)
+        let faces = await FaceAnalyzer().detectFaces(in: image, photoId: photo.id)
         
         let metadata = await MetadataExtractionService.shared.extractMetadata(for: asset)
         let originResult = await MetadataExtractionService.shared.detectOrigin(for: asset, metadata: metadata)

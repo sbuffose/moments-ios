@@ -2969,6 +2969,21 @@ final class MomentsTests: XCTestCase {
     
     // MARK: - Off-main scan pipeline + checkpoint resume (P0 build 266)
     
+    private final class ScanThreadProbe: @unchecked Sendable {
+        private let lock = NSLock()
+        private var offMain = false
+        private var onMain = false
+        
+        func note() {
+            lock.lock()
+            if Thread.isMainThread { onMain = true } else { offMain = true }
+            lock.unlock()
+        }
+        
+        var sawOffMain: Bool { lock.lock(); defer { lock.unlock() }; return offMain }
+        var stayedOffMain: Bool { lock.lock(); defer { lock.unlock() }; return offMain && !onMain }
+    }
+    
     func testScanPipelineRunsOffMainThreadAndResumesFromCheckpoint() async {
         let suite = "test.scan.pipeline.\(UUID().uuidString)"
         let store = ScanCheckpointStore(suiteName: suite)
@@ -2976,19 +2991,14 @@ final class MomentsTests: XCTestCase {
         
         let items = (0..<20).map { ScanWorkItem(id: "photo-\($0)") }
         let pipeline = ScanPipeline()
+        let threads = ScanThreadProbe()
         
-        let firstPass = await Task.detached(priority: .utility) { () -> (Bool, Int) in
-            var sawOffMain = false
-            await pipeline.processBatch(Array(items.prefix(7)), store: store) { _ in
-                if !Thread.isMainThread {
-                    sawOffMain = true
-                }
-            }
-            return (sawOffMain, store.processedCount)
-        }.value
+        await pipeline.processBatch(Array(items.prefix(7)), store: store) { _ in
+            threads.note()
+        }
         
-        XCTAssertTrue(firstPass.0, "Scan/Vision work must run off the main thread")
-        XCTAssertEqual(firstPass.1, 7, "Checkpoint should persist the first batch")
+        XCTAssertTrue(threads.sawOffMain, "Scan/Vision work must run off the main thread")
+        XCTAssertEqual(store.processedCount, 7, "Checkpoint should persist the first batch")
         XCTAssertFalse(store.isComplete)
         XCTAssertGreaterThan(store.processedCount, 0)
         
@@ -2996,19 +3006,14 @@ final class MomentsTests: XCTestCase {
         XCTAssertEqual(remaining.count, 13, "Resume must skip already-processed items, not restart from 0")
         
         let pipeline2 = ScanPipeline()
-        let secondPass = await Task.detached(priority: .utility) { () -> (Bool, Int) in
-            var stillOffMain = true
-            await pipeline2.processBatch(remaining, store: store) { _ in
-                if Thread.isMainThread {
-                    stillOffMain = false
-                }
-            }
-            return (stillOffMain, store.processedCount)
-        }.value
+        let resumeThreads = ScanThreadProbe()
+        await pipeline2.processBatch(remaining, store: store) { _ in
+            resumeThreads.note()
+        }
         
-        XCTAssertTrue(secondPass.0, "Resumed batch must also stay off the main thread")
-        XCTAssertEqual(secondPass.1, 20, "Resume continues from the checkpoint instead of resetting")
-        XCTAssertGreaterThan(secondPass.1, firstPass.1)
+        XCTAssertTrue(resumeThreads.stayedOffMain, "Resumed batch must also stay off the main thread")
+        XCTAssertEqual(store.processedCount, 20, "Resume continues from the checkpoint instead of resetting")
+        XCTAssertGreaterThan(store.processedCount, 7)
         XCTAssertTrue(store.isProcessed("photo-0"))
         XCTAssertTrue(store.isProcessed("photo-19"))
     }
