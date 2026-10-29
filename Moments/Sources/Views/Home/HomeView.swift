@@ -264,6 +264,7 @@ struct HomeView: View {
             .accessibilityAddTraits(.isButton)
         }
         .frame(minWidth: Self.heroMinWidth, maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.spaceCard")
         .momentsCard()
         .homeCardBreathing()
