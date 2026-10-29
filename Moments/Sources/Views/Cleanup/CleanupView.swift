@@ -713,6 +713,25 @@ struct CleanupReviewView: View {
                     )
                 }
                 
+                if showKeepDurationChip, let keptId = lastKeptPhotoId {
+                    KeepDurationChipRow(
+                        onSelect: { duration in
+                            viewModel.keepPhoto(keptId, duration: duration)
+                            withAnimation {
+                                showKeepDurationChip = false
+                            }
+                        },
+                        onDismiss: {
+                            withAnimation {
+                                showKeepDurationChip = false
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                }
+                
             } else {
                 // Review complete (all items reviewed)
                 reviewCompleteView
@@ -857,26 +876,6 @@ struct CleanupReviewView: View {
             .padding(.horizontal, 16)
             
             Spacer()
-            
-            // Inline duration chip row - shows for 2.5s after keep
-            if showKeepDurationChip, let keptId = lastKeptPhotoId {
-                KeepDurationChipRow(
-                    onSelect: { duration in
-                        viewModel.keepPhoto(keptId, duration: duration)
-                        withAnimation {
-                            showKeepDurationChip = false
-                        }
-                    },
-                    onDismiss: {
-                        withAnimation {
-                            showKeepDurationChip = false
-                        }
-                    }
-                )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-            }
             
             SaveToAlbumReviewButton {
                 showAlbumSheet = true
@@ -2105,6 +2104,7 @@ struct KeepDurationChipRow: View {
         .padding(.horizontal, 12)
         .background(.ultraThinMaterial)
         .cornerRadius(16)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.keepChips")
     }
 }

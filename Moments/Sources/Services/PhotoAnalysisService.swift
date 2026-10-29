@@ -13,12 +13,18 @@ import Accelerate
 @MainActor
 class PhotoAnalysisService: ObservableObject {
     private let modelContext: ModelContext
-    private let imageAnalyzer = ImageAnalyzer()
-    private let faceAnalyzer = FaceAnalyzer()
+    private lazy var imageAnalyzer = ImageAnalyzer()
+    private lazy var faceAnalyzer = FaceAnalyzer()
     private let geocodingService = GeocodingService.shared
     private let metadataService = MetadataExtractionService.shared
     
-    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    /// Hardware CIContext crashes the XCTest host (eligibilityd / no GPU).
+    private lazy var ciContext: CIContext = {
+        let inTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.arguments.contains("-XCTest")
+            || ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
+        return CIContext(options: [.useSoftwareRenderer: inTests])
+    }()
     private let maxConcurrentAnalysis = 3
     private let batchSaveInterval = 20
     private let thumbnailSize = CGSize(width: 300, height: 300)
@@ -776,6 +782,7 @@ final class ImageAnalyzer: Sendable {
     private static let sharedCIContext: CIContext = {
         let inTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || ProcessInfo.processInfo.arguments.contains("-XCTest")
+            || ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
         return CIContext(options: [.useSoftwareRenderer: inTests])
     }()
     

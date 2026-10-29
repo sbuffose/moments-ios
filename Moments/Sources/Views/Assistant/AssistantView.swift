@@ -121,7 +121,7 @@ struct AssistantView: View {
     private var suggestionsView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: MomentsSpacing.xs) {
-                ForEach(viewModel.suggestions, id: \.self) { suggestion in
+                ForEach(Array(viewModel.suggestions.enumerated()), id: \.element) { index, suggestion in
                     Button {
                         MomentsHaptics.selection()
                         inputText = suggestion
@@ -135,12 +135,17 @@ struct AssistantView: View {
                             .background(MomentsColors.bgTertiary)
                             .cornerRadius(16)
                     }
-                    .accessibilityIdentifier("assistant.suggestion")
+                    .contentShape(Rectangle())
+                    // Only the first chip uses the shared id so XCTest can tap
+                    // a single match. Extra chips keep a unique suffix.
+                    .accessibilityIdentifier(index == 0 ? "assistant.suggestion" : "assistant.suggestion.\(index)")
                 }
             }
             .padding(.horizontal, MomentsSpacing.screenHorizontal)
             .padding(.vertical, MomentsSpacing.xs)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant.suggestions")
     }
     
     // MARK: - Actions
