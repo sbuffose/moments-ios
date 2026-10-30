@@ -19,11 +19,6 @@ struct FirstRunAnalyzingView: View {
         ProcessInfo.processInfo.arguments.contains(launchArgument)
     }
     
-    private var isUITesting: Bool {
-        ProcessInfo.processInfo.environment["UI_TESTING"] == "1"
-            || ProcessInfo.processInfo.arguments.contains("-skipOnboarding")
-    }
-    
     var body: some View {
         ZStack {
             MomentsColors.bgPrimary.ignoresSafeArea()
@@ -62,6 +57,16 @@ struct FirstRunAnalyzingView: View {
                     ProgressView(value: softProgress)
                         .tint(MomentsColors.accent)
                         .accessibilityIdentifier("firstRun.softProgress")
+                        .accessibilityValue(String(format: "%.4f", softProgress))
+                    Text(String(format: "%.4f", softProgress))
+                        .font(.system(size: 1))
+                        .foregroundStyle(.clear)
+                        .frame(width: 8, height: 8)
+                        .accessibilityIdentifier("firstRun.softProgressValue")
+                        .accessibilityValue(String(format: "%.4f", softProgress))
+                        .accessibilityHidden(false)
+                        .accessibilityElement(children: .ignore)
+                        .allowsHitTesting(false)
                     Text(Self.softProgressLabel)
                         .font(MomentsTypography.labelMedium)
                         .foregroundStyle(MomentsColors.textTertiary)
@@ -97,19 +102,19 @@ struct FirstRunAnalyzingView: View {
             MomentsMotion.animate(reduceMotion: reduceMotion) {
                 appeared = true
             }
-            if !isUITesting && !appState.notificationsAuthorized {
-                Task {
-                    _ = await appState.requestNotificationPermission()
-                }
-            }
         }
     }
     
-    /// Soft bar without exposing raw 1100/7781. Clamp so it never looks empty or done.
+    /// Real scan progress, including parallel indexing + analysis. Tiny library
+    /// fractions still move the bar instead of sitting on a 0.12 floor.
     private var softProgress: Double {
-        let raw = appState.isIndexing ? appState.indexingProgress : appState.analysisProgress
-        if raw <= 0 { return 0.12 }
-        return min(0.92, max(0.12, raw))
+        FirstRunProgress.displayValue(
+            overall: appState.scanOverallProgress,
+            indexing: appState.indexingProgress,
+            analysis: appState.analysisProgress,
+            isIndexing: appState.isIndexing,
+            isAnalyzing: appState.isAnalyzing
+        )
     }
 }
 

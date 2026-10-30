@@ -174,6 +174,7 @@ class AppState: ObservableObject {
     @Published var isAnalyzing = false
     @Published var indexingProgress: Double = 0
     @Published var analysisProgress: Double = 0
+    @Published var scanOverallProgress: Double = 0
     @Published var totalPhotosIndexed = 0
     @Published var totalPhotosAnalyzed = 0
     @Published var totalPhotosToAnalyze = 0
@@ -197,6 +198,7 @@ class AppState: ObservableObject {
     private var modelContext: ModelContext?
     private var modelContainer: ModelContainer?
     private var scanCancellation: ScanCancellation?
+    private var progressPollTask: Task<Void, Never>?
     
     private let onboardingCompletedKey = "com.moments.hasCompletedOnboarding"
     private let notificationPromptShownKey = "com.moments.notificationPromptShown"
@@ -222,8 +224,22 @@ class AppState: ObservableObject {
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingCompletedKey)
         self.hasCompletedInitialAnalysis = UserDefaults.standard.bool(forKey: initialAnalysisCompletedKey)
         
+        if FirstLaunchReset.isRequested || DesignTourSimulation.showOnboarding {
+            if FirstLaunchReset.isRequested {
+                FirstLaunchReset.apply()
+            }
+            hasCompletedOnboarding = false
+            hasCompletedInitialAnalysis = false
+        }
+        
         if DesignTourSimulation.showOnboarding {
             hasCompletedOnboarding = false
+        }
+        
+        if FirstLaunchFlags.showExplanation {
+            hasCompletedOnboarding = true
+            isLibraryAuthorized = true
+            showFirstRunExplanation = true
         }
         
         if FirstRunAnalyzingView.isSimulated {
@@ -316,10 +332,8 @@ class AppState: ObservableObject {
     func resetOnboarding() {
         hasCompletedOnboarding = false
         hasCompletedInitialAnalysis = false
-        UserDefaults.standard.removeObject(forKey: onboardingCompletedKey)
-        UserDefaults.standard.removeObject(forKey: notificationPromptShownKey)
-        UserDefaults.standard.removeObject(forKey: analysisCompleteNotificationSentKey)
-        UserDefaults.standard.removeObject(forKey: initialAnalysisCompletedKey)
+        showFirstRunExplanation = false
+        FirstLaunchReset.apply()
     }
     
     enum AppTab: String, CaseIterable, Sendable {
@@ -430,6 +444,14 @@ class AppState: ObservableObject {
     }
     
     func requestAuthorization() async -> Bool {
+        PermissionRequestRecorder.record(.photos)
+        if FirstLaunchFlags.grantPhotos {
+            isLibraryAuthorized = true
+            if let service = photoLibraryService {
+                return await service.requestAuthorization()
+            }
+            return true
+        }
         guard let service = photoLibraryService else { return false }
         let granted = await service.requestAuthorization()
         self.isLibraryAuthorized = granted
@@ -445,6 +467,7 @@ class AppState: ObservableObject {
     }
     
     func requestNotificationPermission() async -> Bool {
+        PermissionRequestRecorder.record(.notifications)
         let center = UNUserNotificationCenter.current()
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
@@ -475,6 +498,7 @@ class AppState: ObservableObject {
         
         isIndexing = true
         indexingProgress = 0
+        scanOverallProgress = 0
         
         let fetchOptions = PHFetchOptions()
         let totalPhotos = PHAsset.fetchAssets(with: fetchOptions).count
@@ -498,6 +522,7 @@ class AppState: ObservableObject {
         
         isIndexing = true
         indexingProgress = 0
+        scanOverallProgress = 0
         
         let fetchOptions = PHFetchOptions()
         let totalPhotos = PHAsset.fetchAssets(with: fetchOptions).count
@@ -529,6 +554,7 @@ class AppState: ObservableObject {
         let cancellation = ScanCancellation()
         scanCancellation = cancellation
         isIndexing = true
+        startProgressPolling()
         
         indexingTask = Task { [weak self] in
             let success = await ScanPipelineCoordinator.shared.run(
@@ -541,6 +567,7 @@ class AppState: ObservableObject {
             }
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                self.stopProgressPolling()
                 self.isIndexing = false
                 self.isAnalyzing = false
                 if success {
@@ -561,6 +588,7 @@ class AppState: ObservableObject {
         totalPhotosToAnalyze = max(snapshot.total, snapshot.indexed)
         indexingProgress = snapshot.indexProgress
         analysisProgress = snapshot.analysisProgress
+        scanOverallProgress = max(scanOverallProgress, snapshot.overallProgress)
         switch snapshot.phase {
         case .indexing:
             isIndexing = true
@@ -571,6 +599,33 @@ class AppState: ObservableObject {
         case .done:
             isIndexing = false
             isAnalyzing = false
+        }
+    }
+    
+    private func startProgressPolling() {
+        progressPollTask?.cancel()
+        progressPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                await MainActor.run { [weak self] in
+                    self?.refreshProgressFromCheckpoint()
+                }
+            }
+        }
+    }
+    
+    private func stopProgressPolling() {
+        progressPollTask?.cancel()
+        progressPollTask = nil
+    }
+    
+    /// Picks up background / parallel writers that may skip UI callbacks.
+    func refreshProgressFromCheckpoint() {
+        guard isIndexing || isAnalyzing else { return }
+        let snap = ScanCheckpointStore.shared.snapshot()
+        guard snap.total > 0 || snap.indexed > 0 || snap.analyzed > 0 else { return }
+        if snap.overallProgress + 0.0001 >= scanOverallProgress {
+            applyScanSnapshot(snap)
         }
     }
     
@@ -634,6 +689,7 @@ class AppState: ObservableObject {
         scanCancellation?.cancel()
         analysisTask?.cancel()
         indexingTask?.cancel()
+        stopProgressPolling()
         isAnalyzing = false
         isIndexing = false
     }

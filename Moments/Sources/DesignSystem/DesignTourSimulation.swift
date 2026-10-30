@@ -46,6 +46,9 @@ enum DesignTourSimulation {
         if showOnboarding {
             UserDefaults.standard.set(false, forKey: "com.moments.hasCompletedOnboarding")
         }
+        if FirstLaunchReset.isRequested {
+            FirstLaunchReset.apply()
+        }
         if reviewSwipeSingles {
             UserDefaults.standard.removeObject(forKey: "com.moments.cleanup.selectedPhotos")
             UserDefaults.standard.removeObject(forKey: "com.moments.cleanup.reviewedPhotos")

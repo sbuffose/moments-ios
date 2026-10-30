@@ -41,6 +41,7 @@ final class DailyReviewService: ObservableObject {
     // MARK: - Permission
     
     func requestNotificationPermission() async -> Bool {
+        PermissionRequestRecorder.record(.notifications)
         let center = UNUserNotificationCenter.current()
         
         do {

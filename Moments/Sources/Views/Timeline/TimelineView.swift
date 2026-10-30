@@ -6,21 +6,77 @@ import SwiftData
 
 struct TimelineView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var appState: AppState
     @StateObject private var viewModel = TimelineViewModel()
+    
+    private var presentation: TimelineLoadPresentation {
+        TimelineLoadPresentation.resolve(
+            isLoading: viewModel.isLoading,
+            hasSections: !viewModel.sections.isEmpty,
+            analysisInProgress: appState.isIndexing
+                || appState.isAnalyzing
+                || appState.shouldShowFirstRunAnalyzing
+        )
+    }
     
     var body: some View {
         Group {
-            if viewModel.isLoading {
+            switch presentation {
+            case .loading:
                 loadingView
-            } else if viewModel.sections.isEmpty {
+            case .analyzing:
+                analyzingView
+            case .empty:
                 emptyStateView
-            } else {
+            case .content:
                 timelineContent
             }
         }
         .onAppear {
             viewModel.initialize(modelContext: modelContext)
+            viewModel.considerReload(
+                indexed: appState.totalPhotosIndexed,
+                analysisComplete: appState.hasCompletedInitialAnalysis
+            )
         }
+        .onChange(of: appState.totalPhotosIndexed) { _, indexed in
+            viewModel.considerReload(
+                indexed: indexed,
+                analysisComplete: appState.hasCompletedInitialAnalysis
+            )
+        }
+        .onChange(of: appState.hasCompletedInitialAnalysis) { _, complete in
+            if complete {
+                viewModel.considerReload(indexed: appState.totalPhotosIndexed, analysisComplete: true)
+            }
+        }
+    }
+    
+    private var analyzingView: some View {
+        VStack(spacing: MomentsSpacing.lg) {
+            TimelineWarmPulse()
+                .frame(width: 120, height: 120)
+            
+            Text(TimelineInProgressCopy.title)
+                .font(MomentsTypography.titleMedium)
+                .foregroundStyle(MomentsColors.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("timeline.analyzing.title")
+            
+            Text(TimelineInProgressCopy.body)
+                .font(MomentsTypography.bodyMedium)
+                .foregroundStyle(MomentsColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, MomentsSpacing.lg)
+                .accessibilityIdentifier("timeline.analyzing.body")
+        }
+        .padding(.horizontal, MomentsSpacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("timeline.analyzing")
     }
     
     private var loadingView: some View {
@@ -395,7 +451,40 @@ struct PhotoDetailView: View {
     }
 }
 
+private struct TimelineWarmPulse: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = false
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(MomentsColors.accent.opacity(0.14))
+                .scaleEffect(pulse || reduceMotion ? 1.08 : 0.92)
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [MomentsColors.accent.opacity(0.35), MomentsColors.accentSecondary.opacity(0.45)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(18)
+            Image(systemName: "sparkles")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(MomentsColors.accentSecondary)
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 #Preview {
     TimelineView()
+        .environmentObject(AppState())
         .modelContainer(for: PersistedPhoto.self)
 }

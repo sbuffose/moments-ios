@@ -98,84 +98,68 @@ struct FirstRunExplanationSheet: View {
                         }
                         
                         VStack(spacing: MomentsSpacing.md) {
-                            Text("¿Qué vamos a hacer?")
+                            Text(FirstRunExplanationCopy.title)
                                 .font(MomentsTypography.titleLarge)
                                 .foregroundStyle(MomentsColors.textPrimary)
                                 .multilineTextAlignment(.center)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
                             
-                            Text("Antes de empezar, te explicamos cómo funciona Moments.")
+                            Text(FirstRunExplanationCopy.subtitle)
                                 .font(MomentsTypography.bodyMedium)
                                 .foregroundStyle(MomentsColors.textSecondary)
                                 .multilineTextAlignment(.center)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, MomentsSpacing.lg)
                         }
                         
                         VStack(alignment: .leading, spacing: MomentsSpacing.lg) {
-                            ExplanationRow(
-                                icon: "photo.on.rectangle.angled",
-                                iconColor: .blue,
-                                title: "Analizamos tus fotos",
-                                description: "Detectamos fotos borrosas, duplicadas, capturas y más."
-                            )
-                            
-                            ExplanationRow(
-                                icon: "iphone",
-                                iconColor: .green,
-                                title: "Todo en tu dispositivo",
-                                description: "Nada sale de tu iPhone. El análisis es 100% privado."
-                            )
-                            
-                            ExplanationRow(
-                                icon: "arrow.triangle.2.circlepath",
-                                iconColor: .orange,
-                                title: "Continúa en segundo plano",
-                                description: "El análisis sigue aunque cierres la app. Es más rápido con el teléfono cargando."
-                            )
-                            
-                            ExplanationRow(
-                                icon: "bell.badge",
-                                iconColor: MomentsColors.accent,
-                                title: "Te avisamos cuando termine",
-                                description: "Recibirás una notificación cuando tu biblioteca esté lista."
-                            )
-                            
-                            ExplanationRow(
-                                icon: "hand.raised",
-                                iconColor: .pink,
-                                title: "Vos decidís qué borrar",
-                                description: "Te sugerimos fotos para eliminar, pero la decisión es tuya."
-                            )
+                            ForEach(Array(FirstRunExplanationCopy.rows.enumerated()), id: \.offset) { index, row in
+                                let colors: [Color] = [.blue, .green, .orange, MomentsColors.accent, .pink]
+                                ExplanationRow(
+                                    icon: row.icon,
+                                    iconColor: colors[index],
+                                    title: row.title,
+                                    description: row.description
+                                )
+                                .accessibilityIdentifier(
+                                    index == FirstRunExplanationCopy.rows.count - 1
+                                        ? "firstRun.explanation.lastRow"
+                                        : "firstRun.explanation.row.\(index)"
+                                )
+                            }
                         }
                         .padding(.horizontal, MomentsSpacing.screenHorizontal)
                         
-                        Spacer(minLength: MomentsSpacing.xl)
+                        Spacer(minLength: FirstRunExplanationCopy.startButtonReserve)
                     }
                 }
-                
-                VStack {
-                    Spacer()
-                    
-                    Button {
-                        appState.dismissFirstRunExplanation()
-                    } label: {
-                        Text("Empezar")
-                            .font(MomentsTypography.buttonLarge)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, MomentsSpacing.md)
-                            .background(
-                                LinearGradient(
-                                    colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
+                .accessibilityIdentifier("firstRun.explanation.scroll")
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    appState.dismissFirstRunExplanation()
+                } label: {
+                    Text(FirstRunExplanationCopy.start)
+                        .font(MomentsTypography.buttonLarge)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, MomentsSpacing.md)
+                        .background(
+                            LinearGradient(
+                                colors: [MomentsColors.accent, MomentsColors.accent.opacity(0.8)],
+                                startPoint: .leading,
+                                endPoint: .trailing
                             )
-                            .cornerRadius(MomentsCorners.large)
-                    }
-                    .padding(.horizontal, MomentsSpacing.screenHorizontal)
-                    .padding(.bottom, MomentsSpacing.xl)
-                    .accessibilityIdentifier("firstRun.startButton")
+                        )
+                        .cornerRadius(MomentsCorners.large)
                 }
+                .padding(.horizontal, MomentsSpacing.screenHorizontal)
+                .padding(.top, MomentsSpacing.sm)
+                .padding(.bottom, MomentsSpacing.md)
+                .background(MomentsColors.bgPrimary.opacity(0.96))
+                .accessibilityIdentifier("firstRun.startButton")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -216,10 +200,14 @@ struct ExplanationRow: View {
                 Text(title)
                     .font(MomentsTypography.headlineSmall)
                     .foregroundStyle(MomentsColors.textPrimary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 Text(description)
                     .font(MomentsTypography.bodySmall)
                     .foregroundStyle(MomentsColors.textSecondary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -560,6 +548,7 @@ struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
     @State private var currentPage = 0
     @State private var isRequesting = false
+    @State private var lastPermissionRequest = "none"
     
     var body: some View {
         ZStack {
@@ -690,19 +679,28 @@ struct OnboardingView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onboarding.root")
         .accessibilityProbe("onboarding.root")
+        .overlay(alignment: .topLeading) {
+            Text(lastPermissionRequest)
+                .font(.system(size: 1))
+                .foregroundStyle(.clear)
+                .accessibilityIdentifier("permission.lastRequest")
+                .accessibilityValue(lastPermissionRequest)
+                .accessibilityHidden(false)
+                .allowsHitTesting(false)
+        }
     }
     
     private func requestAccess() {
         isRequesting = true
         Task {
+            // Photos only. Notifications wait for the explicit first-run CTA.
+            guard FirstLaunchPermissionPolicy.shouldRequestPhotos(fromOnboardingAllowButton: true) else {
+                isRequesting = false
+                return
+            }
+            lastPermissionRequest = PermissionKind.photos.rawValue
             let granted = await appState.requestAuthorization()
             if granted {
-                // Request notification permission for daily review
-                // This is non-blocking - user can skip and we continue
-                _ = await DailyReviewService.shared.requestNotificationPermission()
-                
-                // Complete onboarding and go directly to home
-                // Background processing starts automatically in completeOnboarding()
                 appState.completeOnboarding()
             }
             isRequesting = false
@@ -718,49 +716,23 @@ struct OnboardingPageView: View {
     let highlights: [(icon: String, text: String)]
     
     var body: some View {
-        VStack(spacing: MomentsSpacing.xl) {
-            Spacer()
-            
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: iconGradient.map { $0.opacity(0.2) },
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 160, height: 160)
-                
-                Image(systemName: iconName)
-                    .font(.system(size: 72, weight: .light))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: iconGradient,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            
-            VStack(spacing: MomentsSpacing.sm) {
-                Text(String(localized: String.LocalizationValue(titleKey)))
-                    .font(MomentsTypography.titleLarge)
-                    .foregroundStyle(MomentsColors.textPrimary)
-                    .multilineTextAlignment(.center)
-                
-                Text(String(localized: String.LocalizationValue(subtitleKey)))
-                    .font(MomentsTypography.bodyMedium)
-                    .foregroundStyle(MomentsColors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, MomentsSpacing.lg)
-            }
-            
-            VStack(alignment: .leading, spacing: MomentsSpacing.md) {
-                ForEach(highlights, id: \.icon) { highlight in
-                    HStack(alignment: .top, spacing: MomentsSpacing.md) {
-                        Image(systemName: highlight.icon)
-                            .font(.title3)
+        GeometryReader { geo in
+            let iconSide = min(128, max(72, geo.size.height * 0.20))
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: MomentsSpacing.lg) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: iconGradient.map { $0.opacity(0.2) },
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: iconSide, height: iconSide)
+                        
+                        Image(systemName: iconName)
+                            .font(.system(size: iconSide * 0.42, weight: .light))
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: iconGradient,
@@ -768,23 +740,61 @@ struct OnboardingPageView: View {
                                     endPoint: .bottomTrailing
                                 )
                             )
-                            .frame(width: 32)
-                        
-                        Text(String(localized: String.LocalizationValue(highlight.text)))
-                            .font(MomentsTypography.bodyMedium)
+                    }
+                    .padding(.top, MomentsSpacing.sm)
+                    
+                    VStack(spacing: MomentsSpacing.sm) {
+                        Text(String(localized: String.LocalizationValue(titleKey)))
+                            .font(MomentsTypography.titleLarge)
                             .foregroundStyle(MomentsColors.textPrimary)
-                            .multilineTextAlignment(.leading)
+                            .multilineTextAlignment(.center)
                             .lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, MomentsSpacing.md)
+                            .accessibilityIdentifier("onboarding.pageTitle")
+                        
+                        Text(String(localized: String.LocalizationValue(subtitleKey)))
+                            .font(MomentsTypography.bodyMedium)
+                            .foregroundStyle(MomentsColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, MomentsSpacing.lg)
+                            .accessibilityIdentifier("onboarding.pageSubtitle")
                     }
+                    
+                    VStack(alignment: .leading, spacing: MomentsSpacing.md) {
+                        ForEach(highlights, id: \.icon) { highlight in
+                            HStack(alignment: .top, spacing: MomentsSpacing.md) {
+                                Image(systemName: highlight.icon)
+                                    .font(.title3)
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: iconGradient,
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 32)
+                                
+                                Text(String(localized: String.LocalizationValue(highlight.text)))
+                                    .font(MomentsTypography.bodyMedium)
+                                    .foregroundStyle(MomentsColors.textPrimary)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, MomentsSpacing.lg)
+                    .padding(.top, MomentsSpacing.sm)
                 }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: geo.size.height)
+                .padding(.bottom, MomentsSpacing.md)
             }
-            .padding(.horizontal, MomentsSpacing.xl)
-            .padding(.top, MomentsSpacing.md)
-            
-            Spacer()
-            Spacer()
         }
+        .padding(.horizontal, MomentsSpacing.sm)
     }
 }
 
