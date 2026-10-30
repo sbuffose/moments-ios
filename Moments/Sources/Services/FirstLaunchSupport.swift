@@ -109,10 +109,10 @@ enum FirstRunProgress {
             return min(1, max(0, indexing * 0.45 + analysis * 0.55))
         }
         if isIndexing {
-            return min(1, max(0, indexing))
+            return min(1, max(0, indexing * 0.45))
         }
         if isAnalyzing {
-            return min(1, max(0, analysis))
+            return min(1, max(0, 0.45 + analysis * 0.55))
         }
         return 0
     }

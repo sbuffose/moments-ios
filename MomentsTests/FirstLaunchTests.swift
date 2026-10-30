@@ -72,6 +72,8 @@ final class FirstLaunchTests: XCTestCase {
         let parallel = FirstRunProgress.rawProgress(
             overall: 0, indexing: 0.4, analysis: 0.2, isIndexing: true, isAnalyzing: true
         )
+        XCTAssertEqual(indexingOnly, 0.4 * 0.45, accuracy: 0.0001)
+        XCTAssertEqual(parallel, 0.4 * 0.45 + 0.2 * 0.55, accuracy: 0.0001)
         XCTAssertGreaterThan(parallel, indexingOnly)
         
         let snapshot = ScanProgressSnapshot(indexed: 200, analyzed: 40, total: 1000, phase: .analyzing)

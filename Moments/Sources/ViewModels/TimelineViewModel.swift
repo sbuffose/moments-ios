@@ -9,7 +9,7 @@ import MomentsEngine
 class TimelineViewModel: ObservableObject {
     // MARK: - Published Properties
     
-    @Published var isLoading = false
+    @Published var isLoading = true
     @Published var sections: [TimelineSectionItem] = []
     @Published var onThisDayMemories: [OnThisDayMemoryItem] = []
     @Published var trips: [TripItem] = []
