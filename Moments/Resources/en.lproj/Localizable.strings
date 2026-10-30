@@ -186,6 +186,8 @@
 "timeline_loading" = "Loading moments...";
 "timeline_empty_title" = "No Moments";
 "timeline_empty_description" = "Your photos will appear organized here after scanning.";
+"timeline_analyzing_title" = "Your moments are settling in";
+"timeline_analyzing_description" = "We're getting to know your photos. They'll show up here in a bit, grouped with care.";
 "timeline_on_this_day" = "On This Day";
 "timeline_trips" = "Trips";
 "timeline_photos_count %lld" = "%lld photos";

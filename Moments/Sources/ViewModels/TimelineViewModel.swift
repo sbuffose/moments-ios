@@ -9,7 +9,7 @@ import MomentsEngine
 class TimelineViewModel: ObservableObject {
     // MARK: - Published Properties
     
-    @Published var isLoading = true
+    @Published var isLoading = false
     @Published var sections: [TimelineSectionItem] = []
     @Published var onThisDayMemories: [OnThisDayMemoryItem] = []
     @Published var trips: [TripItem] = []
@@ -20,6 +20,8 @@ class TimelineViewModel: ObservableObject {
     
     private var modelContext: ModelContext?
     private let timelineAnalyzer = TimelineAnalyzer()
+    private var lastReloadPhotoCount = -1
+    private var loadTask: Task<Void, Never>?
     
     // MARK: - Models
     
@@ -73,9 +75,25 @@ class TimelineViewModel: ObservableObject {
     
     func initialize(modelContext: ModelContext) {
         self.modelContext = modelContext
-        Task {
+        loadTask?.cancel()
+        loadTask = Task {
             await loadTimeline()
             await loadOnThisDayMemories()
+        }
+    }
+    
+    func considerReload(indexed: Int, analysisComplete: Bool) {
+        let grewEnough = lastReloadPhotoCount < 0
+            || indexed >= lastReloadPhotoCount + 25
+            || (lastReloadPhotoCount == 0 && indexed > 0)
+        guard analysisComplete || grewEnough else { return }
+        lastReloadPhotoCount = indexed
+        loadTask?.cancel()
+        loadTask = Task {
+            await loadTimeline()
+            if analysisComplete {
+                await loadOnThisDayMemories()
+            }
         }
     }
     
@@ -87,6 +105,9 @@ class TimelineViewModel: ObservableObject {
             return
         }
         
+        // Never paint an endless spinner — show empty/in-progress immediately.
+        isLoading = false
+        
         do {
             let momentDescriptor = FetchDescriptor<PersistedMoment>()
             
@@ -95,12 +116,9 @@ class TimelineViewModel: ObservableObject {
             
             if !persistedMoments.isEmpty {
                 await loadFromPersistedMoments(persistedMoments)
-                isLoading = false
                 return
             }
             
-            // Never leave the tab on an endless spinner while clustering a large library.
-            isLoading = false
             await generateMoments()
             
         } catch {

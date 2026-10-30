@@ -385,9 +385,11 @@ actor ScanPipeline {
         if store.snapshot().total == 0 {
             store.start(totalPhotos: assets.count)
         }
+        await onProgress(store.snapshot())
         
         var pending: [PHAsset] = []
         pending.reserveCapacity(min(assets.count, 512))
+        var alreadyKnown = 0
         assets.enumerateObjects { asset, _, stop in
             if shouldStop() {
                 stop.pointee = true
@@ -396,9 +398,13 @@ actor ScanPipeline {
             let id = asset.localIdentifier
             if existingIds.contains(id) || store.isIndexed(id) {
                 store.markIndexed(id)
+                alreadyKnown += 1
                 return
             }
             pending.append(asset)
+        }
+        if alreadyKnown > 0 {
+            await onProgress(store.snapshot())
         }
         
         var inserted = 0
@@ -412,7 +418,7 @@ actor ScanPipeline {
             context.insert(photo)
             store.markIndexed(asset.localIdentifier)
             inserted += 1
-            if inserted % 50 == 0 {
+            if inserted % 5 == 0 {
                 try? context.save()
                 store.persist()
                 await onProgress(store.snapshot())
@@ -459,7 +465,7 @@ actor ScanPipeline {
             await analyzeOne(photo, context: context)
             store.markAnalyzed(photo.id)
             analyzed += 1
-            if analyzed % 10 == 0 {
+            if analyzed % 2 == 0 {
                 try? context.save()
                 store.persist()
                 await onProgress(store.snapshot())
@@ -813,6 +819,10 @@ enum ActiveScanSimulation {
         if appState.totalPhotosToAnalyze != total { appState.totalPhotosToAnalyze = total }
         if abs(appState.analysisProgress - progress) > 0.0001 {
             appState.analysisProgress = progress
+        }
+        let overall = snap.overallProgress > 0 ? snap.overallProgress : progress
+        if abs(appState.scanOverallProgress - overall) > 0.0001 {
+            appState.scanOverallProgress = overall
         }
     }
 }

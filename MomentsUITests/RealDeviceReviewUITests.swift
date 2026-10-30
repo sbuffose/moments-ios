@@ -220,6 +220,11 @@ final class RealDeviceReviewUITests: XCTestCase {
             "Tapping allow must present the system Photos permission prompt when possible"
         )
         if alert.exists {
+            let text = (alert.label + " " + alert.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " ")).lowercased()
+            XCTAssertFalse(
+                text.contains("notif") || text.contains("notification"),
+                "Permitir acceso a Fotos must not show the notifications prompt: \(text)"
+            )
             if alert.buttons["Don't Allow"].exists { alert.buttons["Don't Allow"].tap() }
             else if alert.buttons["No permitir"].exists { alert.buttons["No permitir"].tap() }
             else if alert.buttons["OK"].exists { alert.buttons["OK"].tap() }

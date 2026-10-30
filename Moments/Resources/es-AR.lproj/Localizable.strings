@@ -186,6 +186,8 @@
 "timeline_loading" = "Cargando momentos...";
 "timeline_empty_title" = "Sin momentos";
 "timeline_empty_description" = "Tus fotos aparecerán organizadas aquí después del escaneo.";
+"timeline_analyzing_title" = "Tus momentos se están acomodando";
+"timeline_analyzing_description" = "Estamos conociendo tus fotos. En un rato van a aparecer acá, agrupados con cariño.";
 "timeline_on_this_day" = "En este día";
 "timeline_trips" = "Viajes";
 "timeline_photos_count %lld" = "%lld fotos";

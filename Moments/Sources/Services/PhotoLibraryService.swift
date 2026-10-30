@@ -31,6 +31,12 @@ class PhotoLibraryService: ObservableObject {
     }
     
     func requestAuthorization() async -> Bool {
+        PermissionRequestRecorder.record(.photos)
+        if FirstLaunchFlags.grantPhotos {
+            authorizationStatus = .authorized
+            isLimitedAccess = false
+            return true
+        }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         self.authorizationStatus = status
         self.isLimitedAccess = (status == .limited)
